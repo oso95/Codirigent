@@ -10,7 +10,7 @@ fn test_task_board_panel_new() {
     let panel = TaskBoardPanel::new();
     assert_eq!(panel.active_tab(), TaskBoardTab::Queue);
     assert!(!panel.is_auto_assign_enabled());
-    assert!(panel.is_expanded());
+    assert!(!panel.is_expanded()); // Panel starts collapsed by default
 }
 
 #[test]
@@ -84,12 +84,12 @@ fn test_click_add_task() {
 #[test]
 fn test_toggle_expanded() {
     let mut panel = TaskBoardPanel::new();
-    assert!(panel.is_expanded());
-    assert_eq!(panel.height(), TaskBoardPanel::DEFAULT_EXPANDED_HEIGHT);
+    assert!(!panel.is_expanded()); // Starts collapsed
+    assert_eq!(panel.height(), TaskBoardPanel::DEFAULT_COLLAPSED_HEIGHT);
 
     panel.toggle_expanded();
-    assert!(!panel.is_expanded());
-    assert_eq!(panel.height(), TaskBoardPanel::DEFAULT_COLLAPSED_HEIGHT);
+    assert!(panel.is_expanded());
+    assert_eq!(panel.height(), TaskBoardPanel::DEFAULT_EXPANDED_HEIGHT);
 }
 
 #[test]
@@ -142,7 +142,7 @@ fn test_render_hints() {
     let hints = panel.render_hints();
     assert_eq!(hints.active_tab, TaskBoardTab::Queue);
     assert!(hints.auto_assign.enabled);
-    assert!(hints.is_expanded);
+    assert!(!hints.is_expanded); // Panel starts collapsed by default
     assert_eq!(hints.tabs.len(), 4);
 }
 
@@ -168,6 +168,8 @@ fn test_auto_assign_toggle_colors() {
 #[test]
 fn test_set_expanded_height() {
     let mut panel = TaskBoardPanel::new();
+    // Panel starts collapsed, expand it first
+    panel.toggle_expanded();
     panel.set_expanded_height(300.0);
     assert_eq!(panel.height(), 300.0);
 
