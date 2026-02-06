@@ -1423,6 +1423,10 @@ impl WorkspaceView {
                             }
                         }
                     }))
+                    // Right-click: paste from clipboard (standard terminal behavior)
+                    .on_mouse_down(MouseButton::Right, cx.listener(move |this, _event: &MouseDownEvent, window, cx| {
+                        this.handle_paste(&crate::app::Paste, window, cx);
+                    }))
                     // Mouse up: end selection
                     .on_mouse_up(MouseButton::Left, cx.listener(move |this, _event: &MouseUpEvent, _window, cx| {
                         if this.is_selecting && this.selecting_session_id == Some(session_id) {
@@ -3387,6 +3391,7 @@ impl WorkspaceView {
         let muted: gpui::Hsla = theme.muted.into();
         let fg: gpui::Hsla = theme.foreground.into();
         let border_color: gpui::Hsla = theme.border.into();
+        let header_bg: gpui::Hsla = theme.header_background.into();
         let green = gpui::Hsla { h: 0.35, s: 0.6, l: 0.5, a: 1.0 };
         let orange = gpui::Hsla { h: 0.1, s: 0.8, l: 0.6, a: 1.0 };
         let red = gpui::Hsla { h: 0.0, s: 0.7, l: 0.55, a: 1.0 };
@@ -3399,6 +3404,20 @@ impl WorkspaceView {
             .and_then(|id| sessions.iter().find(|s| s.id == id))
             .or_else(|| sessions.first());
 
+        let (dir_name, has_git_info) = match session {
+            Some(s) => {
+                let dir_name = s
+                    .working_directory
+                    .file_name()
+                    .and_then(|n| n.to_str())
+                    .unwrap_or("unknown")
+                    .to_string();
+                let has_git = s.git_info.is_some();
+                (dir_name, has_git)
+            }
+            None => ("No session".to_string(), false),
+        };
+
         let mut content = div()
             .flex_1()
             .overflow_hidden()
@@ -3407,55 +3426,76 @@ impl WorkspaceView {
             .p_2()
             .gap_2();
 
-        let session = match session {
-            Some(s) => s,
-            None => {
-                return content.child(
-                    div().text_xs().text_color(muted).child("No sessions"),
-                );
-            }
-        };
-
-        // Project directory name + session label
-        let dir_name = session
-            .working_directory
-            .file_name()
-            .and_then(|n| n.to_str())
-            .unwrap_or("unknown")
-            .to_string();
-        content = content.child(
-            div()
+        if session.is_none() {
+            return div()
+                .flex_1()
                 .flex()
-                .items_center()
-                .gap_1()
+                .flex_col()
+                .overflow_hidden()
+                // Sub-header showing current location
                 .child(
                     div()
-                        .text_xs()
-                        .text_color(muted)
-                        .font_family(icons::LUCIDE_FONT_FAMILY)
-                        .child(icons::folder()),
+                        .h(px(32.0))
+                        .w_full()
+                        .bg(header_bg)
+                        .border_b_1()
+                        .border_color(border_color)
+                        .flex()
+                        .items_center()
+                        .px_3()
+                        .child(
+                            div()
+                                .text_xs()
+                                .font_weight(FontWeight::MEDIUM)
+                                .text_color(muted)
+                                .child("No session selected"),
+                        ),
                 )
                 .child(
                     div()
-                        .text_xs()
-                        .font_weight(FontWeight::BOLD)
-                        .text_color(fg)
-                        .child(dir_name),
-                )
-                .child(
-                    div()
-                        .text_xs()
-                        .text_color(muted.opacity(0.5))
-                        .child(format!("({})", session.name)),
-                ),
-        );
+                        .flex_1()
+                        .p_2()
+                        .child(div().text_xs().text_color(muted).child("Select a session to view git worktrees")),
+                );
+        }
+
+        let session = session.unwrap();
 
         let gi = match session.git_info.as_ref() {
             Some(gi) => gi,
             None => {
-                return content.child(
-                    div().text_xs().text_color(muted.opacity(0.5)).child("Not a git repository"),
-                );
+                return div()
+                    .flex_1()
+                    .flex()
+                    .flex_col()
+                    .overflow_hidden()
+                    // Sub-header showing current location
+                    .child(
+                        div()
+                            .h(px(32.0))
+                            .w_full()
+                            .bg(header_bg)
+                            .border_b_1()
+                            .border_color(border_color)
+                            .flex()
+                            .items_center()
+                            .px_3()
+                            .child(
+                                div()
+                                    .text_xs()
+                                    .font_weight(FontWeight::MEDIUM)
+                                    .text_color(fg)
+                                    .overflow_hidden()
+                                    .text_ellipsis()
+                                    .child(dir_name),
+                            ),
+                    )
+                    .child(
+                        div()
+                            .flex_1()
+                            .p_2()
+                            .child(div().text_xs().text_color(muted.opacity(0.5)).child("Not a git repository")),
+                    );
             }
         };
 
@@ -3532,7 +3572,35 @@ impl WorkspaceView {
             );
         }
 
-        content
+        // Return with sub-header matching file tree design
+        div()
+            .flex_1()
+            .flex()
+            .flex_col()
+            .overflow_hidden()
+            // Sub-header showing current location
+            .child(
+                div()
+                    .h(px(32.0))
+                    .w_full()
+                    .bg(header_bg)
+                    .border_b_1()
+                    .border_color(border_color)
+                    .flex()
+                    .items_center()
+                    .px_3()
+                    .child(
+                        div()
+                            .text_xs()
+                            .font_weight(FontWeight::MEDIUM)
+                            .text_color(fg)
+                            .overflow_hidden()
+                            .text_ellipsis()
+                            .child(dir_name),
+                    ),
+            )
+            // Scrollable content area
+            .child(content)
     }
 
     /// Map a git change kind to a display label and color.

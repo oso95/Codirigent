@@ -1557,8 +1557,8 @@ impl WorkspaceView {
         self.focus_session_number(9, cx);
     }
 
-    /// Handle Paste action (Cmd+V / Ctrl+V).
-    fn handle_paste(
+    /// Handle Paste action (Cmd+V / Ctrl+V / right-click).
+    pub(super) fn handle_paste(
         &mut self,
         _action: &Paste,
         _window: &mut Window,
