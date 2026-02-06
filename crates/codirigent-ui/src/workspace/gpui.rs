@@ -1775,6 +1775,7 @@ impl Render for WorkspaceView {
         self.process_ui_events(cx);
         self.process_top_bar_events();
         self.process_broadcast_events();
+        self.process_icon_rail_events();
 
         // Sync UI state before rendering
         self.sync_ui_state();
@@ -1830,8 +1831,6 @@ impl Render for WorkspaceView {
         let theme = self.workspace.theme();
         let bg: gpui::Hsla = theme.background.into();
         let grid_gap = theme.grid_gap;
-        let show_sidebar = self.workspace.is_sidebar_visible();
-        let _task_board_expanded = self.task_board.is_expanded();
 
         // Build the main container with flex-col layout
         let mut container = div()
@@ -1860,10 +1859,15 @@ impl Render for WorkspaceView {
             .flex()
             .flex_col();
 
-        // 1. TopBar at top (48px, replaces TitleBar + Toolbar)
+        // 1. TopBar at top (48px)
         container = container.child(self.render_top_bar(cx));
 
-        // 2. Main content area (flex-row: sidebar + grid area)
+        // 1.5. Broadcast bar (conditional, 52px)
+        if self.broadcast_bar.is_visible() {
+            container = container.child(self.render_broadcast_bar(cx));
+        }
+
+        // 2. Main content area (flex-row: icon rail + drawer + grid + right task board)
         let mut main_content = div()
             .id("main-content")
             .flex_1()
@@ -1872,12 +1876,15 @@ impl Render for WorkspaceView {
             .overflow_hidden()
             .min_h(px(0.0));  // Allow flex shrinking
 
-        // Sidebar (if visible)
-        if show_sidebar {
-            main_content = main_content.child(self.render_sidebar(cx));
+        // Icon rail (always visible, 56px)
+        main_content = main_content.child(self.render_icon_rail(cx));
+
+        // Drawer (if open, 288px)
+        if self.drawer.is_open() {
+            main_content = main_content.child(self.render_drawer(cx));
         }
 
-        // Grid area (session grid only, toolbar merged into top bar)
+        // Grid area (session grid, fills remaining space)
         let grid_area = div()
             .id("grid-area")
             .flex_1()
@@ -1897,13 +1904,13 @@ impl Render for WorkspaceView {
             );
 
         main_content = main_content.child(grid_area);
+
+        // Right task board panel (if open, 288px)
+        if self.top_bar.is_right_panel_open() {
+            main_content = main_content.child(self.render_right_task_board(cx));
+        }
+
         container = container.child(main_content);
-
-        // 3. TaskBoardPanel (collapsible, below main content)
-        container = container.child(self.render_task_board(cx));
-
-        // 4. StatusBar at bottom (24px)
-        container = container.child(self.render_status_bar());
 
         // 5. Custom layout modal (if open)
         if let Some(modal) = self.render_custom_layout_modal(cx) {
