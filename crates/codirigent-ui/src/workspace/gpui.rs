@@ -415,6 +415,23 @@ impl WorkspaceView {
         self.refresh_worktree_panel();
     }
 
+    /// Sync the file tree panel to show the focused session's working directory.
+    ///
+    /// Called when focus switches between sessions so the file tree always
+    /// reflects the active session's CWD.
+    fn sync_file_tree_to_focused_session(&mut self) {
+        let cwd = self
+            .workspace
+            .focused_session()
+            .map(|s| s.working_directory.clone());
+        if let Some(cwd) = cwd {
+            // Only update if the directory actually differs from the current root
+            if self.project_root.as_ref() != Some(&cwd) {
+                self.set_project_root(cwd);
+            }
+        }
+    }
+
     /// Poll PTY output and feed to terminal emulators.
     fn poll_output(&mut self, cx: &mut Context<Self>) {
         let session_ids: Vec<SessionId> = self.terminals.keys().copied().collect();
@@ -442,14 +459,18 @@ impl WorkspaceView {
 
                 // Check for OSC 7 (working directory change) sequences
                 if let Some(new_cwd) = codirigent_session::extract_osc7_path(&data) {
+                    let new_cwd_for_tree = new_cwd.clone();
                     let changed = {
                         let manager = self.session_manager.lock().unwrap();
                         manager.update_working_directory(session_id, new_cwd)
                     };
                     if changed {
                         // Force immediate git refresh for this session
-                        let manager = self.session_manager.lock().unwrap();
-                        if let Some(git_info) = manager.refresh_git_status(session_id) {
+                        let git_info = {
+                            let manager = self.session_manager.lock().unwrap();
+                            manager.refresh_git_status(session_id)
+                        };
+                        if let Some(git_info) = git_info {
                             if let Some((_, header)) = self
                                 .terminal_headers
                                 .iter_mut()
@@ -472,6 +493,11 @@ impl WorkspaceView {
                             }
                             self.workspace
                                 .update_session_git_info(session_id, None);
+                        }
+
+                        // Update file tree panel if this is the focused session
+                        if self.workspace.focused_session_id() == Some(session_id) {
+                            self.set_project_root(new_cwd_for_tree);
                         }
                     }
                 }
@@ -735,6 +761,7 @@ impl WorkspaceView {
             if let Some(id) = self.workspace.focused_session_id() {
                 self.event_bus.publish(CodirigentEvent::SessionFocused { id });
             }
+            self.sync_file_tree_to_focused_session();
             cx.notify();
         }
     }
@@ -908,6 +935,7 @@ impl WorkspaceView {
         self.selected_session_id = Some(session_id);
         self.drawer.set_selected_session(Some(session_id));
         self.workspace.focus_session(session_id);
+        self.sync_file_tree_to_focused_session();
     }
 
     /// Process icon rail events (drawer toggling, settings).
@@ -1539,10 +1567,8 @@ impl WorkspaceView {
         cx: &mut Context<Self>,
     ) {
         let Some(session_id) = self.workspace.focused_session_id() else {
-            info!("Paste: no focused session");
             return;
         };
-        info!("Paste: focused session {}", session_id);
 
         // Read bracketed paste mode from terminal
         let bracketed = self
@@ -1560,7 +1586,6 @@ impl WorkspaceView {
             }
         };
 
-        info!("Paste: content type = {:?}", std::mem::discriminant(&content));
         match content {
             ClipboardContent::Text(text) => {
                 if text.is_empty() {
@@ -1580,22 +1605,30 @@ impl WorkspaceView {
                 }
             }
             ClipboardContent::Image(ref _image_data) => {
-                info!("Paste: image detected, size={} bytes", _image_data.bytes.len());
+                // Debug: hex dump first 20 bytes to identify data format
+                if _image_data.bytes.len() >= 20 {
+                    let hex: String = _image_data.bytes[..20].iter()
+                        .map(|b| format!("{:02X}", b))
+                        .collect::<Vec<_>>()
+                        .join(" ");
+                    info!(
+                        "DIB debug: len={} w={} h={} format={:?} first20=[{}]",
+                        _image_data.bytes.len(), _image_data.width, _image_data.height,
+                        _image_data.format, hex
+                    );
+                }
+
                 // Get the CLI type for the focused session (defaults to ClaudeCode)
                 let cli_type = self.clipboard_service.get_session_cli_type(session_id);
-                info!("Paste: cli_type={:?}", cli_type);
 
                 // Format for CLI: saves image to temp file and returns path string
                 match self.clipboard_service.format_for_cli(&content, cli_type) {
                     Ok(formatted_path) => {
-                        info!("Paste: formatted_path={:?}", formatted_path);
                         if formatted_path.is_empty() {
-                            info!("Paste: empty path, aborting");
                             return;
                         }
                         let sanitized = clipboard::sanitize_paste(&formatted_path);
                         let bytes = clipboard::prepare_paste(&sanitized, bracketed);
-                        info!("Paste: sending {} bytes to PTY (bracketed={})", bytes.len(), bracketed);
 
                         // Auto-scroll to bottom on paste
                         if let Some(tv) = self.terminals.get_mut(&session_id) {
@@ -1611,7 +1644,7 @@ impl WorkspaceView {
                         self.clipboard_preview.hide();
                     }
                     Err(e) => {
-                        warn!("Failed to format image for CLI: {}", e);
+                        warn!("Failed to format image for CLI: {:?}", e);
                     }
                 }
             }
@@ -1805,38 +1838,64 @@ impl WorkspaceView {
     }
 
     /// Handle keyboard input for the focused session.
-    fn handle_key_down(&mut self, event: &KeyDownEvent, _cx: &mut Context<Self>) {
+    #[allow(unused_variables)]
+    fn handle_key_down(
+        &mut self,
+        event: &KeyDownEvent,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
         // Allow modals to capture input before sending to the terminal.
-        if self.handle_modal_key_down(event, _cx) {
+        if self.handle_modal_key_down(event, cx) {
             return;
         }
 
-        info!(
-            "key_down: key={:?} platform={} control={} alt={} shift={}",
-            event.keystroke.key,
-            event.keystroke.modifiers.platform,
-            event.keystroke.modifiers.control,
-            event.keystroke.modifiers.alt,
-            event.keystroke.modifiers.shift
-        );
-
         // Don't send platform-modifier shortcuts to PTY (handled as GPUI actions).
+        // On macOS, `platform` maps to Command key and GPUI's `cmd-v` bindings work
+        // natively. On Windows/Linux, `platform` is false for Ctrl+key, so we handle
+        // Ctrl shortcuts directly below.
         if event.keystroke.modifiers.platform {
             return;
         }
 
-        // On Windows/Linux, GPUI maps `cmd-<key>` bindings to Ctrl+<key>.
-        // Skip Ctrl+key combos that have registered GPUI actions so the action
-        // system can handle them (Paste, Copy, etc.). Other Ctrl combos (Ctrl+C
-        // without selection, Ctrl+D, Ctrl+L, Ctrl+Z) must still reach the PTY.
+        // On Windows/Linux, GPUI's `cmd-<key>` keybindings expect `modifiers.platform`,
+        // but Ctrl+key only sets `modifiers.control`. The action system never matches,
+        // so we must handle Ctrl shortcuts directly here.
+        #[cfg(not(target_os = "macos"))]
         if event.keystroke.modifiers.control {
             let key = event.keystroke.key.as_ref();
             match key {
-                "v" | "n" | "w" | "q" | "b" | "\\" => return,
-                "1" | "2" | "3" | "4" | "5" | "6" | "7" | "8" | "9" => return,
+                "v" => {
+                    self.handle_paste(&Paste, window, cx);
+                    return;
+                }
                 "c" => {
-                    // Ctrl+C: let the action system handle it (Copy action).
-                    // handle_copy() will send \x03 if no selection is active.
+                    self.handle_copy(&Copy, window, cx);
+                    return;
+                }
+                "n" => {
+                    self.create_session(cx);
+                    return;
+                }
+                "w" => {
+                    self.close_focused_session(cx);
+                    return;
+                }
+                "q" => {
+                    cx.quit();
+                    return;
+                }
+                "b" => {
+                    self.toggle_sidebar(cx);
+                    return;
+                }
+                "\\" => {
+                    self.next_layout(cx);
+                    return;
+                }
+                "1" | "2" | "3" | "4" | "5" | "6" | "7" | "8" | "9" => {
+                    let num: usize = key.parse::<usize>().unwrap();
+                    self.focus_session_number(num, cx);
                     return;
                 }
                 _ => {} // Other Ctrl combos go to PTY (Ctrl+D, Ctrl+L, etc.)
@@ -2261,8 +2320,8 @@ impl Render for WorkspaceView {
             .on_action(cx.listener(Self::handle_paste))
             .on_action(cx.listener(Self::handle_copy))
             // Handle keyboard input for PTY
-            .on_key_down(cx.listener(|this, event: &KeyDownEvent, _window, cx| {
-                this.handle_key_down(event, cx);
+            .on_key_down(cx.listener(|this, event: &KeyDownEvent, window, cx| {
+                this.handle_key_down(event, window, cx);
             }))
             .bg(bg)
             .flex()
