@@ -80,6 +80,7 @@ pub mod actions;
 pub mod clipboard_preview;
 #[cfg(feature = "gpui-full")]
 pub mod components;
+pub mod drawer;
 pub mod empty_session;
 pub mod icon_rail;
 pub mod integration;
