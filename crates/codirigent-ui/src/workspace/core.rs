@@ -98,27 +98,7 @@ impl Workspace {
     }
 
     /// Set the layout profile.
-    ///
-    /// When switching to Single layout, moves the currently focused session
-    /// to index 0 so it will be displayed in the single cell.
     pub fn set_layout(&mut self, profile: LayoutProfile) {
-        // If switching to Single layout and we have a focused session,
-        // move it to index 0 so it will be the one displayed
-        if profile == LayoutProfile::Single {
-            if let Some(focused_idx) = self.layout_state.focused_index() {
-                if focused_idx > 0 {
-                    // Move focused session to front of assignments
-                    let mut assignments = self.layout_state.assignments().to_vec();
-                    let focused_id = assignments[focused_idx];
-                    assignments.remove(focused_idx);
-                    assignments.insert(0, focused_id);
-                    self.layout_state.set_assignments(assignments);
-                    // Update focused index to reflect new position
-                    self.layout_state.focus_index(0);
-                }
-            }
-        }
-
         self.layout_state.set_profile(profile);
     }
 
@@ -440,10 +420,36 @@ impl Workspace {
     // --- State for Rendering ---
 
     /// Get information about each visible cell for rendering.
+    ///
+    /// In Single layout mode, only returns the focused session.
+    /// This ensures that when switching to Single layout, the currently
+    /// focused session is displayed, not just the first session.
     pub fn cell_info(&self) -> Vec<CellInfo> {
         let layout = self.grid_layout();
         let focused_id = self.focused_session_id();
 
+        // Special handling for Single layout: only show the focused session
+        if self.layout_state.profile() == LayoutProfile::Single {
+            if let Some(focused_session_id) = focused_id {
+                if let Some(session) = self.session(focused_session_id) {
+                    // Get bounds for the single cell (index 0)
+                    if let Some(bounds) = layout.cell_bounds_for_index(0) {
+                        return vec![CellInfo {
+                            session_id: focused_session_id,
+                            index: 0,
+                            bounds,
+                            name: session.name.clone(),
+                            status: session.status,
+                            is_focused: true,
+                        }];
+                    }
+                }
+            }
+            // If no focused session, return empty (shouldn't happen in practice)
+            return vec![];
+        }
+
+        // For other layouts, show all assigned sessions
         self.layout_state
             .assignments()
             .iter()

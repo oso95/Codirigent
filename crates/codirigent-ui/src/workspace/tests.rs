@@ -382,14 +382,14 @@ fn test_workspace_single_layout_shows_focused_session() {
     ws.add_session(make_session(2, "Session 2"));
     ws.add_session(make_session(3, "Session 3"));
 
-    // Focus session 2 (index 1)
+    // Focus session 2 (middle session)
     assert!(ws.focus_session(SessionId(2)));
     assert_eq!(ws.focused_session_id(), Some(SessionId(2)));
 
     // Switch to Single layout
     ws.set_layout(LayoutProfile::Single);
 
-    // The focused session should now be at index 0
+    // The focused session should still be session 2
     assert_eq!(ws.focused_session_id(), Some(SessionId(2)));
 
     // cell_info should return only one cell with the focused session
@@ -421,4 +421,44 @@ fn test_workspace_single_layout_focused_session_already_first() {
     assert_eq!(cells.len(), 1);
     assert_eq!(cells[0].session_id, SessionId(1));
     assert!(cells[0].is_focused);
+}
+
+#[test]
+fn test_workspace_single_layout_preserves_order_on_exit() {
+    // Test that sessions return to original order after leaving Single layout
+    let mut ws = Workspace::with_profile(LayoutProfile::Grid2x2);
+    ws.set_bounds(Bounds::from_size(1000.0, 800.0));
+    ws.add_session(make_session(1, "Session 1"));
+    ws.add_session(make_session(2, "Session 2"));
+    ws.add_session(make_session(3, "Session 3"));
+    ws.add_session(make_session(4, "Session 4"));
+
+    // Focus session 3 (index 2)
+    assert!(ws.focus_session(SessionId(3)));
+
+    // Switch to Single layout
+    ws.set_layout(LayoutProfile::Single);
+
+    // Should show only session 3
+    let cells = ws.cell_info();
+    assert_eq!(cells.len(), 1);
+    assert_eq!(cells[0].session_id, SessionId(3));
+
+    // Switch back to Grid2x2
+    ws.set_layout(LayoutProfile::Grid2x2);
+
+    // All sessions should be back in original order
+    let cells = ws.cell_info();
+    assert_eq!(cells.len(), 4);
+    assert_eq!(cells[0].session_id, SessionId(1));
+    assert_eq!(cells[1].session_id, SessionId(2));
+    assert_eq!(cells[2].session_id, SessionId(3));
+    assert_eq!(cells[3].session_id, SessionId(4));
+
+    // Session 3 should still be focused
+    assert_eq!(ws.focused_session_id(), Some(SessionId(3)));
+    assert!(!cells[0].is_focused);
+    assert!(!cells[1].is_focused);
+    assert!(cells[2].is_focused);
+    assert!(!cells[3].is_focused);
 }

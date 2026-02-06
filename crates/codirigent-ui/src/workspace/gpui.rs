@@ -175,8 +175,10 @@ pub struct WorkspaceView {
     clipboard_service: DefaultClipboardService,
     /// Clipboard preview tooltip component.
     pub(super) clipboard_preview: ClipboardPreview,
-    /// Suppresses re-showing clipboard preview after paste until clipboard content changes.
+    /// Suppresses re-showing clipboard preview until clipboard content changes.
     clipboard_preview_dismissed: bool,
+    /// When the clipboard preview was shown (for auto-dismiss after timeout).
+    clipboard_preview_shown_at: Option<std::time::Instant>,
     /// Whether the user is actively dragging a text selection in a terminal.
     pub(super) is_selecting: bool,
     /// Session ID that is currently being selected in (for mouse move events).
@@ -321,6 +323,7 @@ impl WorkspaceView {
             ),
             clipboard_preview: ClipboardPreview::new(theme_for_clipboard),
             clipboard_preview_dismissed: false,
+            clipboard_preview_shown_at: None,
             is_selecting: false,
             selecting_session_id: None,
         };
@@ -547,8 +550,9 @@ impl WorkspaceView {
         // Only check every ~250ms (roughly 60 idle polls at 4ms) to avoid overhead
         if self.idle_poll_count % 60 == 0 {
             let has_image = self.smart_clipboard.has_image();
+            tracing::debug!(has_image, visible = self.clipboard_preview.is_visible(), dismissed = self.clipboard_preview_dismissed, "clipboard preview check");
             if has_image && !self.clipboard_preview.is_visible() && !self.clipboard_preview_dismissed {
-                // Image detected in clipboard - try to create a preview
+                // Image detected in clipboard - show a brief preview
                 if let Ok(content) = self.smart_clipboard.read_content() {
                     if let ClipboardContent::Image(ref image_data) = content {
                         let path = self
@@ -559,16 +563,30 @@ impl WorkspaceView {
                         let preview =
                             ClipboardPreview::create_preview(image_data, path, file_size);
                         self.clipboard_preview.show(preview);
+                        self.clipboard_preview_shown_at = Some(std::time::Instant::now());
                         any_dirty = true;
                     }
                 }
             } else if !has_image {
-                // Image no longer in clipboard - hide preview and reset dismissed flag
+                // Image no longer in clipboard - reset state for next image
                 if self.clipboard_preview.is_visible() {
                     self.clipboard_preview.hide();
                     any_dirty = true;
                 }
                 self.clipboard_preview_dismissed = false;
+                self.clipboard_preview_shown_at = None;
+            }
+
+            // Auto-dismiss preview after 4 seconds
+            if self.clipboard_preview.is_visible() {
+                if let Some(shown_at) = self.clipboard_preview_shown_at {
+                    if shown_at.elapsed() > std::time::Duration::from_secs(4) {
+                        self.clipboard_preview.hide();
+                        self.clipboard_preview_dismissed = true;
+                        self.clipboard_preview_shown_at = None;
+                        any_dirty = true;
+                    }
+                }
             }
         }
 
