@@ -81,6 +81,7 @@ pub mod clipboard_preview;
 #[cfg(feature = "gpui-full")]
 pub mod components;
 pub mod empty_session;
+pub mod icon_rail;
 pub mod integration;
 pub mod ui_composition;
 pub mod keybindings;
