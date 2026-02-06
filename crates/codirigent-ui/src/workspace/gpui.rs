@@ -175,6 +175,8 @@ pub struct WorkspaceView {
     clipboard_service: DefaultClipboardService,
     /// Clipboard preview tooltip component.
     pub(super) clipboard_preview: ClipboardPreview,
+    /// Suppresses re-showing clipboard preview after paste until clipboard content changes.
+    clipboard_preview_dismissed: bool,
     /// Whether the user is actively dragging a text selection in a terminal.
     pub(super) is_selecting: bool,
     /// Session ID that is currently being selected in (for mouse move events).
@@ -318,6 +320,7 @@ impl WorkspaceView {
                     .join(".codirigent"),
             ),
             clipboard_preview: ClipboardPreview::new(theme_for_clipboard),
+            clipboard_preview_dismissed: false,
             is_selecting: false,
             selecting_session_id: None,
         };
@@ -544,7 +547,7 @@ impl WorkspaceView {
         // Only check every ~250ms (roughly 60 idle polls at 4ms) to avoid overhead
         if self.idle_poll_count % 60 == 0 {
             let has_image = self.smart_clipboard.has_image();
-            if has_image && !self.clipboard_preview.is_visible() {
+            if has_image && !self.clipboard_preview.is_visible() && !self.clipboard_preview_dismissed {
                 // Image detected in clipboard - try to create a preview
                 if let Ok(content) = self.smart_clipboard.read_content() {
                     if let ClipboardContent::Image(ref image_data) = content {
@@ -559,10 +562,13 @@ impl WorkspaceView {
                         any_dirty = true;
                     }
                 }
-            } else if !has_image && self.clipboard_preview.is_visible() {
-                // Image no longer in clipboard - hide preview
-                self.clipboard_preview.hide();
-                any_dirty = true;
+            } else if !has_image {
+                // Image no longer in clipboard - hide preview and reset dismissed flag
+                if self.clipboard_preview.is_visible() {
+                    self.clipboard_preview.hide();
+                    any_dirty = true;
+                }
+                self.clipboard_preview_dismissed = false;
             }
         }
 
@@ -1625,8 +1631,9 @@ impl WorkspaceView {
                             warn!("Failed to paste image path to session {}: {}", session_id, e);
                         }
 
-                        // Hide clipboard preview after successful paste
+                        // Hide clipboard preview and suppress re-showing until clipboard changes
                         self.clipboard_preview.hide();
+                        self.clipboard_preview_dismissed = true;
                     }
                     Err(e) => {
                         warn!("Failed to format image for CLI: {:?}", e);
