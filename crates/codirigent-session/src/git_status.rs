@@ -4,7 +4,7 @@
 //! and HEAD SHA for session working directories. Results are cached
 //! with a configurable TTL to avoid excessive git operations.
 
-use codirigent_core::GitRepoInfo;
+use codirigent_core::{GitChangeKind, GitChangedFile, GitRepoInfo};
 use git2::{Repository, StatusOptions};
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
@@ -58,14 +58,16 @@ impl GitStatusService {
         let repo_root = repo.workdir()?.to_path_buf();
         let branch = Self::get_branch_name(&repo);
         let head_sha = Self::get_head_sha(&repo);
-        let (dirty_count, has_staged) = Self::count_dirty_and_staged(&repo);
+        let file_status = Self::collect_file_statuses(&repo);
 
         Some(GitRepoInfo {
             repo_root,
             branch,
-            dirty_count,
-            has_staged,
+            dirty_count: file_status.dirty_count,
+            has_staged: file_status.has_staged,
             head_sha,
+            unstaged_files: file_status.unstaged,
+            staged_files: file_status.staged,
         })
     }
 
@@ -126,8 +128,8 @@ impl GitStatusService {
         Some(oid.to_string()[..8].to_string())
     }
 
-    /// Count dirty (modified + untracked) and staged files.
-    fn count_dirty_and_staged(repo: &Repository) -> (usize, bool) {
+    /// Collect file-level status information from the repository.
+    fn collect_file_statuses(repo: &Repository) -> FileStatusResult {
         let mut opts = StatusOptions::new();
         opts.include_untracked(true)
             .recurse_untracked_dirs(false);
@@ -136,41 +138,61 @@ impl GitStatusService {
             Ok(s) => s,
             Err(e) => {
                 warn!(%e, "Failed to get git statuses");
-                return (0, false);
+                return FileStatusResult::default();
             }
         };
 
-        let mut dirty_count = 0usize;
-        let mut has_staged = false;
+        let mut result = FileStatusResult::default();
 
         for entry in statuses.iter() {
             let status = entry.status();
+            let path = entry
+                .path()
+                .unwrap_or("<invalid utf-8>")
+                .to_string();
 
-            // Dirty: working tree modifications + untracked
-            if status.intersects(
-                git2::Status::WT_MODIFIED
-                    | git2::Status::WT_NEW
-                    | git2::Status::WT_DELETED
-                    | git2::Status::WT_RENAMED
-                    | git2::Status::WT_TYPECHANGE,
-            ) {
-                dirty_count += 1;
+            // Unstaged (working tree) changes
+            if status.intersects(git2::Status::WT_MODIFIED) {
+                result.unstaged.push(GitChangedFile { path: path.clone(), change: GitChangeKind::Modified });
+                result.dirty_count += 1;
+            } else if status.intersects(git2::Status::WT_NEW) {
+                result.unstaged.push(GitChangedFile { path: path.clone(), change: GitChangeKind::Added });
+                result.dirty_count += 1;
+            } else if status.intersects(git2::Status::WT_DELETED) {
+                result.unstaged.push(GitChangedFile { path: path.clone(), change: GitChangeKind::Deleted });
+                result.dirty_count += 1;
+            } else if status.intersects(git2::Status::WT_RENAMED) {
+                result.unstaged.push(GitChangedFile { path: path.clone(), change: GitChangeKind::Renamed });
+                result.dirty_count += 1;
             }
 
-            // Staged: index modifications
-            if status.intersects(
-                git2::Status::INDEX_NEW
-                    | git2::Status::INDEX_MODIFIED
-                    | git2::Status::INDEX_DELETED
-                    | git2::Status::INDEX_RENAMED
-                    | git2::Status::INDEX_TYPECHANGE,
-            ) {
-                has_staged = true;
+            // Staged (index) changes
+            if status.intersects(git2::Status::INDEX_MODIFIED) {
+                result.staged.push(GitChangedFile { path: path.clone(), change: GitChangeKind::Modified });
+                result.has_staged = true;
+            } else if status.intersects(git2::Status::INDEX_NEW) {
+                result.staged.push(GitChangedFile { path: path.clone(), change: GitChangeKind::Added });
+                result.has_staged = true;
+            } else if status.intersects(git2::Status::INDEX_DELETED) {
+                result.staged.push(GitChangedFile { path: path.clone(), change: GitChangeKind::Deleted });
+                result.has_staged = true;
+            } else if status.intersects(git2::Status::INDEX_RENAMED) {
+                result.staged.push(GitChangedFile { path: path.clone(), change: GitChangeKind::Renamed });
+                result.has_staged = true;
             }
         }
 
-        (dirty_count, has_staged)
+        result
     }
+}
+
+/// Internal result from collecting file statuses.
+#[derive(Default)]
+struct FileStatusResult {
+    dirty_count: usize,
+    has_staged: bool,
+    unstaged: Vec<GitChangedFile>,
+    staged: Vec<GitChangedFile>,
 }
 
 impl Default for GitStatusService {

@@ -1252,6 +1252,8 @@ mod tests {
                     dirty_count: 0,
                     has_staged: false,
                     head_sha: Some("abc12345".to_string()),
+                    unstaged_files: vec![],
+                    staged_files: vec![],
                 }),
             },
             CodirigentEvent::GitStatusUpdated {
@@ -1644,6 +1646,8 @@ mod tests {
             dirty_count: 5,
             has_staged: true,
             head_sha: Some("abc12345".to_string()),
+            unstaged_files: vec![],
+            staged_files: vec![],
         };
         let event = CodirigentEvent::GitStatusUpdated {
             session_id: SessionId(1),

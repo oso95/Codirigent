@@ -263,6 +263,8 @@ impl Default for LayoutMode {
 ///     dirty_count: 3,
 ///     has_staged: true,
 ///     head_sha: Some("abc12345".to_string()),
+///     unstaged_files: vec![],
+///     staged_files: vec![],
 /// };
 /// assert_eq!(info.branch, "main");
 /// assert_eq!(info.dirty_count, 3);
@@ -279,6 +281,32 @@ pub struct GitRepoInfo {
     pub has_staged: bool,
     /// Short HEAD SHA (8 characters), if available.
     pub head_sha: Option<String>,
+    /// Files with unstaged changes (working tree).
+    pub unstaged_files: Vec<GitChangedFile>,
+    /// Files with staged changes (index).
+    pub staged_files: Vec<GitChangedFile>,
+}
+
+/// A file with changes in the git repository.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub struct GitChangedFile {
+    /// Relative path from repo root.
+    pub path: String,
+    /// Type of change.
+    pub change: GitChangeKind,
+}
+
+/// Kind of change for a git file.
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
+pub enum GitChangeKind {
+    /// File content modified.
+    Modified,
+    /// New file (untracked or added).
+    Added,
+    /// File deleted.
+    Deleted,
+    /// File renamed.
+    Renamed,
 }
 
 /// Session metadata and state.
@@ -1561,6 +1589,8 @@ mod tests {
             dirty_count: 3,
             has_staged: true,
             head_sha: Some("abc12345".to_string()),
+            unstaged_files: vec![],
+            staged_files: vec![],
         };
         assert_eq!(info.branch, "main");
         assert_eq!(info.dirty_count, 3);
@@ -1576,6 +1606,8 @@ mod tests {
             dirty_count: 0,
             has_staged: false,
             head_sha: None,
+            unstaged_files: vec![],
+            staged_files: vec![],
         };
         let json = serde_json::to_string(&info).unwrap();
         let parsed: GitRepoInfo = serde_json::from_str(&json).unwrap();
@@ -1590,6 +1622,8 @@ mod tests {
             dirty_count: 0,
             has_staged: false,
             head_sha: None,
+            unstaged_files: vec![],
+            staged_files: vec![],
         };
         let info2 = info1.clone();
         assert_eq!(info1, info2);
@@ -1600,6 +1634,8 @@ mod tests {
             dirty_count: 0,
             has_staged: false,
             head_sha: None,
+            unstaged_files: vec![],
+            staged_files: vec![],
         };
         assert_ne!(info1, info3);
     }
@@ -1619,6 +1655,8 @@ mod tests {
             dirty_count: 2,
             has_staged: true,
             head_sha: Some("deadbeef".to_string()),
+            unstaged_files: vec![],
+            staged_files: vec![],
         });
 
         let json = serde_json::to_string(&session).unwrap();

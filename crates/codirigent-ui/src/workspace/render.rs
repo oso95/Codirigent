@@ -1222,8 +1222,65 @@ impl WorkspaceView {
                     .overflow_hidden()
                     .text_ellipsis()
                     .child(hints.name.clone()),
-            )
-            .child(div().flex_1());
+            );
+
+        // Git branch badge (after session name)
+        if let Some(branch) = &hints.git_branch {
+            let git_muted = gpui::Hsla {
+                h: 0.0,
+                s: 0.0,
+                l: 0.6,
+                a: 0.8,
+            };
+            let branch_label = if branch.chars().count() > 16 {
+                let truncated: String = branch.chars().take(13).collect();
+                format!("{}...", truncated)
+            } else {
+                branch.clone()
+            };
+            let mut git_badge = div()
+                .px(px(4.0))
+                .py_px()
+                .rounded_sm()
+                .bg(gpui::Hsla {
+                    h: 0.0,
+                    s: 0.0,
+                    l: 1.0,
+                    a: 0.06,
+                })
+                .flex()
+                .flex_shrink_0()
+                .items_center()
+                .gap_1()
+                .child(
+                    div()
+                        .text_xs()
+                        .text_color(git_muted)
+                        .font_family(icons::LUCIDE_FONT_FAMILY)
+                        .child(icons::git_branch()),
+                )
+                .child(div().text_xs().text_color(git_muted).child(branch_label));
+
+            if let Some(count) = hints.git_dirty_count {
+                if count > 0 {
+                    git_badge = git_badge.child(
+                        div()
+                            .text_xs()
+                            .text_color(gpui::Hsla {
+                                h: 0.1,
+                                s: 0.8,
+                                l: 0.6,
+                                a: 1.0,
+                            })
+                            .child(format!("+{}", count)),
+                    );
+                }
+            }
+
+            header = header.child(git_badge);
+        }
+
+        header = header.child(div().flex_1());
 
         // Task badge (if any)
         if let Some(task) = &hints.task {
@@ -3078,6 +3135,9 @@ impl WorkspaceView {
             Some(crate::icon_rail::DrawerPanel::Sessions) => {
                 self.render_drawer_sessions_content(cx).into_any_element()
             }
+            Some(crate::icon_rail::DrawerPanel::Worktrees) => {
+                self.render_drawer_worktrees_content(cx).into_any_element()
+            }
             _ => {
                 let session_label = match self.selected_session_id {
                     Some(id) => format!("Session {}", id.0),
@@ -3236,6 +3296,141 @@ impl WorkspaceView {
                             )),
                     ),
             )
+    }
+
+    /// Render the worktrees/git panel content for the drawer.
+    fn render_drawer_worktrees_content(&mut self, _cx: &mut Context<Self>) -> impl IntoElement {
+        let theme = self.workspace().theme().clone();
+        let muted: gpui::Hsla = theme.muted.into();
+        let fg: gpui::Hsla = theme.foreground.into();
+        let border_color: gpui::Hsla = theme.border.into();
+        let green = gpui::Hsla { h: 0.35, s: 0.6, l: 0.5, a: 1.0 };
+        let orange = gpui::Hsla { h: 0.1, s: 0.8, l: 0.6, a: 1.0 };
+        let red = gpui::Hsla { h: 0.0, s: 0.7, l: 0.55, a: 1.0 };
+        let blue = gpui::Hsla { h: 0.58, s: 0.5, l: 0.6, a: 1.0 };
+
+        // Show focused session git info, or first session if none focused
+        let focused_id = self.workspace().focused_session_id();
+        let sessions: Vec<Session> = self.workspace().sessions().to_vec();
+        let session = focused_id
+            .and_then(|id| sessions.iter().find(|s| s.id == id))
+            .or_else(|| sessions.first());
+
+        let mut content = div()
+            .flex_1()
+            .overflow_hidden()
+            .flex()
+            .flex_col()
+            .p_2()
+            .gap_2();
+
+        let session = match session {
+            Some(s) => s,
+            None => {
+                return content.child(
+                    div().text_xs().text_color(muted).child("No sessions"),
+                );
+            }
+        };
+
+        let gi = match session.git_info.as_ref() {
+            Some(gi) => gi,
+            None => {
+                return content.child(
+                    div().text_xs().text_color(muted.opacity(0.5)).child("Not a git repository"),
+                );
+            }
+        };
+
+        // Branch + HEAD
+        let branch_color = gpui::Hsla { h: 0.0, s: 0.0, l: 0.75, a: 1.0 };
+        content = content.child(
+            div()
+                .flex()
+                .items_center()
+                .gap_1()
+                .child(
+                    div().text_xs().text_color(branch_color)
+                        .font_family(icons::LUCIDE_FONT_FAMILY)
+                        .child(icons::git_branch()),
+                )
+                .child(div().text_xs().font_weight(FontWeight::MEDIUM).text_color(fg).child(gi.branch.clone()))
+                .when_some(gi.head_sha.as_ref(), |el, sha| {
+                    el.child(div().text_xs().text_color(muted.opacity(0.5)).child(sha.clone()))
+                }),
+        );
+
+        // Staged changes section
+        if !gi.staged_files.is_empty() {
+            content = content.child(
+                div()
+                    .mt_1()
+                    .text_xs()
+                    .font_weight(FontWeight::BOLD)
+                    .text_color(green)
+                    .child(format!("Staged ({})", gi.staged_files.len())),
+            );
+            for file in &gi.staged_files {
+                let (label, color) = Self::change_kind_display(&file.change, green, red, blue);
+                content = content.child(
+                    div()
+                        .pl_2()
+                        .flex()
+                        .items_center()
+                        .gap_1()
+                        .child(div().text_xs().font_weight(FontWeight::BOLD).text_color(color).child(label))
+                        .child(div().text_xs().text_color(fg.opacity(0.8)).overflow_hidden().text_ellipsis().child(file.path.clone())),
+                );
+            }
+        }
+
+        // Unstaged changes section
+        if !gi.unstaged_files.is_empty() {
+            content = content.child(
+                div()
+                    .mt_1()
+                    .text_xs()
+                    .font_weight(FontWeight::BOLD)
+                    .text_color(orange)
+                    .child(format!("Changes ({})", gi.unstaged_files.len())),
+            );
+            for file in &gi.unstaged_files {
+                let (label, color) = Self::change_kind_display(&file.change, green, red, blue);
+                content = content.child(
+                    div()
+                        .pl_2()
+                        .flex()
+                        .items_center()
+                        .gap_1()
+                        .child(div().text_xs().font_weight(FontWeight::BOLD).text_color(color).child(label))
+                        .child(div().text_xs().text_color(fg.opacity(0.8)).overflow_hidden().text_ellipsis().child(file.path.clone())),
+                );
+            }
+        }
+
+        // Clean state
+        if gi.staged_files.is_empty() && gi.unstaged_files.is_empty() {
+            content = content.child(
+                div().mt_1().text_xs().text_color(green).child("Working tree clean"),
+            );
+        }
+
+        content
+    }
+
+    /// Map a git change kind to a display label and color.
+    fn change_kind_display(
+        kind: &codirigent_core::GitChangeKind,
+        green: gpui::Hsla,
+        red: gpui::Hsla,
+        blue: gpui::Hsla,
+    ) -> (&'static str, gpui::Hsla) {
+        match kind {
+            codirigent_core::GitChangeKind::Modified => ("M", blue),
+            codirigent_core::GitChangeKind::Added => ("A", green),
+            codirigent_core::GitChangeKind::Deleted => ("D", red),
+            codirigent_core::GitChangeKind::Renamed => ("R", blue),
+        }
     }
 
     /// Render a single session row in the drawer session list.
