@@ -112,6 +112,21 @@ impl FileTreeIcon {
         }
     }
 
+    /// Get the Lucide icon string for GPUI rendering.
+    pub fn lucide_icon(&self) -> String {
+        crate::icons::icon_str(match self {
+            Self::Folder => lucide_icons::Icon::Folder,
+            Self::FolderOpen => lucide_icons::Icon::FolderOpen,
+            Self::Rust | Self::Python | Self::TypeScript | Self::JavaScript | Self::Shell => {
+                lucide_icons::Icon::FileCode
+            }
+            Self::Markdown => lucide_icons::Icon::FileText,
+            Self::Json | Self::Toml | Self::Yaml => lucide_icons::Icon::FileCog,
+            Self::Git => lucide_icons::Icon::GitBranch,
+            Self::File => lucide_icons::Icon::File,
+        })
+    }
+
     /// Get icon from file extension.
     pub fn from_extension(ext: &str) -> Self {
         match ext {
@@ -494,6 +509,29 @@ mod tests {
         assert!(
             matches!(&events[0], FileTreeEvent::PathDraggedToTerminal { path: p, session_id } if p == &path && *session_id == 42)
         );
+    }
+
+    #[test]
+    fn test_file_tree_icon_lucide_icon() {
+        let variants = [
+            FileTreeIcon::Folder,
+            FileTreeIcon::FolderOpen,
+            FileTreeIcon::File,
+            FileTreeIcon::Rust,
+            FileTreeIcon::Markdown,
+            FileTreeIcon::Json,
+            FileTreeIcon::Toml,
+            FileTreeIcon::Yaml,
+            FileTreeIcon::TypeScript,
+            FileTreeIcon::JavaScript,
+            FileTreeIcon::Python,
+            FileTreeIcon::Shell,
+            FileTreeIcon::Git,
+        ];
+        for variant in &variants {
+            let icon = variant.lucide_icon();
+            assert!(!icon.is_empty(), "lucide_icon() empty for {:?}", variant);
+        }
     }
 
     #[test]

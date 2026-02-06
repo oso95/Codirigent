@@ -128,6 +128,16 @@ pub fn radio() -> String { icon_str(Icon::Radio) }
 pub fn circle_plus() -> String { icon_str(Icon::CirclePlus) }
 /// PlusCircle icon - create task.
 pub fn clipboard_plus() -> String { icon_str(Icon::ClipboardPlus) }
+/// Folder icon - closed directory.
+pub fn folder() -> String { icon_str(Icon::Folder) }
+/// FolderOpen icon - expanded directory.
+pub fn folder_open() -> String { icon_str(Icon::FolderOpen) }
+/// File icon - generic file.
+pub fn file() -> String { icon_str(Icon::File) }
+/// Eye icon - visible/show.
+pub fn eye() -> String { icon_str(Icon::Eye) }
+/// EyeOff icon - hidden/hide.
+pub fn eye_off() -> String { icon_str(Icon::EyeOff) }
 
 #[cfg(test)]
 mod tests {
@@ -187,6 +197,11 @@ mod tests {
         assert!(!radio().is_empty());
         assert!(!circle_plus().is_empty());
         assert!(!clipboard_plus().is_empty());
+        assert!(!folder().is_empty());
+        assert!(!folder_open().is_empty());
+        assert!(!file().is_empty());
+        assert!(!eye().is_empty());
+        assert!(!eye_off().is_empty());
     }
 
     #[test]

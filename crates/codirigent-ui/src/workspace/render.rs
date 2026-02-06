@@ -3138,7 +3138,10 @@ impl WorkspaceView {
             Some(crate::icon_rail::DrawerPanel::Worktrees) => {
                 self.render_drawer_worktrees_content(cx).into_any_element()
             }
-            _ => {
+            Some(crate::icon_rail::DrawerPanel::Files) => {
+                self.render_drawer_files_content(cx).into_any_element()
+            }
+            None => {
                 let session_label = match self.selected_session_id {
                     Some(id) => format!("Session {}", id.0),
                     None => "No session selected".to_string(),
@@ -3431,6 +3434,277 @@ impl WorkspaceView {
             codirigent_core::GitChangeKind::Deleted => ("D", red),
             codirigent_core::GitChangeKind::Renamed => ("R", blue),
         }
+    }
+
+    /// Render the file tree content for the drawer panel.
+    fn render_drawer_files_content(&mut self, cx: &mut Context<Self>) -> impl IntoElement {
+        let theme = self.workspace().theme().clone();
+        let muted: gpui::Hsla = theme.muted.into();
+        let fg: gpui::Hsla = theme.foreground.into();
+        let border_color: gpui::Hsla = theme.border.into();
+        let header_bg: gpui::Hsla = theme.header_background.into();
+        let active_bg: gpui::Hsla = theme.active.into();
+
+        // Project root name for sub-header
+        let root_name = self
+            .project_root
+            .as_ref()
+            .and_then(|p| p.file_name())
+            .and_then(|n| n.to_str())
+            .unwrap_or("Project")
+            .to_string();
+
+        let show_hidden = self.file_tree.show_hidden();
+        let item_count = self.file_tree.visible_count();
+
+        // Collect items into owned vec for the closure
+        let items: Vec<crate::sidebar::file_tree::FileTreeRenderItem> =
+            self.file_tree.visible_items().to_vec();
+
+        // Build scrollable tree rows
+        let mut tree_content = div()
+            .id("file-tree-scroll")
+            .flex_1()
+            .overflow_y_scroll()
+            .flex()
+            .flex_col();
+
+        for (idx, item) in items.iter().enumerate() {
+            tree_content =
+                tree_content.child(self.render_file_tree_row(idx, item, &theme, cx));
+        }
+
+        // Eye icon: show/hide hidden files
+        let eye_icon = if show_hidden {
+            icons::eye()
+        } else {
+            icons::eye_off()
+        };
+
+        div()
+            .flex_1()
+            .flex()
+            .flex_col()
+            .overflow_hidden()
+            // Sub-header toolbar
+            .child(
+                div()
+                    .h(px(32.0))
+                    .w_full()
+                    .bg(header_bg)
+                    .border_b_1()
+                    .border_color(border_color)
+                    .flex()
+                    .items_center()
+                    .justify_between()
+                    .px_3()
+                    .child(
+                        div()
+                            .text_xs()
+                            .font_weight(FontWeight::MEDIUM)
+                            .text_color(fg)
+                            .overflow_hidden()
+                            .text_ellipsis()
+                            .child(root_name),
+                    )
+                    .child(
+                        div().flex().items_center().gap_1()
+                            // Eye toggle
+                            .child(
+                                div()
+                                    .id("file-tree-toggle-hidden")
+                                    .cursor_pointer()
+                                    .px(px(4.0))
+                                    .py(px(2.0))
+                                    .rounded_sm()
+                                    .hover(|style| style.bg(active_bg))
+                                    .on_mouse_down(
+                                        MouseButton::Left,
+                                        cx.listener(|this, _, _, cx| {
+                                            let new_val = !this.file_tree.show_hidden();
+                                            this.file_tree.set_show_hidden(new_val);
+                                            if let Some(tree) = this.file_tree_model.as_mut() {
+                                                tree.set_show_hidden(new_val);
+                                                if let Err(e) = tree.refresh() {
+                                                    tracing::warn!(
+                                                        "Failed to refresh file tree: {}",
+                                                        e
+                                                    );
+                                                }
+                                            }
+                                            this.refresh_file_tree_panel();
+                                            cx.notify();
+                                        }),
+                                    )
+                                    .child(
+                                        div()
+                                            .text_xs()
+                                            .text_color(muted)
+                                            .font_family(icons::LUCIDE_FONT_FAMILY)
+                                            .child(eye_icon),
+                                    ),
+                            )
+                            // Refresh button
+                            .child(
+                                div()
+                                    .id("file-tree-refresh")
+                                    .cursor_pointer()
+                                    .px(px(4.0))
+                                    .py(px(2.0))
+                                    .rounded_sm()
+                                    .hover(|style| style.bg(active_bg))
+                                    .on_mouse_down(
+                                        MouseButton::Left,
+                                        cx.listener(|this, _, _, cx| {
+                                            if let Some(tree) = this.file_tree_model.as_mut() {
+                                                if let Err(e) = tree.refresh() {
+                                                    tracing::warn!(
+                                                        "Failed to refresh file tree: {}",
+                                                        e
+                                                    );
+                                                }
+                                            }
+                                            this.refresh_file_tree_panel();
+                                            cx.notify();
+                                        }),
+                                    )
+                                    .child(
+                                        div()
+                                            .text_xs()
+                                            .text_color(muted)
+                                            .font_family(icons::LUCIDE_FONT_FAMILY)
+                                            .child(icons::refresh()),
+                                    ),
+                            ),
+                    ),
+            )
+            // Scrollable tree list
+            .child(tree_content)
+            // Footer
+            .child(
+                div()
+                    .p_3()
+                    .border_t_1()
+                    .border_color(border_color)
+                    .bg(header_bg)
+                    .child(
+                        div().text_xs().text_color(muted).child(format!(
+                            "{} item{}",
+                            item_count,
+                            if item_count == 1 { "" } else { "s" }
+                        )),
+                    ),
+            )
+    }
+
+    /// Render a single file tree row.
+    fn render_file_tree_row(
+        &mut self,
+        idx: usize,
+        item: &crate::sidebar::file_tree::FileTreeRenderItem,
+        theme: &CodirigentTheme,
+        cx: &mut Context<Self>,
+    ) -> impl IntoElement {
+        let muted: gpui::Hsla = theme.muted.into();
+        let fg: gpui::Hsla = theme.foreground.into();
+        let active_bg: gpui::Hsla = theme.active.into();
+
+        let depth = item.depth as f32;
+        let is_dir = item.is_dir;
+        let expanded = item.expanded;
+        let is_selected = item.is_selected;
+        let path = item.path.clone();
+        let icon_color: gpui::Hsla = item.icon.color().into();
+        let icon_str = item.icon.lucide_icon();
+        let name = item.name.clone();
+
+        let name_color = if is_selected { fg } else { muted };
+        let row_bg = if is_selected {
+            active_bg
+        } else {
+            gpui::Hsla {
+                h: 0.0,
+                s: 0.0,
+                l: 0.0,
+                a: 0.0,
+            }
+        };
+
+        // Chevron for directories, spacer for files
+        let chevron = if is_dir {
+            let chevron_str = if expanded {
+                icons::chevron_down()
+            } else {
+                icons::chevron_right()
+            };
+            div()
+                .w(px(14.0))
+                .h(px(14.0))
+                .flex()
+                .items_center()
+                .justify_center()
+                .flex_shrink_0()
+                .child(
+                    div()
+                        .text_color(muted)
+                        .font_family(icons::LUCIDE_FONT_FAMILY)
+                        .text_size(px(10.0))
+                        .child(chevron_str),
+                )
+        } else {
+            div().w(px(14.0)).h(px(14.0)).flex_shrink_0()
+        };
+
+        let path_for_click = path.clone();
+        let path_for_dbl = path.clone();
+
+        div()
+            .id(SharedString::from(format!("file-tree-row-{}", idx)))
+            .h(px(crate::sidebar::file_tree::FileTreePanel::ITEM_HEIGHT))
+            .w_full()
+            .pl(px(depth * crate::sidebar::file_tree::FileTreePanel::INDENT_SIZE + 4.0))
+            .pr(px(8.0))
+            .flex()
+            .items_center()
+            .gap(px(4.0))
+            .bg(row_bg)
+            .cursor_pointer()
+            .hover(|style| style.bg(active_bg))
+            .on_click(cx.listener(move |this, event: &ClickEvent, _, cx| {
+                if event.up.click_count >= 2 && !is_dir {
+                    // Double-click on file -> activate
+                    let ev = crate::sidebar::file_tree::FileTreeEvent::FileActivated(
+                        path_for_dbl.clone(),
+                    );
+                    this.handle_file_tree_event(ev, cx);
+                } else if is_dir {
+                    // Click on directory -> toggle
+                    let ev = crate::sidebar::file_tree::FileTreeEvent::DirectoryToggled(
+                        path_for_click.clone(),
+                    );
+                    this.handle_file_tree_event(ev, cx);
+                } else {
+                    // Single click on file -> select
+                    let ev = crate::sidebar::file_tree::FileTreeEvent::FileSelected(
+                        path_for_click.clone(),
+                    );
+                    this.handle_file_tree_event(ev, cx);
+                }
+                cx.notify();
+            }))
+            // Chevron
+            .child(chevron)
+            // Icon
+            .child(self.centered_lucide_icon(icon_str, icon_color, 12.0))
+            // Name
+            .child(
+                div()
+                    .text_xs()
+                    .text_color(name_color)
+                    .overflow_hidden()
+                    .text_ellipsis()
+                    .child(name),
+            )
     }
 
     /// Render a single session row in the drawer session list.
