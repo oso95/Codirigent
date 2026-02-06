@@ -322,6 +322,11 @@ impl Workspace {
         self.theme = theme;
     }
 
+    /// Get a mutable reference to the theme for live settings updates.
+    pub fn theme_mut(&mut self) -> &mut CodirigentTheme {
+        &mut self.theme
+    }
+
     // --- Bounds ---
 
     /// Set the workspace bounds (called on window resize).

@@ -32,6 +32,9 @@ pub mod gpui;
 #[cfg(feature = "gpui-full")]
 mod render;
 
+#[cfg(feature = "gpui-full")]
+mod settings_panels;
+
 #[cfg(test)]
 mod tests;
 

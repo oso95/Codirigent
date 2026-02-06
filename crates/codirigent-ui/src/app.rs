@@ -48,6 +48,7 @@ mod actions_impl {
             ToggleSidebar,
             Paste,
             Copy,
+            OpenSettings,
             Quit,
         ]
     );
@@ -385,6 +386,7 @@ impl CodirigentApp {
                 KeyBinding::new("cmd-b", ToggleSidebar, None),
                 KeyBinding::new("cmd-v", Paste, None),
                 KeyBinding::new("cmd-c", Copy, None),
+                KeyBinding::new("cmd-,", OpenSettings, None),
                 KeyBinding::new("cmd-1", FocusSession1, None),
                 KeyBinding::new("cmd-2", FocusSession2, None),
                 KeyBinding::new("cmd-3", FocusSession3, None),

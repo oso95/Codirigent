@@ -1074,4 +1074,38 @@ mod tests {
         let output = integration.drain_output(SessionId(999)).unwrap();
         assert!(output.is_none());
     }
+
+    #[test]
+    fn test_handle_context_usage_updated_event() {
+        let (integration, _temp) = create_test_integration();
+        let event = CodirigentEvent::ContextUsageUpdated {
+            session_id: SessionId(1),
+            percentage: 0.65,
+            effective_percentage: 0.72,
+        };
+        // Should not panic
+        CodirigentIntegration::handle_event(
+            &event,
+            &integration.session_manager,
+            &integration.storage,
+            false,
+        );
+    }
+
+    #[test]
+    fn test_handle_context_threshold_reached_event() {
+        let (integration, _temp) = create_test_integration();
+        let event = CodirigentEvent::ContextThresholdReached {
+            session_id: SessionId(1),
+            threshold: 0.7,
+            state: codirigent_core::ContextThresholdState::Warning,
+        };
+        // Should not panic
+        CodirigentIntegration::handle_event(
+            &event,
+            &integration.session_manager,
+            &integration.storage,
+            false,
+        );
+    }
 }
