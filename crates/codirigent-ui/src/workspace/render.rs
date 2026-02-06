@@ -75,6 +75,24 @@ impl WorkspaceView {
             .with_created_at(created_at.unwrap_or_else(|| "now".to_string()))
     }
 
+    /// Render a Lucide icon inside a fixed square to keep visual alignment stable with text.
+    fn centered_lucide_icon(&self, icon: String, color: gpui::Hsla, size: f32) -> impl IntoElement {
+        div()
+            .w(px(size + 2.0))
+            .h(px(size + 2.0))
+            .flex()
+            .items_center()
+            .justify_center()
+            .flex_shrink_0()
+            .child(
+                div()
+                    .text_size(px(size))
+                    .text_color(color)
+                    .font_family(icons::LUCIDE_FONT_FAMILY)
+                    .child(icon),
+            )
+    }
+
 
     /// Render the grid of session panes.
     pub(super) fn render_grid(&mut self) -> impl IntoElement {
@@ -735,7 +753,7 @@ impl WorkspaceView {
                     this.process_top_bar_events();
                     cx.notify();
                 }))
-                .child(div().text_xs().text_color(broadcast_color).font_family(icons::LUCIDE_FONT_FAMILY).child(icons::zap()))
+                .child(self.centered_lucide_icon(icons::zap(), broadcast_color, 12.0))
                 .child(div().text_xs().text_color(broadcast_color).child("Broadcast")),
         );
 
@@ -1112,6 +1130,11 @@ impl WorkspaceView {
             .flex()
             .flex_col()
             .overflow_hidden()
+            .cursor_pointer()
+            .on_mouse_down(MouseButton::Left, cx.listener(move |this, _, _, cx| {
+                this.select_session(session_id);
+                cx.notify();
+            }))
             .child(header)
             .child(
                 div()
@@ -1371,7 +1394,7 @@ impl WorkspaceView {
                                         .flex()
                                         .items_center()
                                         .gap_2()
-                                        .child(div().text_base().text_color(fg).font_family(icons::LUCIDE_FONT_FAMILY).child(icons::layout_grid()))
+                                        .child(self.centered_lucide_icon(icons::layout_grid(), fg, 16.0))
                                         .child(div().text_base().font_weight(FontWeight::SEMIBOLD).text_color(fg).child("Custom Grid Layout")),
                                 ),
                         )
@@ -1503,7 +1526,7 @@ impl WorkspaceView {
                                             cx.notify();
                                         }))
                                         .child(div().flex().items_center().gap_1()
-                                            .child(div().text_xs().font_family(icons::LUCIDE_FONT_FAMILY).child(icons::x()))
+                                            .child(self.centered_lucide_icon(icons::x(), fg, 12.0))
                                             .child("Cancel")),
                                 )
                                 // Apply button
@@ -1529,7 +1552,7 @@ impl WorkspaceView {
                                             }
                                         }))
                                         .child(div().flex().items_center().gap_1()
-                                            .child(div().text_xs().font_family(icons::LUCIDE_FONT_FAMILY).child(icons::check()))
+                                            .child(self.centered_lucide_icon(icons::check(), gpui::Hsla::white(), 12.0))
                                             .child("Apply")),
                                 ),
                         ),
@@ -1652,7 +1675,7 @@ impl WorkspaceView {
                                         .flex()
                                         .items_center()
                                         .gap_2()
-                                        .child(div().text_base().text_color(fg).font_family(icons::LUCIDE_FONT_FAMILY).child(icons::git_branch()))
+                                        .child(self.centered_lucide_icon(icons::git_branch(), fg, 16.0))
                                         .child(div().text_base().font_weight(FontWeight::SEMIBOLD).text_color(fg).child("Create Git Worktree")),
                                 ),
                         )
@@ -1700,7 +1723,7 @@ impl WorkspaceView {
                                                             }
                                                         }))
                                                         .child(div().flex().items_center().gap_1()
-                                                            .child(div().text_xs().font_family(icons::LUCIDE_FONT_FAMILY).child(icons::git_branch()))
+                                                            .child(self.centered_lucide_icon(icons::git_branch(), if !use_existing { primary } else { fg }, 12.0))
                                                             .child("New Branch")),
                                                 )
                                                 // Existing branch button
@@ -1724,7 +1747,7 @@ impl WorkspaceView {
                                                             }
                                                         }))
                                                         .child(div().flex().items_center().gap_1()
-                                                            .child(div().text_xs().font_family(icons::LUCIDE_FONT_FAMILY).child(icons::git_fork()))
+                                                            .child(self.centered_lucide_icon(icons::git_fork(), if use_existing { primary } else { fg }, 12.0))
                                                             .child("Existing Branch")),
                                                 ),
                                         ),
@@ -2006,12 +2029,48 @@ impl WorkspaceView {
     pub(super) fn render_session_menu(&mut self, cx: &mut Context<Self>) -> Option<impl IntoElement> {
         let session_id = self.session_menu_open?;
 
-        let theme = self.workspace().theme();
+        let theme = self.workspace().theme().clone();
         let panel_bg: gpui::Hsla = theme.panel_background.into();
         let border_color: gpui::Hsla = theme.border.into();
         let fg: gpui::Hsla = theme.foreground.into();
+        let muted: gpui::Hsla = theme.muted.into();
         let hover_bg: gpui::Hsla = theme.active.into();
         let destructive = gpui::Hsla { h: 0.0, s: 0.7, l: 0.55, a: 1.0 };
+
+        // Check if this session has a group
+        let session_group = self
+            .workspace()
+            .session(session_id)
+            .and_then(|s| s.group.clone());
+        let has_group = session_group.is_some();
+
+        // Collect existing group names (deduplicated, sorted)
+        let existing_groups: Vec<String> = {
+            let mut groups: Vec<String> = self
+                .workspace()
+                .sessions()
+                .iter()
+                .filter_map(|s| s.group.clone())
+                .filter(|g| !g.is_empty())
+                .collect();
+            groups.sort();
+            groups.dedup();
+            groups
+        };
+
+        // Compute vertical position based on session's index in the list
+        let sessions = self.workspace().sessions().to_vec();
+        let mut row_index = 0usize;
+        for (i, s) in sessions.iter().enumerate() {
+            if s.id == session_id {
+                row_index = i;
+                break;
+            }
+        }
+        let top_offset = crate::title_bar::TitleBar::DEFAULT_HEIGHT
+            + crate::top_bar::TopBar::HEIGHT
+            + 40.0   // drawer header
+            + (row_index as f32) * 36.0;
 
         // Transparent click-away backdrop (no dark overlay)
         let backdrop = div()
@@ -2022,8 +2081,8 @@ impl WorkspaceView {
                 this.close_session_menu(cx);
             }));
 
-        // Compact dropdown menu
-        let dropdown = div()
+        // Build dropdown menu
+        let mut dropdown = div()
             .w(px(180.0))
             .bg(panel_bg)
             .border_1()
@@ -2033,53 +2092,91 @@ impl WorkspaceView {
             .shadow_lg()
             .flex()
             .flex_col()
-            .py_1()
-            .child(self.render_menu_item(
-                "Rename",
-                session_id,
-                SessionMenuAction::Rename,
-                theme,
-                hover_bg,
-                fg,
-                cx,
-            ))
-            .child(self.render_menu_item(
-                "Assign Group",
-                session_id,
-                SessionMenuAction::AssignGroup,
-                theme,
-                hover_bg,
-                fg,
-                cx,
-            ))
-            .child(self.render_menu_item(
+            .py_1();
+
+        // Rename
+        dropdown = dropdown.child(self.render_menu_item(
+            "Rename",
+            session_id,
+            SessionMenuAction::Rename,
+            &theme,
+            hover_bg,
+            fg,
+            cx,
+        ));
+
+        // Separator before groups section
+        dropdown = dropdown.child(
+            div().h(px(1.0)).mx_2().my_1().bg(border_color),
+        );
+
+        // Existing groups as direct-click options
+        if !existing_groups.is_empty() {
+            dropdown = dropdown.child(
+                div().px_3().pt_1().pb(px(2.0))
+                    .child(div().text_xs().text_color(muted.opacity(0.6)).child("GROUPS")),
+            );
+            for group_name in &existing_groups {
+                let is_current = session_group.as_deref() == Some(group_name.as_str());
+                let label = if is_current {
+                    format!("{} \u{2713}", group_name)
+                } else {
+                    group_name.clone()
+                };
+                dropdown = dropdown.child(self.render_menu_item(
+                    &label,
+                    session_id,
+                    SessionMenuAction::AssignToGroup(group_name.clone()),
+                    &theme,
+                    hover_bg,
+                    if is_current { muted } else { fg },
+                    cx,
+                ));
+            }
+        }
+
+        // New Group...
+        dropdown = dropdown.child(self.render_menu_item(
+            "New Group\u{2026}",
+            session_id,
+            SessionMenuAction::NewGroup,
+            &theme,
+            hover_bg,
+            fg,
+            cx,
+        ));
+
+        // Remove Group (only if session has a group)
+        if has_group {
+            dropdown = dropdown.child(self.render_menu_item(
                 "Remove Group",
                 session_id,
                 SessionMenuAction::RemoveGroup,
-                theme,
+                &theme,
                 hover_bg,
                 fg,
                 cx,
-            ))
-            .child(
-                div()
-                    .h(px(1.0))
-                    .mx_2()
-                    .my_1()
-                    .bg(border_color),
-            )
-            .child(self.render_menu_item(
-                "Close",
-                session_id,
-                SessionMenuAction::Close,
-                theme,
-                hover_bg,
-                destructive,
-                cx,
             ));
+        }
 
-        // Position the dropdown in the left panel area, near the drawer
-        let left_offset = crate::icon_rail::IconRail::WIDTH + self.drawer.width() - 180.0 - 8.0;
+        // Separator before destructive action
+        dropdown = dropdown.child(
+            div().h(px(1.0)).mx_2().my_1().bg(border_color),
+        );
+
+        // End Session (destructive, clearly labeled)
+        dropdown = dropdown.child(self.render_menu_item(
+            "End Session",
+            session_id,
+            SessionMenuAction::EndSession,
+            &theme,
+            hover_bg,
+            destructive,
+            cx,
+        ));
+
+        // Position dropdown to the right of the drawer, aligned with the row
+        let left_offset = crate::icon_rail::IconRail::WIDTH + self.drawer.width() - 8.0;
 
         Some(
             div()
@@ -2090,8 +2187,8 @@ impl WorkspaceView {
                 .child(
                     div()
                         .absolute()
-                        .left(px(left_offset.max(0.0)))
-                        .top(px(100.0))
+                        .left(px(left_offset))
+                        .top(px(top_offset))
                         .child(dropdown),
                 ),
         )
@@ -2180,7 +2277,7 @@ impl WorkspaceView {
                                         .flex()
                                         .items_center()
                                         .gap_2()
-                                        .child(div().text_base().text_color(fg).font_family(icons::LUCIDE_FONT_FAMILY).child(title_icon))
+                                        .child(self.centered_lucide_icon(title_icon, fg, 16.0))
                                         .child(div().text_base().font_weight(FontWeight::SEMIBOLD).text_color(fg).child(title)),
                                 ),
                         )
@@ -2244,7 +2341,7 @@ impl WorkspaceView {
                                             cx.notify();
                                         }))
                                         .child(div().flex().items_center().gap_1()
-                                            .child(div().text_xs().font_family(icons::LUCIDE_FONT_FAMILY).child(icons::x()))
+                                            .child(self.centered_lucide_icon(icons::x(), fg, 12.0))
                                             .child("Cancel")),
                                 )
                                 .child(
@@ -2262,7 +2359,7 @@ impl WorkspaceView {
                                             this.apply_session_action_modal(cx);
                                         }))
                                         .child(div().flex().items_center().gap_1()
-                                            .child(div().text_xs().font_family(icons::LUCIDE_FONT_FAMILY).child(icons::check()))
+                                            .child(self.centered_lucide_icon(icons::check(), gpui::Hsla::white(), 12.0))
                                             .child("Apply")),
                                 ),
                         ),
@@ -2365,7 +2462,7 @@ impl WorkspaceView {
                                         .flex()
                                         .items_center()
                                         .gap_2()
-                                        .child(div().text_base().text_color(fg).font_family(icons::LUCIDE_FONT_FAMILY).child(icons::clipboard_plus()))
+                                        .child(self.centered_lucide_icon(icons::clipboard_plus(), fg, 16.0))
                                         .child(div().text_base().font_weight(FontWeight::SEMIBOLD).text_color(fg).child("Create New Task")),
                                 ),
                         )
@@ -2479,7 +2576,7 @@ impl WorkspaceView {
                                             cx.notify();
                                         }))
                                         .child(div().flex().items_center().gap_1()
-                                            .child(div().text_xs().font_family(icons::LUCIDE_FONT_FAMILY).child(icons::x()))
+                                            .child(self.centered_lucide_icon(icons::x(), fg, 12.0))
                                             .child("Cancel")),
                                 )
                                 .child(
@@ -2497,7 +2594,7 @@ impl WorkspaceView {
                                             this.apply_task_creation_modal(cx);
                                         }))
                                         .child(div().flex().items_center().gap_1()
-                                            .child(div().text_xs().font_family(icons::LUCIDE_FONT_FAMILY).child(icons::plus()))
+                                            .child(self.centered_lucide_icon(icons::plus(), gpui::Hsla::white(), 12.0))
                                             .child("Create Task")),
                                 ),
                         ),
@@ -2517,14 +2614,19 @@ impl WorkspaceView {
         cx: &mut Context<Self>,
     ) -> impl IntoElement {
         let label = label.to_string();
-        let icon = match action {
+        let icon = match &action {
             SessionMenuAction::Rename => icons::pencil(),
-            SessionMenuAction::AssignGroup => icons::users(),
+            SessionMenuAction::AssignToGroup(_) => icons::users(),
+            SessionMenuAction::NewGroup => icons::plus(),
             SessionMenuAction::RemoveGroup => icons::user_minus(),
-            SessionMenuAction::Close => icons::x_circle(),
+            SessionMenuAction::EndSession => icons::x_circle(),
+        };
+        let id_suffix = match &action {
+            SessionMenuAction::AssignToGroup(g) => format!("assign-{}", g),
+            other => format!("{:?}", other),
         };
         div()
-            .id(SharedString::from(format!("menu-{:?}-{}", action, session_id.0)))
+            .id(SharedString::from(format!("menu-{}-{}", id_suffix, session_id.0)))
             .h(px(30.0))
             .px_3()
             .flex()
@@ -2533,15 +2635,9 @@ impl WorkspaceView {
             .cursor_pointer()
             .hover(move |style| style.bg(hover_bg.opacity(0.1)))
             .on_click(cx.listener(move |this, _: &ClickEvent, _window, cx| {
-                this.handle_session_menu_action(session_id, action, cx);
+                this.handle_session_menu_action(session_id, action.clone(), cx);
             }))
-            .child(
-                div()
-                    .text_xs()
-                    .text_color(fg)
-                    .font_family(icons::LUCIDE_FONT_FAMILY)
-                    .child(icon),
-            )
+            .child(self.centered_lucide_icon(icon, fg, 12.0))
             .child(
                 div()
                     .text_xs()
@@ -2828,7 +2924,7 @@ impl WorkspaceView {
                             }))
                             .child(
                                 div().flex().items_center().gap_1()
-                                    .child(div().text_xs().text_color(fg).font_family(icons::LUCIDE_FONT_FAMILY).child(icons::plus()))
+                                    .child(self.centered_lucide_icon(icons::plus(), fg, 12.0))
                                     .child(div().text_xs().font_weight(FontWeight::MEDIUM).text_color(fg).child("New Session")),
                             ),
                     ),
@@ -2990,8 +3086,7 @@ impl WorkspaceView {
             )
             // Chevron
             .child(
-                div().text_xs().text_color(muted).font_family(icons::LUCIDE_FONT_FAMILY)
-                    .child(chevron),
+                self.centered_lucide_icon(chevron, muted, 12.0),
             )
             // Group name + count
             .child(
@@ -3035,7 +3130,7 @@ impl WorkspaceView {
                             .items_center()
                             .gap_1()
                             .flex_shrink_0()
-                            .child(div().text_sm().text_color(accent).font_family(icons::LUCIDE_FONT_FAMILY).child(icons::radio()))
+                            .child(self.centered_lucide_icon(icons::radio(), accent, 14.0))
                             .child(div().text_xs().font_weight(FontWeight::BOLD).text_color(accent).child("BROADCAST TO ALL:")),
                     )
                     // Input display
@@ -3115,7 +3210,7 @@ impl WorkspaceView {
                     .px_4()
                     .child(
                         div().flex().items_center().gap_2()
-                            .child(div().text_xs().text_color(muted).font_family(icons::LUCIDE_FONT_FAMILY).child(icons::list_todo()))
+                            .child(self.centered_lucide_icon(icons::list_todo(), muted, 12.0))
                             .child(div().text_xs().font_weight(FontWeight::BOLD).text_color(muted).child("TASKS")),
                     )
                     .child(
@@ -3145,7 +3240,7 @@ impl WorkspaceView {
                             .child(
                                 div().flex().justify_between().items_center().mb_2()
                                     .child(div().flex().items_center().gap_1()
-                                        .child(div().text_xs().text_color(muted).font_family(icons::LUCIDE_FONT_FAMILY).child(icons::play()))
+                                        .child(self.centered_lucide_icon(icons::play(), muted, 12.0))
                                         .child(div().text_xs().font_weight(FontWeight::BOLD).text_color(muted).child("RUNNING")))
                                     .child(div().px(px(6.0)).rounded_full().bg(active_bg)
                                         .child(div().text_xs().text_color(muted).child("0"))),
@@ -3160,7 +3255,7 @@ impl WorkspaceView {
                             .child(
                                 div().flex().justify_between().items_center().mb_2()
                                     .child(div().flex().items_center().gap_1()
-                                        .child(div().text_xs().text_color(muted).font_family(icons::LUCIDE_FONT_FAMILY).child(icons::clock()))
+                                        .child(self.centered_lucide_icon(icons::clock(), muted, 12.0))
                                         .child(div().text_xs().font_weight(FontWeight::BOLD).text_color(muted).child("QUEUE")))
                                     .child(div().px(px(6.0)).rounded_full().bg(active_bg)
                                         .child(div().text_xs().text_color(muted).child("0"))),
@@ -3190,7 +3285,7 @@ impl WorkspaceView {
                             .cursor_pointer()
                             .child(
                                 div().flex().items_center().gap_1()
-                                    .child(div().text_xs().text_color(fg).font_family(icons::LUCIDE_FONT_FAMILY).child(icons::plus()))
+                                    .child(self.centered_lucide_icon(icons::plus(), fg, 12.0))
                                     .child(div().text_xs().font_weight(FontWeight::MEDIUM).text_color(fg).child("Add Task")),
                             ),
                     ),
