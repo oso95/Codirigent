@@ -931,9 +931,8 @@ impl WorkspaceView {
         let profile = self.workspace().layout_profile();
         let (rows, cols) = profile.dimensions();
 
-        // Get grid layout to calculate cell bounds (accounting for task board height)
+        // Get grid layout to calculate cell bounds (used for terminal sizing hints)
         let layout = self.grid_layout_with_task_board();
-        let cell_size = layout.cell_size();
 
         let mut grid = div()
             .flex_1()
@@ -943,7 +942,7 @@ impl WorkspaceView {
 
         for row in 0..rows {
             let mut row_div = div()
-                .h(px(cell_size.height))  // Explicit row height
+                .flex_1()  // Equal row heights via flex distribution
                 .flex()
                 .flex_row()
                 .gap(px(grid_gap));
@@ -952,7 +951,7 @@ impl WorkspaceView {
                 let index = (row * cols + col) as usize;
                 let position = codirigent_core::GridPosition { row, col };
 
-                // Calculate cell bounds from layout
+                // Calculate cell bounds from layout (used for terminal sizing hints)
                 let cell_bounds = layout.cell_bounds(row, col);
 
                 let cell_div = if let Some(info) = cells.get(index) {
@@ -989,11 +988,12 @@ impl WorkspaceView {
                     self.render_empty_cell_inline_with_colors(position, panel_bg, border_color, muted, cell_bounds, cx)
                 };
 
-                // Apply explicit dimensions to cell container
+                // Let flex distribute equal widths; use size_full so
+                // the child fills the flex-allocated area
                 row_div = row_div.child(
                     div()
-                        .w(px(cell_bounds.size.width))
-                        .h(px(cell_bounds.size.height))
+                        .flex_1()
+                        .size_full()
                         .child(cell_div)
                 );
             }
@@ -2002,7 +2002,7 @@ impl WorkspaceView {
         }
     }
 
-    /// Render session menu modal.
+    /// Render session context menu (dropdown near the trigger button).
     pub(super) fn render_session_menu(&mut self, cx: &mut Context<Self>) -> Option<impl IntoElement> {
         let session_id = self.session_menu_open?;
 
@@ -2011,100 +2011,90 @@ impl WorkspaceView {
         let border_color: gpui::Hsla = theme.border.into();
         let fg: gpui::Hsla = theme.foreground.into();
         let hover_bg: gpui::Hsla = theme.active.into();
+        let destructive = gpui::Hsla { h: 0.0, s: 0.7, l: 0.55, a: 1.0 };
 
-        let overlay = div()
-            .id("session-menu-overlay")
+        // Transparent click-away backdrop (no dark overlay)
+        let backdrop = div()
+            .id("session-menu-backdrop")
             .absolute()
             .inset_0()
+            .on_click(cx.listener(|this, _: &ClickEvent, _window, cx| {
+                this.close_session_menu(cx);
+            }));
+
+        // Compact dropdown menu
+        let dropdown = div()
+            .w(px(180.0))
+            .bg(panel_bg)
+            .border_1()
+            .border_color(border_color)
+            .rounded_md()
+            .overflow_hidden()
+            .shadow_lg()
             .flex()
-            .items_center()
-            .justify_center()
-            .bg(gpui::Hsla::black().opacity(0.3))
+            .flex_col()
+            .py_1()
+            .child(self.render_menu_item(
+                "Rename",
+                session_id,
+                SessionMenuAction::Rename,
+                theme,
+                hover_bg,
+                fg,
+                cx,
+            ))
+            .child(self.render_menu_item(
+                "Assign Group",
+                session_id,
+                SessionMenuAction::AssignGroup,
+                theme,
+                hover_bg,
+                fg,
+                cx,
+            ))
+            .child(self.render_menu_item(
+                "Remove Group",
+                session_id,
+                SessionMenuAction::RemoveGroup,
+                theme,
+                hover_bg,
+                fg,
+                cx,
+            ))
             .child(
                 div()
-                    .w(px(280.0))
-                    .bg(panel_bg)
-                    .border_1()
-                    .border_color(border_color)
-                    .rounded_md()
-                    .overflow_hidden()
-                    .shadow_lg()
-                    .flex()
-                    .flex_col()
-                        // Menu header
-                        .child(
-                            div()
-                                .h(px(40.0))
-                                .px_4()
-                                .flex()
-                                .items_center()
-                                .border_b_1()
-                                .border_color(border_color)
-                                .child(
-                                    div()
-                                        .flex()
-                                        .items_center()
-                                        .gap_2()
-                                        .child(div().text_sm().text_color(fg).font_family(icons::LUCIDE_FONT_FAMILY).child(icons::settings()))
-                                        .child(div().text_sm().font_weight(FontWeight::SEMIBOLD).text_color(fg).child("Session Options")),
-                                ),
-                        )
-                        // Menu items
-                        .child(
-                            div()
-                                .flex()
-                                .flex_col()
-                                .py_2()
-                                .child(self.render_menu_item(
-                                    "Rename Session",
-                                    session_id,
-                                    SessionMenuAction::Rename,
-                                    theme,
-                                    hover_bg,
-                                    fg,
-                                    cx,
-                                ))
-                                .child(self.render_menu_item(
-                                    "Assign to Group",
-                                    session_id,
-                                    SessionMenuAction::AssignGroup,
-                                    theme,
-                                    hover_bg,
-                                    fg,
-                                    cx,
-                                ))
-                                .child(self.render_menu_item(
-                                    "Remove from Group",
-                                    session_id,
-                                    SessionMenuAction::RemoveGroup,
-                                    theme,
-                                    hover_bg,
-                                    fg,
-                                    cx,
-                                ))
-                                .child(
-                                    // Separator
-                                    div()
-                                        .h(px(1.0))
-                                        .mx_2()
-                                        .my_1()
-                                        .bg(border_color),
-                                )
-                                .child(self.render_menu_item(
-                                    "Close Session",
-                                    session_id,
-                                    SessionMenuAction::Close,
-                                    theme,
-                                    hover_bg,
-                                    fg,
-                                    cx,
-                                )),
-                        ),
-                );
+                    .h(px(1.0))
+                    .mx_2()
+                    .my_1()
+                    .bg(border_color),
+            )
+            .child(self.render_menu_item(
+                "Close",
+                session_id,
+                SessionMenuAction::Close,
+                theme,
+                hover_bg,
+                destructive,
+                cx,
+            ));
 
-        Some(overlay.on_click(cx.listener(|this, _: &ClickEvent, _window, cx| {
-            this.close_session_menu(cx);
-        })))
+        // Position the dropdown in the left panel area, near the drawer
+        let left_offset = crate::icon_rail::IconRail::WIDTH + self.drawer.width() - 180.0 - 8.0;
+
+        Some(
+            div()
+                .id("session-menu-container")
+                .absolute()
+                .inset_0()
+                .child(backdrop)
+                .child(
+                    div()
+                        .absolute()
+                        .left(px(left_offset.max(0.0)))
+                        .top(px(100.0))
+                        .child(dropdown),
+                ),
+        )
     }
 
     /// Render the session action modal for rename/group.
@@ -2515,7 +2505,7 @@ impl WorkspaceView {
         )
     }
 
-    /// Render a menu item with icon.
+    /// Render a dropdown menu item with icon.
     fn render_menu_item(
         &self,
         label: &str,
@@ -2535,26 +2525,26 @@ impl WorkspaceView {
         };
         div()
             .id(SharedString::from(format!("menu-{:?}-{}", action, session_id.0)))
-            .h(px(36.0))
-            .px_4()
+            .h(px(30.0))
+            .px_3()
             .flex()
             .items_center()
-            .gap_2()
+            .gap(px(8.0))
             .cursor_pointer()
-            .hover(|style| style.bg(hover_bg.opacity(0.1)))
+            .hover(move |style| style.bg(hover_bg.opacity(0.1)))
             .on_click(cx.listener(move |this, _: &ClickEvent, _window, cx| {
                 this.handle_session_menu_action(session_id, action, cx);
             }))
             .child(
                 div()
-                    .text_sm()
+                    .text_xs()
                     .text_color(fg)
                     .font_family(icons::LUCIDE_FONT_FAMILY)
                     .child(icon),
             )
             .child(
                 div()
-                    .text_sm()
+                    .text_xs()
                     .text_color(fg)
                     .child(label),
             )
@@ -2773,7 +2763,7 @@ impl WorkspaceView {
 
         let mut content = div()
             .flex_1()
-            .overflow_y_scroll()
+            .overflow_hidden()
             .flex()
             .flex_col();
 
@@ -2794,6 +2784,7 @@ impl WorkspaceView {
                 group_sessions.len(),
                 expanded,
                 &theme,
+                cx,
             ));
 
             if expanded {
@@ -2831,7 +2822,7 @@ impl WorkspaceView {
                             .py(px(4.0))
                             .rounded_md()
                             .cursor_pointer()
-                            .hover(|style| style.bg(theme.active.into()))
+                            .hover(|style| { let c: gpui::Hsla = theme.active.into(); style.bg(c) })
                             .on_mouse_down(MouseButton::Left, cx.listener(|this, _, _, cx| {
                                 this.create_session(cx);
                             }))
@@ -2935,12 +2926,13 @@ impl WorkspaceView {
 
     /// Render a session group header in the drawer session list.
     fn render_session_group_header(
-        &self,
+        &mut self,
         group_name: &str,
         color: Option<&str>,
         count: usize,
         expanded: bool,
         theme: &CodirigentTheme,
+        cx: &mut Context<Self>,
     ) -> impl IntoElement {
         let muted: gpui::Hsla = theme.muted.into();
 
@@ -2971,6 +2963,7 @@ impl WorkspaceView {
 
         let group_name_owned = group_name.to_string();
         let group_label = format!("{} ({})", group_name, count);
+        let toggle_key = group_name_owned.clone();
 
         div()
             .id(SharedString::from(format!("group-header-{}", group_name_owned)))
@@ -2981,6 +2974,11 @@ impl WorkspaceView {
             .items_center()
             .gap(px(6.0))
             .cursor_pointer()
+            .on_mouse_down(MouseButton::Left, cx.listener(move |this, _, _, cx| {
+                let current = this.drawer_group_expanded.get(&toggle_key).copied().unwrap_or(true);
+                this.drawer_group_expanded.insert(toggle_key.clone(), !current);
+                cx.notify();
+            }))
             // Color bar
             .child(
                 div()
@@ -3117,8 +3115,8 @@ impl WorkspaceView {
                     .px_4()
                     .child(
                         div().flex().items_center().gap_2()
-                            .child(div().text_xs().line_height(px(16.0)).text_color(muted).font_family(icons::LUCIDE_FONT_FAMILY).child(icons::list_todo()))
-                            .child(div().text_xs().line_height(px(16.0)).font_weight(FontWeight::BOLD).text_color(muted).child("TASKS")),
+                            .child(div().text_xs().text_color(muted).font_family(icons::LUCIDE_FONT_FAMILY).child(icons::list_todo()))
+                            .child(div().text_xs().font_weight(FontWeight::BOLD).text_color(muted).child("TASKS")),
                     )
                     .child(
                         div().flex().items_center().gap(px(6.0))
@@ -3129,7 +3127,7 @@ impl WorkspaceView {
                             .border_1()
                             .border_color(primary.opacity(0.2))
                             .child(div().w(px(6.0)).h(px(6.0)).rounded_full().bg(primary))
-                            .child(div().text_color(primary.opacity(0.8)).text_xs().line_height(px(16.0)).child("Auto")),
+                            .child(div().text_color(primary.opacity(0.8)).text_xs().child("Auto")),
                     ),
             )
             // Scrollable content - Running + Queue sections
@@ -3147,8 +3145,8 @@ impl WorkspaceView {
                             .child(
                                 div().flex().justify_between().items_center().mb_2()
                                     .child(div().flex().items_center().gap_1()
-                                        .child(div().text_xs().line_height(px(16.0)).text_color(muted).font_family(icons::LUCIDE_FONT_FAMILY).child(icons::play()))
-                                        .child(div().text_xs().line_height(px(16.0)).font_weight(FontWeight::BOLD).text_color(muted).child("RUNNING")))
+                                        .child(div().text_xs().text_color(muted).font_family(icons::LUCIDE_FONT_FAMILY).child(icons::play()))
+                                        .child(div().text_xs().font_weight(FontWeight::BOLD).text_color(muted).child("RUNNING")))
                                     .child(div().px(px(6.0)).rounded_full().bg(active_bg)
                                         .child(div().text_xs().text_color(muted).child("0"))),
                             )
@@ -3162,8 +3160,8 @@ impl WorkspaceView {
                             .child(
                                 div().flex().justify_between().items_center().mb_2()
                                     .child(div().flex().items_center().gap_1()
-                                        .child(div().text_xs().line_height(px(16.0)).text_color(muted).font_family(icons::LUCIDE_FONT_FAMILY).child(icons::clock()))
-                                        .child(div().text_xs().line_height(px(16.0)).font_weight(FontWeight::BOLD).text_color(muted).child("QUEUE")))
+                                        .child(div().text_xs().text_color(muted).font_family(icons::LUCIDE_FONT_FAMILY).child(icons::clock()))
+                                        .child(div().text_xs().font_weight(FontWeight::BOLD).text_color(muted).child("QUEUE")))
                                     .child(div().px(px(6.0)).rounded_full().bg(active_bg)
                                         .child(div().text_xs().text_color(muted).child("0"))),
                             )
@@ -3201,10 +3199,11 @@ impl WorkspaceView {
 }
 
 /// Session menu actions.
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone)]
 pub enum SessionMenuAction {
     Rename,
-    AssignGroup,
+    AssignToGroup(String),
+    NewGroup,
     RemoveGroup,
-    Close,
+    EndSession,
 }

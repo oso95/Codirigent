@@ -6,6 +6,8 @@
 /// Which drawer panel is currently open (if any).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum DrawerPanel {
+    /// Session list panel.
+    Sessions,
     /// File tree explorer.
     Files,
     /// Git worktree management.
@@ -159,5 +161,23 @@ mod tests {
         let default = IconRail::default();
         let new = IconRail::new();
         assert_eq!(default.active_panel(), new.active_panel());
+    }
+
+    #[test]
+    fn toggle_sessions_panel() {
+        let mut rail = IconRail::new();
+        rail.toggle_panel(DrawerPanel::Sessions);
+        assert_eq!(rail.active_panel(), Some(DrawerPanel::Sessions));
+        rail.toggle_panel(DrawerPanel::Sessions);
+        assert_eq!(rail.active_panel(), None);
+    }
+
+    #[test]
+    fn toggle_from_sessions_to_files() {
+        let mut rail = IconRail::new();
+        rail.toggle_panel(DrawerPanel::Sessions);
+        assert_eq!(rail.active_panel(), Some(DrawerPanel::Sessions));
+        rail.toggle_panel(DrawerPanel::Files);
+        assert_eq!(rail.active_panel(), Some(DrawerPanel::Files));
     }
 }

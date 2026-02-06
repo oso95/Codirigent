@@ -69,7 +69,7 @@ impl Workspace {
             sessions: Vec::new(),
             theme: CodirigentTheme::default(),
             show_sidebar: true,
-            sidebar_width: 200.0,
+            sidebar_width: 56.0,
             bounds: Bounds::from_size(1280.0, 720.0),
         }
     }
@@ -81,7 +81,7 @@ impl Workspace {
             sessions: Vec::new(),
             theme: CodirigentTheme::default(),
             show_sidebar: true,
-            sidebar_width: 200.0,
+            sidebar_width: 56.0,
             bounds: Bounds::from_size(1280.0, 720.0),
         }
     }
@@ -276,7 +276,7 @@ impl Workspace {
 
     /// Set the sidebar width.
     pub fn set_sidebar_width(&mut self, width: f32) {
-        self.sidebar_width = width.clamp(100.0, 400.0);
+        self.sidebar_width = width.max(0.0);
     }
 
     // --- Theme ---
@@ -305,9 +305,8 @@ impl Workspace {
 
     /// Get the bounds available for the grid (excluding sidebar and chrome).
     pub fn grid_bounds(&self) -> Bounds {
-        // Calculate chrome height (top bar only; task board is now a right panel)
-        // Top bar: 48px
-        let chrome_height = TOP_BAR_HEIGHT;
+        // Title bar (32px) + Top bar (48px) + grid container padding (gap * 2)
+        let chrome_height = 32.0 + TOP_BAR_HEIGHT + self.theme.grid_gap * 2.0;
 
         let x = if self.show_sidebar {
             self.sidebar_width

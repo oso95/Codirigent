@@ -118,4 +118,12 @@ mod tests {
         assert_eq!(default.is_open(), new.is_open());
         assert_eq!(default.selected_session(), new.selected_session());
     }
+
+    #[test]
+    fn set_sessions_panel_opens_drawer() {
+        let mut drawer = Drawer::new();
+        drawer.set_active_panel(Some(DrawerPanel::Sessions));
+        assert!(drawer.is_open());
+        assert_eq!(drawer.active_panel(), Some(DrawerPanel::Sessions));
+    }
 }

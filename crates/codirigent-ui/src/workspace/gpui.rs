@@ -436,8 +436,23 @@ impl WorkspaceView {
 
     /// Create a new session.
     pub fn create_session(&mut self, cx: &mut Context<Self>) {
-        let name = format!("Session {}", self.next_session_id);
-        self.next_session_id += 1;
+        // Find the lowest available session number (reuse gaps from closed sessions)
+        let existing_numbers: std::collections::HashSet<u64> = self
+            .workspace
+            .sessions()
+            .iter()
+            .filter_map(|s| {
+                s.name
+                    .strip_prefix("Session ")
+                    .and_then(|n| n.parse::<u64>().ok())
+            })
+            .collect();
+        let mut num = 1u64;
+        while existing_numbers.contains(&num) {
+            num += 1;
+        }
+        let name = format!("Session {}", num);
+        self.next_session_id = num + 1;
 
         let working_dir = self
             .project_root
@@ -1196,19 +1211,36 @@ impl WorkspaceView {
                 self.close_session_menu(cx);
                 self.open_session_action_modal(session_id, SessionActionKind::Rename);
             }
-            SessionMenuAction::AssignGroup => {
-                info!(?session_id, "Assign to group action");
+            SessionMenuAction::AssignToGroup(group_name) => {
+                info!(?session_id, %group_name, "Assign to existing group");
+                // Find the color already used by this group
+                let color = self
+                    .workspace
+                    .sessions()
+                    .iter()
+                    .find(|s| s.group.as_deref() == Some(&group_name))
+                    .and_then(|s| s.color.clone());
+                if let Ok(manager) = self.session_manager.lock() {
+                    let _ = manager.set_session_group(
+                        session_id,
+                        Some(group_name.clone()),
+                        color.clone(),
+                    );
+                }
+                if let Some(session) = self.workspace.session_mut(session_id) {
+                    session.group = Some(group_name);
+                    session.color = color;
+                }
+                self.close_session_menu(cx);
+            }
+            SessionMenuAction::NewGroup => {
+                info!(?session_id, "New group action");
                 self.close_session_menu(cx);
                 self.open_session_action_modal(session_id, SessionActionKind::AssignGroup);
             }
             SessionMenuAction::RemoveGroup => {
-                // Remove session from group
                 if let Ok(manager) = self.session_manager.lock() {
-                    if let Err(e) = manager.set_session_group(session_id, None, None) {
-                        warn!("Failed to remove session from group: {}", e);
-                    } else {
-                        info!(?session_id, "Session removed from group");
-                    }
+                    let _ = manager.set_session_group(session_id, None, None);
                 }
                 if let Some(session) = self.workspace.session_mut(session_id) {
                     session.group = None;
@@ -1216,7 +1248,7 @@ impl WorkspaceView {
                 }
                 self.close_session_menu(cx);
             }
-            SessionMenuAction::Close => {
+            SessionMenuAction::EndSession => {
                 self.close_session(session_id, cx);
                 self.close_session_menu(cx);
             }
@@ -1733,6 +1765,12 @@ impl Render for WorkspaceView {
             window_size.height.into(),
         );
         self.workspace.set_bounds(window_bounds);
+
+        // Update sidebar width to match actual icon rail + drawer state
+        // so grid_bounds() calculates correct cell dimensions
+        let actual_sidebar_width = crate::icon_rail::IconRail::WIDTH
+            + if self.drawer.is_open() { self.drawer.width() } else { 0.0 };
+        self.workspace.set_sidebar_width(actual_sidebar_width);
 
         // Sync terminal cell dimensions with actual font metrics so the
         // emulator calculates the correct row/col counts.

@@ -223,13 +223,17 @@ fn test_workspace_sidebar_width() {
     ws.set_sidebar_width(250.0);
     assert_eq!(ws.sidebar_width(), 250.0);
 
-    // Clamp to min
-    ws.set_sidebar_width(50.0);
-    assert_eq!(ws.sidebar_width(), 100.0);
+    // Allows small values (icon rail only = 56px)
+    ws.set_sidebar_width(56.0);
+    assert_eq!(ws.sidebar_width(), 56.0);
 
-    // Clamp to max
+    // Clamp to min 0
+    ws.set_sidebar_width(-10.0);
+    assert_eq!(ws.sidebar_width(), 0.0);
+
+    // Allows large values
     ws.set_sidebar_width(500.0);
-    assert_eq!(ws.sidebar_width(), 400.0);
+    assert_eq!(ws.sidebar_width(), 500.0);
 }
 
 #[test]
