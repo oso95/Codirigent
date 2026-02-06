@@ -27,7 +27,6 @@ use crate::terminal_view::TerminalView;
 // Imports from feature branch (UI components)
 use crate::empty_session::{EmptySessionEvent, EmptySessionPool};
 use crate::sidebar::{FileTreeEntryData, FileTreePanel, FileTreeEvent, WorktreePanel, WorktreeEvent};
-use crate::status_bar::StatusBar;
 use crate::task_board::TaskBoardPanel;
 use crate::terminal_header::TerminalHeader;
 use crate::theme::CodirigentTheme;
@@ -99,8 +98,6 @@ pub struct WorkspaceView {
     terminals: HashMap<SessionId, TerminalView>,
     /// Next session ID counter (kept for UI session tracking).
     next_session_id: u64,
-    /// Status bar component state.
-    pub(super) status_bar: StatusBar,
     /// Sessions toolbar component state.
     pub(super) toolbar: SessionsToolbar,
     /// Unified top bar component state.
@@ -255,7 +252,6 @@ impl WorkspaceView {
             task_manager,
             terminals: HashMap::new(),
             next_session_id: 1,
-            status_bar: StatusBar::new(),
             toolbar,
             top_bar: crate::top_bar::TopBar::new(),
             broadcast_bar: crate::broadcast_bar::BroadcastBar::new(),
@@ -597,19 +593,6 @@ impl WorkspaceView {
     fn sync_ui_state(&mut self) {
         // Update toolbar layout
         self.toolbar.set_active_layout(self.workspace.layout_profile());
-
-        // Update status bar with session counts
-        let sessions = self.workspace.sessions();
-        let total = sessions.len();
-        let working = sessions
-            .iter()
-            .filter(|s| s.status == SessionStatus::Working)
-            .count();
-        let waiting = sessions
-            .iter()
-            .filter(|s| s.status == SessionStatus::WaitingForInput)
-            .count();
-        self.status_bar.set_session_counts(total, working, waiting);
 
         // Update terminal headers from sessions
         let focused_id = self.workspace.focused_session_id();

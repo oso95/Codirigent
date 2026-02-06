@@ -9,7 +9,6 @@ use crate::terminal_view::CursorShape;
 // Imports from feature branch (UI components)
 use crate::components::text_input::{text_input, TextInputStyle};
 use crate::empty_session::EmptySessionRenderHints;
-use crate::status_bar::StatusBarItem;
 use crate::terminal_header::TerminalHeaderRenderHints;
 use crate::theme::CodirigentTheme;
 use codirigent_core::SessionId;
@@ -1057,129 +1056,6 @@ impl WorkspaceView {
             .overflow_hidden()
             .child(terminal_canvas)
             .into_any_element()
-    }
-
-    /// Render the status bar component.
-    ///
-    /// Returns a GPUI element representing the status bar with session counts,
-    /// task queue status, and version information.
-    pub(super) fn render_status_bar(&self) -> impl IntoElement {
-        let hints = self.status_bar.render_hints();
-        let bg: gpui::Hsla = hints.background.into();
-        let _text_color: gpui::Hsla = hints.text_color.into();
-
-        let mut bar = div()
-            .id("status-bar")
-            .h(px(hints.height))
-            .w_full()
-            .bg(bg)
-            .flex()
-            .items_center()
-            .justify_between()
-            .px_3();
-
-        // Left section
-        let mut left = div().flex().gap_4().items_center();
-        for item in &hints.left {
-            left = left.child(self.render_status_bar_item(item));
-        }
-        bar = bar.child(left);
-
-        // Center section - Git branch
-        if let Some(ref branch) = self.current_branch {
-            let theme = self.workspace().theme();
-            let fg: gpui::Hsla = theme.foreground.into();
-            let muted: gpui::Hsla = theme.muted.into();
-
-            bar = bar.child(
-                div()
-                    .flex()
-                    .gap_1()
-                    .items_center()
-                    .child(
-                        div()
-                            .text_xs()
-                            .text_color(muted)
-                            .child(""), // Git icon/symbol
-                    )
-                    .child(
-                        div()
-                            .text_xs()
-                            .text_color(fg)
-                            .child(branch.clone()),
-                    ),
-            );
-        } else {
-            bar = bar.child(div()); // Empty spacer
-        }
-
-        // Right section
-        let mut right = div().flex().gap_4().items_center();
-        for item in &hints.right {
-            right = right.child(self.render_status_bar_item(item));
-        }
-        bar = bar.child(right);
-
-        bar
-    }
-
-    /// Render a single status bar item.
-    fn render_status_bar_item(&self, item: &StatusBarItem) -> impl IntoElement {
-        let theme = self.workspace().theme();
-        let muted: gpui::Hsla = theme.muted.into();
-
-        match item {
-            StatusBarItem::SessionCount { total, color } => {
-                let dot_color: gpui::Hsla = (*color).into();
-                div()
-                    .flex()
-                    .gap_2()
-                    .items_center()
-                    .child(
-                        div()
-                            .w(px(6.0))
-                            .h(px(6.0))
-                            .rounded_full()
-                            .bg(dot_color),
-                    )
-                    .child(
-                        div()
-                            .text_xs()
-                            .text_color(muted)
-                            .child(format!("{} sessions", total)),
-                    )
-            }
-            StatusBarItem::SessionStatus { label, count, color } => {
-                let status_color: gpui::Hsla = (*color).into();
-                div()
-                    .flex()
-                    .gap_1()
-                    .items_center()
-                    .child(
-                        div()
-                            .text_xs()
-                            .text_color(status_color)
-                            .child(format!("{}: {}", label, count)),
-                    )
-            }
-            StatusBarItem::TaskQueue { in_queue, in_progress } => {
-                let text = if *in_queue == 0 && *in_progress == 0 {
-                    "No tasks".to_string()
-                } else {
-                    format!("Tasks: {} queued, {} active", in_queue, in_progress)
-                };
-                div().text_xs().text_color(muted).child(text)
-            }
-            StatusBarItem::Version(v) => {
-                div()
-                    .text_xs()
-                    .text_color(muted)
-                    .child(format!("v{}", v))
-            }
-            StatusBarItem::Separator => {
-                div().text_xs().text_color(muted).child("|")
-            }
-        }
     }
 
     /// Render the sessions toolbar component.
