@@ -110,6 +110,12 @@ pub struct WorkspaceView {
     pub(super) top_bar: crate::top_bar::TopBar,
     /// Broadcast input bar (below top bar when active).
     pub(super) broadcast_bar: crate::broadcast_bar::BroadcastBar,
+    /// Narrow icon rail (left edge).
+    pub(super) icon_rail: crate::icon_rail::IconRail,
+    /// Expandable drawer panel (next to icon rail).
+    pub(super) drawer: crate::drawer::Drawer,
+    /// Currently selected session ID (for context-follows-selection).
+    pub(super) selected_session_id: Option<SessionId>,
     /// Task board panel component state.
     pub(super) task_board: TaskBoardPanel,
     /// Empty session cells pool.
@@ -259,6 +265,9 @@ impl WorkspaceView {
             toolbar,
             top_bar: crate::top_bar::TopBar::new(),
             broadcast_bar: crate::broadcast_bar::BroadcastBar::new(),
+            icon_rail: crate::icon_rail::IconRail::new(),
+            drawer: crate::drawer::Drawer::new(),
+            selected_session_id: None,
             task_board: TaskBoardPanel::new(),
             empty_cells: EmptySessionPool::new(),
             terminal_headers: Vec::new(),
@@ -758,6 +767,28 @@ impl WorkspaceView {
                         }
                     }
                     info!(text = %text, sessions = self.workspace.sessions().len(), "Broadcast sent to all sessions");
+                }
+            }
+        }
+    }
+
+    /// Select a session (updates drawer context and grid focus).
+    fn select_session(&mut self, session_id: SessionId) {
+        self.selected_session_id = Some(session_id);
+        self.drawer.set_selected_session(Some(session_id));
+        self.workspace.focus_session(session_id);
+    }
+
+    /// Process icon rail events (drawer toggling, settings).
+    fn process_icon_rail_events(&mut self) {
+        let events = self.icon_rail.drain_events();
+        for event in events {
+            match event {
+                crate::icon_rail::IconRailEvent::DrawerToggled(panel) => {
+                    self.drawer.set_active_panel(panel);
+                }
+                crate::icon_rail::IconRailEvent::SettingsRequested => {
+                    // Future: open settings modal
                 }
             }
         }
