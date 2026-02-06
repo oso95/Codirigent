@@ -100,6 +100,8 @@ pub struct WorkspaceView {
     next_session_id: u64,
     /// Custom layout picker modal state (extracted from deprecated SessionsToolbar).
     pub(super) custom_picker: CustomLayoutPicker,
+    /// Title bar with window controls (minimize, maximize, close).
+    pub(super) title_bar: crate::title_bar::TitleBar,
     /// Unified top bar component state.
     pub(super) top_bar: crate::top_bar::TopBar,
     /// Broadcast input bar (below top bar when active).
@@ -247,6 +249,7 @@ impl WorkspaceView {
             terminals: HashMap::new(),
             next_session_id: 1,
             custom_picker: CustomLayoutPicker::new(),
+            title_bar: crate::title_bar::TitleBar::new(),
             top_bar: crate::top_bar::TopBar::new(),
             broadcast_bar: crate::broadcast_bar::BroadcastBar::new(),
             icon_rail: crate::icon_rail::IconRail::new(),
@@ -1697,6 +1700,9 @@ impl Focusable for WorkspaceView {
 
 impl Render for WorkspaceView {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+        // Ensure Lucide icon font is loaded (no-op after first call)
+        crate::icons::ensure_font_loaded(window);
+
         // Process any pending UI events first
         self.process_ui_events(cx);
         self.process_top_bar_events();
@@ -1784,6 +1790,9 @@ impl Render for WorkspaceView {
             .bg(bg)
             .flex()
             .flex_col();
+
+        // 0. Title bar with window controls (32px)
+        container = container.child(self.render_title_bar(window, cx));
 
         // 1. TopBar at top (48px)
         container = container.child(self.render_top_bar(cx));

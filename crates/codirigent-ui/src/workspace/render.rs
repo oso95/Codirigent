@@ -13,9 +13,11 @@ use crate::empty_session::EmptySessionRenderHints;
 use crate::terminal_header::TerminalHeaderRenderHints;
 use crate::theme::CodirigentTheme;
 use codirigent_core::SessionId;
+use crate::icons;
+use crate::title_bar::TitleBar;
 use gpui::{
     div, px, ClickEvent, Context, FontWeight, InteractiveElement, IntoElement, ParentElement,
-    prelude::FluentBuilder, SharedString, StatefulInteractiveElement,
+    Window, WindowControlArea, prelude::FluentBuilder, SharedString, StatefulInteractiveElement,
     Styled, MouseButton, ScrollWheelEvent,
 };
 use tracing::info;
@@ -421,6 +423,187 @@ impl WorkspaceView {
             .into_any_element()
     }
 
+    /// Render the title bar with window controls (minimize, maximize, close).
+    ///
+    /// This is a 32px bar with the logo on the left and native window controls
+    /// on the right. The entire bar is a drag region for moving the window.
+    pub(super) fn render_title_bar(&mut self, window: &mut Window, _cx: &mut Context<Self>) -> impl IntoElement {
+        let theme = self.workspace().theme();
+        let bg: gpui::Hsla = theme.panel_background.into();
+        let border_color: gpui::Hsla = theme.border.into();
+        let fg: gpui::Hsla = theme.foreground.into();
+
+        // The entire bar is a drag region. Caption buttons use .occlude() +
+        // their own WindowControlArea to carve out non-drag zones.
+        let mut bar = div()
+            .id("title-bar")
+            .h(px(self.title_bar.height()))
+            .w_full()
+            .bg(bg)
+            .border_b_1()
+            .border_color(border_color)
+            .flex()
+            .items_center()
+            .px_3()
+            .gap_2()
+            .window_control_area(WindowControlArea::Drag);
+
+        // macOS: Native traffic lights are rendered by the OS.
+        // Reserve left padding so content doesn't overlap them, and handle
+        // double-click to trigger the system zoom behavior (following Zed's approach).
+        #[cfg(target_os = "macos")]
+        {
+            const TRAFFIC_LIGHT_PADDING: f32 = 71.0;
+
+            bar = if window.is_fullscreen() {
+                bar.pl_2()
+            } else {
+                bar.pl(px(TRAFFIC_LIGHT_PADDING))
+            };
+
+            bar = bar.on_click(|event: &ClickEvent, window, _cx| {
+                if event.click_count() == 2 {
+                    window.titlebar_double_click();
+                }
+            });
+        }
+
+        // Windows: GPUI 0.2.1 has a stale mouse_hit_test issue in WM_NCHITTEST,
+        // so WindowControlArea::Drag alone doesn't reliably initiate drags.
+        // Work around by sending WM_NCLBUTTONDOWN(HTCAPTION) on mouse-down.
+        #[cfg(target_os = "windows")]
+        {
+            use raw_window_handle::HasWindowHandle;
+            let raw_handle = window.window_handle().ok().map(|h| {
+                match h.as_raw() {
+                    raw_window_handle::RawWindowHandle::Win32(win32) => {
+                        win32.hwnd.get() as isize
+                    }
+                    _ => 0,
+                }
+            });
+            if let Some(hwnd) = raw_handle {
+                bar = bar.on_mouse_down(MouseButton::Left, move |_event, _window, _cx| {
+                    crate::platform_drag::begin_title_bar_drag(hwnd);
+                });
+            }
+        }
+
+        // Logo and title
+        // Zap icon in indigo circle (matching mockup)
+        let primary: gpui::Hsla = theme.primary.into();
+        bar = bar.child(
+            div()
+                .flex_shrink_0()
+                .ml_2()
+                .w(px(22.0))
+                .h(px(22.0))
+                .rounded_md()
+                .bg(primary)
+                .flex()
+                .items_center()
+                .justify_center()
+                .child(
+                    div()
+                        .text_size(px(12.0))
+                        .text_color(gpui::Hsla::white())
+                        .font_family(icons::LUCIDE_FONT_FAMILY)
+                        .child(icons::zap()),
+                ),
+        );
+        bar = bar.child(
+            div()
+                .text_sm()
+                .font_weight(FontWeight::BOLD)
+                .text_color(fg)
+                .ml_2()
+                .child(TitleBar::LOGO_TEXT),
+        );
+
+        // Spacer — fills remaining space so window controls stay on the right
+        bar = bar.child(div().flex_1());
+
+        // Window controls (Windows/Linux)
+        // Uses native Segoe icon fonts and WindowControlArea for OS-level handling.
+        #[cfg(not(target_os = "macos"))]
+        {
+            let icon_font = "Segoe MDL2 Assets";
+
+            let close_hover_bg: gpui::Hsla = gpui::Rgba {
+                r: 232.0 / 255.0,
+                g: 17.0 / 255.0,
+                b: 32.0 / 255.0,
+                a: 1.0,
+            }.into();
+
+            let maximize_icon = if window.is_maximized() {
+                "\u{e923}" // Restore
+            } else {
+                "\u{e922}" // Maximize
+            };
+
+            let controls = div()
+                .flex()
+                .flex_row()
+                .items_center()
+                .font_family(icon_font)
+                // Minimize
+                .child(
+                    div()
+                        .id("window-minimize")
+                        .w(px(36.0))
+                        .h_full()
+                        .flex()
+                        .items_center()
+                        .justify_center()
+                        .text_size(px(10.0))
+                        .text_color(fg)
+                        .occlude()
+                        .hover(|style| style.bg(border_color.opacity(0.2)))
+                        .active(|style| style.bg(border_color.opacity(0.3)))
+                        .window_control_area(WindowControlArea::Min)
+                        .child("\u{e921}"),
+                )
+                // Maximize / Restore
+                .child(
+                    div()
+                        .id("window-maximize")
+                        .w(px(36.0))
+                        .h_full()
+                        .flex()
+                        .items_center()
+                        .justify_center()
+                        .text_size(px(10.0))
+                        .text_color(fg)
+                        .occlude()
+                        .hover(|style| style.bg(border_color.opacity(0.2)))
+                        .active(|style| style.bg(border_color.opacity(0.3)))
+                        .window_control_area(WindowControlArea::Max)
+                        .child(maximize_icon),
+                )
+                // Close
+                .child(
+                    div()
+                        .id("window-close")
+                        .w(px(36.0))
+                        .h_full()
+                        .flex()
+                        .items_center()
+                        .justify_center()
+                        .text_size(px(10.0))
+                        .text_color(fg)
+                        .occlude()
+                        .hover(|style| style.bg(close_hover_bg).text_color(gpui::Hsla::white()))
+                        .active(|style| style.bg(close_hover_bg.opacity(0.8)).text_color(gpui::Hsla::white().opacity(0.8)))
+                        .window_control_area(WindowControlArea::Close)
+                        .child("\u{e8bb}"),
+                );
+            bar = bar.child(controls);
+        }
+
+        bar
+    }
+
     /// Render the unified top bar (replaces separate TitleBar + Toolbar).
     ///
     /// A single 48px bar containing: logo, layout tabs, broadcast toggle,
@@ -459,32 +642,6 @@ impl WorkspaceView {
             .gap_2();
 
         // --- Left section ---
-
-        // Logo icon (small 3x3 grid)
-        bar = bar.child(
-            div()
-                .flex_shrink_0()
-                .child(self.render_logo_small()),
-        );
-
-        // Logo text
-        bar = bar.child(
-            div()
-                .text_sm()
-                .font_weight(FontWeight::BOLD)
-                .text_color(fg)
-                .mr_2()
-                .child(crate::top_bar::TopBar::LOGO_TEXT),
-        );
-
-        // Vertical divider
-        bar = bar.child(
-            div()
-                .w(px(1.0))
-                .h(px(20.0))
-                .bg(border_color)
-                .mx_1(),
-        );
 
         // Layout tab pills
         let mut tab_row = div().flex().gap_1().items_center();
@@ -534,19 +691,15 @@ impl WorkspaceView {
 
         // Broadcast toggle
         let broadcast_color = if broadcast_enabled { primary } else { muted };
-        let broadcast_label = if broadcast_enabled {
-            "* Broadcast"
-        } else {
-            "o Broadcast"
-        };
         bar = bar.child(
             div()
                 .id("top-bar-broadcast")
                 .px_2()
                 .py_1()
                 .rounded_md()
-                .text_xs()
-                .text_color(broadcast_color)
+                .flex()
+                .items_center()
+                .gap_1()
                 .cursor_pointer()
                 .hover(|style| style.bg(active.opacity(0.3)))
                 .on_click(cx.listener(|this, _: &ClickEvent, _window, cx| {
@@ -554,7 +707,8 @@ impl WorkspaceView {
                     this.process_top_bar_events();
                     cx.notify();
                 }))
-                .child(broadcast_label),
+                .child(div().text_xs().text_color(broadcast_color).font_family(icons::LUCIDE_FONT_FAMILY).child(icons::zap()))
+                .child(div().text_xs().text_color(broadcast_color).child("Broadcast")),
         );
 
         // --- Spacer ---
@@ -570,13 +724,15 @@ impl WorkspaceView {
                 .py_1()
                 .rounded_md()
                 .bg(border_color.opacity(0.3))
-                .text_xs()
-                .text_color(muted)
-                .child(SharedString::from(token_count)),
+                .flex()
+                .items_center()
+                .gap_1()
+                .child(div().text_xs().text_color(muted).font_family(icons::LUCIDE_FONT_FAMILY).child(icons::cpu()))
+                .child(div().text_xs().text_color(muted).child(SharedString::from(token_count))),
         );
 
         // Right panel toggle
-        let panel_icon = if right_panel_open { "|=" } else { "=|" };
+        let panel_color = if right_panel_open { fg } else { muted };
         bar = bar.child(
             div()
                 .id("top-bar-right-panel")
@@ -584,7 +740,8 @@ impl WorkspaceView {
                 .py_1()
                 .rounded_md()
                 .text_xs()
-                .text_color(if right_panel_open { fg } else { muted })
+                .text_color(panel_color)
+                .font_family(icons::LUCIDE_FONT_FAMILY)
                 .cursor_pointer()
                 .hover(|style| style.bg(active.opacity(0.3)))
                 .on_click(cx.listener(|this, _: &ClickEvent, _window, cx| {
@@ -592,25 +749,7 @@ impl WorkspaceView {
                     this.process_top_bar_events();
                     cx.notify();
                 }))
-                .child(panel_icon),
-        );
-
-        // New session button
-        bar = bar.child(
-            div()
-                .id("top-bar-new-session")
-                .px_3()
-                .py_1()
-                .rounded_md()
-                .bg(primary.opacity(0.1))
-                .text_xs()
-                .text_color(primary)
-                .cursor_pointer()
-                .hover(|style| style.bg(primary.opacity(0.2)))
-                .on_click(cx.listener(|this, _: &ClickEvent, _window, cx| {
-                    this.create_session(cx);
-                }))
-                .child("+ New"),
+                .child(icons::columns_3()),
         );
 
         bar
@@ -2481,7 +2620,7 @@ impl WorkspaceView {
                         this.process_icon_rail_events();
                         cx.notify();
                     }))
-                    .child(div().text_sm().text_color(btn_fg).child("F"))
+                    .child(div().text_sm().text_color(btn_fg).font_family(icons::LUCIDE_FONT_FAMILY).child(icons::folder_tree()))
             })
             // Worktrees button
             .child({
@@ -2503,7 +2642,7 @@ impl WorkspaceView {
                         this.process_icon_rail_events();
                         cx.notify();
                     }))
-                    .child(div().text_sm().text_color(btn_fg).child("W"))
+                    .child(div().text_sm().text_color(btn_fg).font_family(icons::LUCIDE_FONT_FAMILY).child(icons::git_branch()))
             })
             // Spacer
             .child(div().flex_1())
@@ -2518,7 +2657,7 @@ impl WorkspaceView {
                     .items_center()
                     .justify_center()
                     .cursor_pointer()
-                    .child(div().text_sm().text_color(muted).child("S"))
+                    .child(div().text_sm().text_color(muted).font_family(icons::LUCIDE_FONT_FAMILY).child(icons::settings()))
             )
     }
 
@@ -2578,7 +2717,7 @@ impl WorkspaceView {
                                 this.process_icon_rail_events();
                                 cx.notify();
                             }))
-                            .child(div().text_xs().text_color(muted).child("X")),
+                            .child(div().text_xs().text_color(muted).font_family(icons::LUCIDE_FONT_FAMILY).child(icons::x())),
                     ),
             )
             // Content
@@ -2666,7 +2805,7 @@ impl WorkspaceView {
                                 this.process_broadcast_events();
                                 cx.notify();
                             }))
-                            .child(div().text_sm().text_color(gpui::Hsla::white()).child(">")),
+                            .child(div().text_sm().text_color(gpui::Hsla::white()).font_family(icons::LUCIDE_FONT_FAMILY).child(icons::send())),
                     ),
             )
     }
@@ -2705,7 +2844,7 @@ impl WorkspaceView {
                     .px_4()
                     .child(
                         div().flex().items_center().gap_2()
-                            .child(div().text_xs().text_color(muted).child("T"))
+                            .child(div().text_xs().text_color(muted).font_family(icons::LUCIDE_FONT_FAMILY).child(icons::list_todo()))
                             .child(div().text_xs().font_weight(FontWeight::BOLD).text_color(muted).child("TASKS")),
                     )
                     .child(
@@ -2774,7 +2913,11 @@ impl WorkspaceView {
                             .items_center()
                             .justify_center()
                             .cursor_pointer()
-                            .child(div().text_xs().font_weight(FontWeight::MEDIUM).text_color(fg).child("+ Add Task")),
+                            .child(
+                                div().flex().items_center().gap_1()
+                                    .child(div().text_xs().text_color(fg).font_family(icons::LUCIDE_FONT_FAMILY).child(icons::plus()))
+                                    .child(div().text_xs().font_weight(FontWeight::MEDIUM).text_color(fg).child("Add Task")),
+                            ),
                     ),
             )
     }

@@ -83,6 +83,7 @@ pub mod components;
 pub mod drawer;
 pub mod empty_session;
 pub mod icon_rail;
+pub mod icons;
 pub mod integration;
 pub mod ui_composition;
 pub mod keybindings;

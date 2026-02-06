@@ -44,6 +44,7 @@ gpui = { workspace = true, optional = true, features = [
     "font-kit",         # Font rendering
     "windows-manifest", # Windows
 ] }
+lucide-icons = "0.563.0"
 
 # macOS-specific dependencies
 [target.'cfg(target_os = "macos")'.dependencies]

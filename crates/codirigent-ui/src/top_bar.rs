@@ -53,7 +53,7 @@ impl TopBar {
     pub const HEIGHT: f32 = 48.0;
 
     /// Logo text displayed in top bar.
-    pub const LOGO_TEXT: &'static str = "DIRIGENT";
+    pub const LOGO_TEXT: &'static str = "CODIRIGENT";
 
     /// Create a new top bar with default state.
     pub fn new() -> Self {

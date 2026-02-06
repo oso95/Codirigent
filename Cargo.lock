@@ -1105,6 +1105,7 @@ dependencies = [
  "git2",
  "gpui",
  "image",
+ "lucide-icons",
  "objc2",
  "objc2-app-kit",
  "objc2-foundation",
@@ -3319,6 +3320,12 @@ name = "lru-slab"
 version = "0.1.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "112b39cec0b298b6c1999fee3e31427f74f676e4cb9879ed1a121b43661a4154"
+
+[[package]]
+name = "lucide-icons"
+version = "0.563.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "d69ca187c666b7f2746c707214d8217878be91cd3c2a7c54a23329788b71c16e"
 
 [[package]]
 name = "lyon"
