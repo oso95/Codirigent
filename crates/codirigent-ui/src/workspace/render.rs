@@ -3879,6 +3879,350 @@ impl WorkspaceView {
                     .child(label),
             )
     }
+
+    // =========================================================================
+    // New panel render methods (icon rail, drawer, broadcast bar, right task board)
+    // =========================================================================
+
+    /// Render the narrow icon rail (56px).
+    pub(super) fn render_icon_rail(&mut self, cx: &mut Context<Self>) -> impl IntoElement {
+        let theme = self.workspace().theme();
+        let rail_bg: gpui::Hsla = theme.icon_rail_background.into();
+        let border_color: gpui::Hsla = theme.border.into();
+        let active_bg: gpui::Hsla = theme.active.into();
+        let muted: gpui::Hsla = theme.muted.into();
+        let fg: gpui::Hsla = theme.foreground.into();
+        let active_panel = self.icon_rail.active_panel();
+
+        div()
+            .id("icon-rail")
+            .w(px(crate::icon_rail::IconRail::WIDTH))
+            .h_full()
+            .bg(rail_bg)
+            .border_r_1()
+            .border_color(border_color)
+            .flex()
+            .flex_col()
+            .items_center()
+            .py_4()
+            .gap_2()
+            // Files button
+            .child({
+                let is_active = active_panel == Some(crate::icon_rail::DrawerPanel::Files);
+                let btn_bg = if is_active { active_bg } else { gpui::Hsla::transparent_black() };
+                let btn_fg = if is_active { fg } else { muted };
+                div()
+                    .id("rail-files")
+                    .w(px(40.0))
+                    .h(px(40.0))
+                    .rounded_xl()
+                    .bg(btn_bg)
+                    .flex()
+                    .items_center()
+                    .justify_center()
+                    .cursor_pointer()
+                    .on_mouse_down(MouseButton::Left, cx.listener(|this, _, _, cx| {
+                        this.icon_rail.toggle_panel(crate::icon_rail::DrawerPanel::Files);
+                        this.process_icon_rail_events();
+                        cx.notify();
+                    }))
+                    .child(div().text_sm().text_color(btn_fg).child("F"))
+            })
+            // Worktrees button
+            .child({
+                let is_active = active_panel == Some(crate::icon_rail::DrawerPanel::Worktrees);
+                let btn_bg = if is_active { active_bg } else { gpui::Hsla::transparent_black() };
+                let btn_fg = if is_active { fg } else { muted };
+                div()
+                    .id("rail-worktrees")
+                    .w(px(40.0))
+                    .h(px(40.0))
+                    .rounded_xl()
+                    .bg(btn_bg)
+                    .flex()
+                    .items_center()
+                    .justify_center()
+                    .cursor_pointer()
+                    .on_mouse_down(MouseButton::Left, cx.listener(|this, _, _, cx| {
+                        this.icon_rail.toggle_panel(crate::icon_rail::DrawerPanel::Worktrees);
+                        this.process_icon_rail_events();
+                        cx.notify();
+                    }))
+                    .child(div().text_sm().text_color(btn_fg).child("W"))
+            })
+            // Spacer
+            .child(div().flex_1())
+            // Settings button (bottom)
+            .child(
+                div()
+                    .id("rail-settings")
+                    .w(px(40.0))
+                    .h(px(40.0))
+                    .rounded_lg()
+                    .flex()
+                    .items_center()
+                    .justify_center()
+                    .cursor_pointer()
+                    .child(div().text_sm().text_color(muted).child("S"))
+            )
+    }
+
+    /// Render the expandable drawer panel (288px).
+    pub(super) fn render_drawer(&mut self, cx: &mut Context<Self>) -> impl IntoElement {
+        let theme = self.workspace().theme();
+        let drawer_bg: gpui::Hsla = theme.drawer_background.into();
+        let border_color: gpui::Hsla = theme.border.into();
+        let header_bg: gpui::Hsla = theme.header_background.into();
+        let muted: gpui::Hsla = theme.muted.into();
+        let width = self.drawer.width();
+        let panel = self.drawer.active_panel();
+
+        let panel_title = match panel {
+            Some(crate::icon_rail::DrawerPanel::Files) => "EXPLORER",
+            Some(crate::icon_rail::DrawerPanel::Worktrees) => "WORKTREES",
+            None => "",
+        };
+
+        let session_label = match self.selected_session_id {
+            Some(id) => format!("Session {}", id.0),
+            None => "No session selected".to_string(),
+        };
+
+        div()
+            .id("drawer-panel")
+            .w(px(width))
+            .h_full()
+            .bg(drawer_bg)
+            .border_r_1()
+            .border_color(border_color)
+            .flex()
+            .flex_col()
+            // Header
+            .child(
+                div()
+                    .h(px(40.0))
+                    .w_full()
+                    .bg(header_bg)
+                    .border_b_1()
+                    .border_color(border_color)
+                    .flex()
+                    .items_center()
+                    .justify_between()
+                    .px_3()
+                    .child(
+                        div().text_xs().font_weight(FontWeight::BOLD)
+                            .text_color(muted)
+                            .child(panel_title),
+                    )
+                    .child(
+                        div()
+                            .id("drawer-close")
+                            .cursor_pointer()
+                            .on_mouse_down(MouseButton::Left, cx.listener(|this, _, _, cx| {
+                                this.icon_rail.close_drawer();
+                                this.process_icon_rail_events();
+                                cx.notify();
+                            }))
+                            .child(div().text_xs().text_color(muted).child("X")),
+                    ),
+            )
+            // Content
+            .child(
+                div()
+                    .flex_1()
+                    .overflow_y_scroll()
+                    .p_3()
+                    .child(div().text_xs().text_color(muted).child(session_label)),
+            )
+    }
+
+    /// Render the broadcast input bar (52px, rose-accented).
+    pub(super) fn render_broadcast_bar(&mut self, cx: &mut Context<Self>) -> impl IntoElement {
+        let theme = self.workspace().theme();
+        let accent: gpui::Hsla = theme.broadcast_accent.into();
+        let fg: gpui::Hsla = theme.foreground.into();
+        let input_text = self.broadcast_bar.input().to_string();
+
+        let bar_bg = gpui::Hsla { h: accent.h, s: accent.s, l: 0.05, a: 0.2 };
+        let bar_border = gpui::Hsla { a: 0.3, ..accent };
+
+        div()
+            .id("broadcast-bar")
+            .w_full()
+            .h(px(crate::broadcast_bar::BroadcastBar::HEIGHT))
+            .bg(bar_bg)
+            .border_b_1()
+            .border_color(bar_border)
+            .flex()
+            .items_center()
+            .justify_center()
+            .px_4()
+            .child(
+                div()
+                    .w_full()
+                    .max_w(px(768.0))
+                    .flex()
+                    .items_center()
+                    .gap_2()
+                    // Label
+                    .child(
+                        div()
+                            .text_xs()
+                            .font_weight(FontWeight::BOLD)
+                            .text_color(accent)
+                            .flex_shrink_0()
+                            .child("BROADCAST TO ALL:"),
+                    )
+                    // Input display
+                    .child(
+                        div()
+                            .flex_1()
+                            .h(px(36.0))
+                            .bg(gpui::Hsla { h: 0.0, s: 0.0, l: 0.04, a: 1.0 })
+                            .border_1()
+                            .border_color(gpui::Hsla { a: 0.3, ..accent })
+                            .rounded_md()
+                            .px_4()
+                            .flex()
+                            .items_center()
+                            .child(
+                                if input_text.is_empty() {
+                                    div().text_sm().text_color(gpui::Hsla { h: 0.0, s: 0.0, l: 0.35, a: 1.0 })
+                                        .child(crate::broadcast_bar::BroadcastBar::PLACEHOLDER)
+                                } else {
+                                    div().text_sm().text_color(fg).child(input_text)
+                                },
+                            ),
+                    )
+                    // Send button
+                    .child(
+                        div()
+                            .id("broadcast-send")
+                            .w(px(36.0))
+                            .h(px(36.0))
+                            .bg(accent)
+                            .rounded_md()
+                            .flex()
+                            .items_center()
+                            .justify_center()
+                            .cursor_pointer()
+                            .on_mouse_down(MouseButton::Left, cx.listener(|this, _, _, cx| {
+                                this.broadcast_bar.submit();
+                                this.process_broadcast_events();
+                                cx.notify();
+                            }))
+                            .child(div().text_sm().text_color(gpui::Hsla::white()).child(">")),
+                    ),
+            )
+    }
+
+    /// Render the task board as a right sidebar panel (288px).
+    pub(super) fn render_right_task_board(&mut self, _cx: &mut Context<Self>) -> impl IntoElement {
+        let theme = self.workspace().theme();
+        let panel_bg: gpui::Hsla = theme.icon_rail_background.into();
+        let header_bg: gpui::Hsla = theme.drawer_background.into();
+        let border_color: gpui::Hsla = theme.border.into();
+        let fg: gpui::Hsla = theme.foreground.into();
+        let muted: gpui::Hsla = theme.muted.into();
+        let primary: gpui::Hsla = theme.primary.into();
+        let active_bg: gpui::Hsla = theme.active.into();
+
+        div()
+            .id("right-task-board")
+            .w(px(crate::layout::RIGHT_PANEL_WIDTH))
+            .h_full()
+            .bg(panel_bg)
+            .border_l_1()
+            .border_color(border_color)
+            .flex()
+            .flex_col()
+            // Header
+            .child(
+                div()
+                    .h(px(48.0))
+                    .w_full()
+                    .bg(header_bg)
+                    .border_b_1()
+                    .border_color(border_color)
+                    .flex()
+                    .items_center()
+                    .justify_between()
+                    .px_4()
+                    .child(
+                        div().flex().items_center().gap_2()
+                            .child(div().text_xs().text_color(muted).child("T"))
+                            .child(div().text_xs().font_weight(FontWeight::BOLD).text_color(muted).child("TASKS")),
+                    )
+                    .child(
+                        div().flex().items_center().gap(px(6.0))
+                            .px_2()
+                            .py(px(2.0))
+                            .rounded_md()
+                            .bg(primary.opacity(0.1))
+                            .border_1()
+                            .border_color(primary.opacity(0.2))
+                            .child(div().w(px(6.0)).h(px(6.0)).rounded_full().bg(primary))
+                            .child(div().text_color(primary.opacity(0.8)).text_xs().child("Auto")),
+                    ),
+            )
+            // Scrollable content - Running + Queue sections
+            .child(
+                div()
+                    .flex_1()
+                    .overflow_y_scroll()
+                    .p_3()
+                    .flex()
+                    .flex_col()
+                    .gap_6()
+                    // Running section header
+                    .child(
+                        div().flex().flex_col()
+                            .child(
+                                div().flex().justify_between().items_center().mb_2()
+                                    .child(div().text_xs().font_weight(FontWeight::BOLD).text_color(muted).child("RUNNING"))
+                                    .child(div().px(px(6.0)).rounded_full().bg(active_bg)
+                                        .child(div().text_xs().text_color(muted).child("0"))),
+                            )
+                            .child(
+                                div().text_xs().text_color(muted.opacity(0.5)).child("No running tasks"),
+                            ),
+                    )
+                    // Queue section header
+                    .child(
+                        div().flex().flex_col()
+                            .child(
+                                div().flex().justify_between().items_center().mb_2()
+                                    .child(div().text_xs().font_weight(FontWeight::BOLD).text_color(muted).child("QUEUE"))
+                                    .child(div().px(px(6.0)).rounded_full().bg(active_bg)
+                                        .child(div().text_xs().text_color(muted).child("0"))),
+                            )
+                            .child(
+                                div().text_xs().text_color(muted.opacity(0.5)).child("No queued tasks"),
+                            ),
+                    ),
+            )
+            // Footer: Add Task button
+            .child(
+                div()
+                    .p_3()
+                    .border_t_1()
+                    .border_color(border_color)
+                    .bg(header_bg)
+                    .child(
+                        div()
+                            .id("add-task-btn")
+                            .w_full()
+                            .py(px(6.0))
+                            .bg(active_bg)
+                            .rounded_md()
+                            .flex()
+                            .items_center()
+                            .justify_center()
+                            .cursor_pointer()
+                            .child(div().text_xs().font_weight(FontWeight::MEDIUM).text_color(fg).child("+ Add Task")),
+                    ),
+            )
+    }
 }
 
 /// Session menu actions.
