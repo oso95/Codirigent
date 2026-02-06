@@ -57,19 +57,23 @@ pub const MIN_CELL_WIDTH: f32 = RECOMMENDED_MIN_CELL_WIDTH;
 #[deprecated(since = "0.1.0", note = "Use RECOMMENDED_MIN_CELL_HEIGHT instead")]
 pub const MIN_CELL_HEIGHT: f32 = RECOMMENDED_MIN_CELL_HEIGHT;
 
-/// Width of the sidebar in pixels (file tree + task board area).
+/// Width of the old sidebar in pixels (deprecated: replaced by IconRail 56px + Drawer 288px).
+#[deprecated(since = "0.1.0", note = "Use icon_rail::IconRail::WIDTH + drawer::Drawer::WIDTH instead")]
 pub const SIDEBAR_WIDTH: f32 = 260.0;
 
-/// Height of the title bar in pixels.
+/// Height of the old title bar in pixels (deprecated: replaced by TopBar 48px).
+#[deprecated(since = "0.1.0", note = "Use TOP_BAR_HEIGHT instead")]
 pub const TITLE_BAR_HEIGHT: f32 = 32.0;
 
-/// Height of the toolbar in pixels.
+/// Height of the old toolbar in pixels (deprecated: merged into TopBar 48px).
+#[deprecated(since = "0.1.0", note = "Use TOP_BAR_HEIGHT instead")]
 pub const TOOLBAR_HEIGHT: f32 = 48.0;
 
 /// Height of the top bar in pixels (replaces TITLE_BAR_HEIGHT + TOOLBAR_HEIGHT).
 pub const TOP_BAR_HEIGHT: f32 = 48.0;
 
-/// Height of the status bar in pixels.
+/// Height of the old status bar in pixels (deprecated: removed, info moved to TopBar).
+#[deprecated(since = "0.1.0", note = "Status bar has been removed; info is now in TopBar")]
 pub const STATUS_BAR_HEIGHT: f32 = 24.0;
 
 /// Width of the right task board panel in pixels.
@@ -401,15 +405,15 @@ impl LayoutProfile {
         let (rows, cols) = self.dimensions();
         let gap = 4.0;
 
-        let min_width = SIDEBAR_WIDTH
+        // IconRail (56px) is the minimum left chrome; drawer is optional.
+        let icon_rail_width = 56.0;
+        let min_width = icon_rail_width
             + (RECOMMENDED_MIN_CELL_WIDTH * cols as f32)
             + (gap * (cols - 1) as f32);
 
-        let min_height = TITLE_BAR_HEIGHT
-            + TOOLBAR_HEIGHT
+        let min_height = TOP_BAR_HEIGHT
             + (RECOMMENDED_MIN_CELL_HEIGHT * rows as f32)
-            + (gap * (rows - 1) as f32)
-            + STATUS_BAR_HEIGHT;
+            + (gap * (rows - 1) as f32);
 
         (min_width, min_height)
     }
@@ -433,15 +437,15 @@ impl LayoutProfile {
         let (rows, cols) = self.dimensions();
         let gap = 4.0;
 
-        let min_width = SIDEBAR_WIDTH
+        // IconRail (56px) is the minimum left chrome; drawer is optional.
+        let icon_rail_width = 56.0;
+        let min_width = icon_rail_width
             + (ABSOLUTE_MIN_CELL_WIDTH * cols as f32)
             + (gap * (cols - 1) as f32);
 
-        let min_height = TITLE_BAR_HEIGHT
-            + TOOLBAR_HEIGHT
+        let min_height = TOP_BAR_HEIGHT
             + (ABSOLUTE_MIN_CELL_HEIGHT * rows as f32)
-            + (gap * (rows - 1) as f32)
-            + STATUS_BAR_HEIGHT;
+            + (gap * (rows - 1) as f32);
 
         (min_width, min_height)
     }
@@ -1622,14 +1626,15 @@ mod tests {
         // Simulate 3x3 grid on a tight but realistic window
         // Use a window size where 3x3 results in cells below recommended but above absolute
         // Example: 1200×900 window with 3x3 grid
-        let available_height = 900.0 - TITLE_BAR_HEIGHT - TOOLBAR_HEIGHT - STATUS_BAR_HEIGHT;
-        let available_width = 1200.0 - SIDEBAR_WIDTH;
+        // IconRail = 56px, TopBar = 48px
+        let available_height = 900.0 - TOP_BAR_HEIGHT;
+        let available_width = 1200.0 - 56.0; // icon rail
         let bounds = Bounds::from_size(available_width, available_height);
         let layout = GridLayout::from_profile(LayoutProfile::Grid3x3, bounds, 4.0);
 
         let size = layout.cell_size();
 
-        // Calculate expected: (900 - 32 - 48 - 24 - 8) / 3 = 788 / 3 = ~262px height
+        // Calculate expected: (900 - 48 - 8) / 3 = 844 / 3 = ~281px height
         // This is below 300px recommended but above 150px absolute
 
         assert!(
@@ -1646,7 +1651,7 @@ mod tests {
         );
 
         // Width should also be below recommended for this tight scenario
-        // (1200 - 260 - 8) / 3 = 932 / 3 = ~310px width
+        // (1200 - 56 - 8) / 3 = 1136 / 3 = ~378px width
         assert!(
             size.width >= ABSOLUTE_MIN_CELL_WIDTH,
             "Width {} should be >= absolute min {}",
@@ -1691,8 +1696,8 @@ mod tests {
     #[test]
     fn test_cell_size_comfortable_on_large_monitor() {
         // 4K monitor (3840×2160) with 2x2 grid should be very comfortable
-        let _available_height = 2160.0 - TITLE_BAR_HEIGHT - TOOLBAR_HEIGHT - STATUS_BAR_HEIGHT;
-        let available_width = 3840.0 - SIDEBAR_WIDTH;
+        let _available_height = 2160.0 - TOP_BAR_HEIGHT;
+        let available_width = 3840.0 - 56.0; // icon rail
         // Note: Using width for both dimensions to ensure very large cells
         let bounds = Bounds::from_size(available_width, available_width);
         let layout = GridLayout::from_profile(LayoutProfile::Grid2x2, bounds, 4.0);
@@ -1708,42 +1713,40 @@ mod tests {
     fn test_minimum_window_size_uses_absolute() {
         let (width, height) = LayoutProfile::Grid3x3.minimum_window_size();
 
-        // Should use absolute minimums (200×150)
+        // Should use absolute minimums (200×150) with icon rail (56px)
+        let icon_rail_width = 56.0;
         let expected_width =
-            SIDEBAR_WIDTH + (ABSOLUTE_MIN_CELL_WIDTH * 3.0) + (4.0 * 2.0);
-        let expected_height = TITLE_BAR_HEIGHT
-            + TOOLBAR_HEIGHT
+            icon_rail_width + (ABSOLUTE_MIN_CELL_WIDTH * 3.0) + (4.0 * 2.0);
+        let expected_height = TOP_BAR_HEIGHT
             + (ABSOLUTE_MIN_CELL_HEIGHT * 3.0)
-            + (4.0 * 2.0)
-            + STATUS_BAR_HEIGHT;
+            + (4.0 * 2.0);
 
         assert!((width - expected_width).abs() < 0.01);
         assert!((height - expected_height).abs() < 0.01);
 
         // 3x3 at absolute minimum should fit on even small laptops
         assert!(width < 1000.0);
-        assert!(height < 700.0);
+        assert!(height < 600.0);
     }
 
     #[test]
     fn test_recommended_window_size_uses_recommended() {
         let (width, height) = LayoutProfile::Grid3x3.recommended_window_size();
 
-        // Should use recommended minimums (400×300)
+        // Should use recommended minimums (400×300) with icon rail (56px)
+        let icon_rail_width = 56.0;
         let expected_width =
-            SIDEBAR_WIDTH + (RECOMMENDED_MIN_CELL_WIDTH * 3.0) + (4.0 * 2.0);
-        let expected_height = TITLE_BAR_HEIGHT
-            + TOOLBAR_HEIGHT
+            icon_rail_width + (RECOMMENDED_MIN_CELL_WIDTH * 3.0) + (4.0 * 2.0);
+        let expected_height = TOP_BAR_HEIGHT
             + (RECOMMENDED_MIN_CELL_HEIGHT * 3.0)
-            + (4.0 * 2.0)
-            + STATUS_BAR_HEIGHT;
+            + (4.0 * 2.0);
 
         assert!((width - expected_width).abs() < 0.01);
         assert!((height - expected_height).abs() < 0.01);
 
-        // 3x3 at recommended should need ~1500×1100 window
-        assert!(width > 1400.0);
-        assert!(height > 1000.0);
+        // 3x3 at recommended should need ~1264×956 window (smaller than before due to less chrome)
+        assert!(width > 1200.0);
+        assert!(height > 900.0);
     }
 
     #[test]

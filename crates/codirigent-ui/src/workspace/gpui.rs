@@ -116,8 +116,6 @@ pub struct WorkspaceView {
     pub(super) empty_cells: EmptySessionPool,
     /// Terminal headers by session ID.
     pub(super) terminal_headers: Vec<(SessionId, TerminalHeader)>,
-    /// Whether broadcast mode is enabled.
-    pub(super) broadcast_enabled: bool,
     /// Session menu state: which session's menu is open (if any).
     pub(super) session_menu_open: Option<SessionId>,
     /// Session action modal state (rename/group).
@@ -257,7 +255,6 @@ impl WorkspaceView {
             task_board: TaskBoardPanel::new(),
             empty_cells: EmptySessionPool::new(),
             terminal_headers: Vec::new(),
-            broadcast_enabled: false,
             session_menu_open: None,
             session_action_modal: None,
             task_creation_modal: None,
@@ -696,7 +693,6 @@ impl WorkspaceView {
                     self.workspace.set_layout(profile);
                 }
                 crate::top_bar::TopBarEvent::BroadcastToggled(enabled) => {
-                    self.broadcast_enabled = enabled;
                     self.broadcast_bar.set_visible(enabled);
                 }
                 crate::top_bar::TopBarEvent::RightPanelToggled => {
@@ -1025,8 +1021,7 @@ impl WorkspaceView {
     /// Toggle broadcast mode.
     pub fn toggle_broadcast(&mut self, cx: &mut Context<Self>) {
         self.top_bar.toggle_broadcast();
-        self.broadcast_enabled = self.top_bar.is_broadcast_enabled();
-        self.broadcast_bar.set_visible(self.broadcast_enabled);
+        self.broadcast_bar.set_visible(self.top_bar.is_broadcast_enabled());
         cx.notify();
     }
 

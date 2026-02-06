@@ -1,6 +1,7 @@
 //! GPUI rendering components for WorkspaceView.
 //!
-//! This module contains the rendering logic for the workspace sidebar and grid,
+//! This module contains the rendering logic for the workspace grid, top bar,
+//! icon rail, drawer, broadcast bar, and right task board panel,
 //! separated from the main WorkspaceView to keep file sizes manageable.
 
 use super::gpui::WorkspaceView;

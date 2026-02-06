@@ -27,8 +27,7 @@
 //! ```
 
 use crate::layout::{
-    Bounds, FocusDirection, GridLayout, LayoutProfile, LayoutState, Point, TITLE_BAR_HEIGHT,
-    TOOLBAR_HEIGHT, STATUS_BAR_HEIGHT,
+    Bounds, FocusDirection, GridLayout, LayoutProfile, LayoutState, Point, TOP_BAR_HEIGHT,
 };
 use crate::theme::CodirigentTheme;
 use codirigent_core::{Session, SessionId, SessionStatus};
@@ -306,10 +305,9 @@ impl Workspace {
 
     /// Get the bounds available for the grid (excluding sidebar and chrome).
     pub fn grid_bounds(&self) -> Bounds {
-        // Calculate chrome height (title bar + toolbar + task board header + status bar)
-        // Title bar: 32px, Toolbar: 48px, Task board header: 44px, Status bar: 24px (total: 148px)
-        let task_board_collapsed_height = 44.0;
-        let chrome_height = TITLE_BAR_HEIGHT + TOOLBAR_HEIGHT + task_board_collapsed_height + STATUS_BAR_HEIGHT;
+        // Calculate chrome height (top bar only; task board is now a right panel)
+        // Top bar: 48px
+        let chrome_height = TOP_BAR_HEIGHT;
 
         let x = if self.show_sidebar {
             self.sidebar_width
