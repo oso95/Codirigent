@@ -30,7 +30,7 @@ use crate::sidebar::{FileTreeEntryData, FileTreePanel, FileTreeEvent, WorktreePa
 use crate::task_board::TaskBoardPanel;
 use crate::terminal_header::TerminalHeader;
 use crate::theme::CodirigentTheme;
-use crate::toolbar::{SessionsToolbar, ToolbarEvent};
+use crate::toolbar::CustomLayoutPicker;
 // Core imports (combined)
 use codirigent_core::{
     CodirigentEvent, DefaultEventBus, EventBus, GridPosition, ProcessMonitor, Session, SessionId,
@@ -98,8 +98,8 @@ pub struct WorkspaceView {
     terminals: HashMap<SessionId, TerminalView>,
     /// Next session ID counter (kept for UI session tracking).
     next_session_id: u64,
-    /// Sessions toolbar component state.
-    pub(super) toolbar: SessionsToolbar,
+    /// Custom layout picker modal state (extracted from deprecated SessionsToolbar).
+    pub(super) custom_picker: CustomLayoutPicker,
     /// Unified top bar component state.
     pub(super) top_bar: crate::top_bar::TopBar,
     /// Broadcast input bar (below top bar when active).
@@ -201,10 +201,6 @@ impl WorkspaceView {
         })
         .detach();
 
-        // Initialize toolbar with current layout (from feature branch)
-        let mut toolbar = SessionsToolbar::new();
-        toolbar.set_active_layout(workspace.layout_profile());
-
         // Initialize task manager with file storage
         let storage = if let Ok(cwd) = std::env::current_dir() {
             Arc::new(FileStorageService::new(&cwd).unwrap_or_else(|e| {
@@ -252,7 +248,7 @@ impl WorkspaceView {
             task_manager,
             terminals: HashMap::new(),
             next_session_id: 1,
-            toolbar,
+            custom_picker: CustomLayoutPicker::new(),
             top_bar: crate::top_bar::TopBar::new(),
             broadcast_bar: crate::broadcast_bar::BroadcastBar::new(),
             icon_rail: crate::icon_rail::IconRail::new(),
@@ -591,10 +587,8 @@ impl WorkspaceView {
     /// This should be called before rendering to ensure all UI components
     /// reflect the current workspace state.
     fn sync_ui_state(&mut self) {
-        // Update toolbar layout
-        self.toolbar.set_active_layout(self.workspace.layout_profile());
-
         // Update terminal headers from sessions
+        let sessions = self.workspace.sessions();
         let focused_id = self.workspace.focused_session_id();
         for session in sessions {
             if let Some((_, header)) = self.terminal_headers.iter_mut().find(|(id, _)| *id == session.id) {
@@ -680,13 +674,8 @@ impl WorkspaceView {
     /// Process pending events from all UI components.
     ///
     /// This method is called at the start of each render cycle to handle
-    /// any pending events from title bar, toolbar, task board, etc.
+    /// any pending events from task board, empty session cells, etc.
     fn process_ui_events(&mut self, cx: &mut Context<Self>) {
-        // Process toolbar events
-        for event in self.toolbar.take_events() {
-            self.handle_toolbar_event(event, cx);
-        }
-
         // Process task board events
         for event in self.task_board.take_events() {
             self.handle_task_board_event(event, cx);
@@ -769,42 +758,6 @@ impl WorkspaceView {
                 }
             }
         }
-    }
-
-    /// Handle toolbar events.
-    fn handle_toolbar_event(&mut self, event: ToolbarEvent, cx: &mut Context<Self>) {
-        match event {
-            ToolbarEvent::LayoutSelected(profile) => {
-                info!(?profile, "Layout selected via toolbar");
-                self.workspace.set_layout(profile);
-                self.event_bus.publish(CodirigentEvent::LayoutChanged {
-                    mode: profile.to_mode(),
-                });
-            }
-            ToolbarEvent::CustomLayoutRequested { rows, cols } => {
-                info!(rows, cols, "Custom layout requested");
-                let profile = crate::layout::LayoutProfile::Custom { rows, cols };
-                self.workspace.set_layout(profile);
-                self.event_bus.publish(CodirigentEvent::LayoutChanged {
-                    mode: profile.to_mode(),
-                });
-            }
-            ToolbarEvent::BroadcastToggled(enabled) => {
-                info!(enabled, "Broadcast mode toggled");
-                self.broadcast_enabled = enabled;
-            }
-            ToolbarEvent::NewSessionRequested => {
-                info!("New session requested via toolbar");
-                // Session is created in the button click handler
-            }
-            ToolbarEvent::CustomPickerOpened => {
-                info!("Custom layout picker opened");
-            }
-            ToolbarEvent::CustomPickerClosed => {
-                info!("Custom layout picker closed");
-            }
-        }
-        cx.notify();
     }
 
     /// Handle task board events.
@@ -1071,8 +1024,9 @@ impl WorkspaceView {
 
     /// Toggle broadcast mode.
     pub fn toggle_broadcast(&mut self, cx: &mut Context<Self>) {
-        self.toolbar.toggle_broadcast();
-        self.broadcast_enabled = self.toolbar.is_broadcast_enabled();
+        self.top_bar.toggle_broadcast();
+        self.broadcast_enabled = self.top_bar.is_broadcast_enabled();
+        self.broadcast_bar.set_visible(self.broadcast_enabled);
         cx.notify();
     }
 
@@ -1640,20 +1594,20 @@ impl WorkspaceView {
     }
 
     fn handle_custom_layout_key_down(&mut self, event: &KeyDownEvent, cx: &mut Context<Self>) -> bool {
-        if !self.toolbar.custom_picker().is_open {
+        if !self.custom_picker.is_open {
             return false;
         }
 
         let key = event.keystroke.key.to_lowercase();
         match key.as_str() {
             "escape" => {
-                self.toolbar.custom_picker_mut().close();
+                self.custom_picker.close();
                 cx.notify();
                 return true;
             }
             "enter" => {
-                if let Some((rows, cols)) = self.toolbar.custom_picker_mut().validate() {
-                    self.toolbar.custom_picker_mut().close();
+                if let Some((rows, cols)) = self.custom_picker.validate() {
+                    self.custom_picker.close();
                     let profile = crate::layout::LayoutProfile::Custom { rows, cols };
                     self.workspace.set_layout(profile);
                 }
@@ -1661,14 +1615,14 @@ impl WorkspaceView {
                 return true;
             }
             "tab" => {
-                let current = self.toolbar.custom_picker().focused_input().unwrap_or(0);
+                let current = self.custom_picker.focused_input().unwrap_or(0);
                 let next = if current == 0 { 1 } else { 0 };
-                self.toolbar.custom_picker_mut().set_focus(next);
+                self.custom_picker.set_focus(next);
                 cx.notify();
                 return true;
             }
             "backspace" => {
-                self.toolbar.custom_picker_mut().handle_backspace();
+                self.custom_picker.handle_backspace();
                 cx.notify();
                 return true;
             }
@@ -1685,7 +1639,7 @@ impl WorkspaceView {
         if let Some(ref key_char) = event.keystroke.key_char {
             if let Some(ch) = key_char.chars().next() {
                 if ch.is_ascii_digit() {
-                    self.toolbar.custom_picker_mut().handle_char_input(ch);
+                    self.custom_picker.handle_char_input(ch);
                     cx.notify();
                 }
             }

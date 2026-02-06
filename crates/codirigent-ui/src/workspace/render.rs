@@ -1058,123 +1058,6 @@ impl WorkspaceView {
             .into_any_element()
     }
 
-    /// Render the sessions toolbar component.
-    ///
-    /// Returns a GPUI element representing the toolbar with layout tabs,
-    /// broadcast toggle, and new session button.
-    pub(super) fn render_toolbar(&mut self, cx: &mut Context<Self>) -> impl IntoElement {
-        let hints = self.toolbar.render_hints();
-        let theme = self.workspace().theme();
-        let bg: gpui::Hsla = theme.panel_background.into();
-        let border_color: gpui::Hsla = theme.border.into();
-        let fg: gpui::Hsla = theme.foreground.into();
-        let muted: gpui::Hsla = theme.muted.into();
-        let active: gpui::Hsla = theme.active.into();
-        let primary: gpui::Hsla = theme.primary.into();
-
-        let mut bar = div()
-            .id("sessions-toolbar")
-            .h(px(hints.height))
-            .w_full()
-            .bg(bg)
-            .border_b_1()
-            .border_color(border_color)
-            .flex()
-            .items_center()
-            .px_3()
-            .gap_2();
-
-        // Layout tabs
-        let mut tabs = div().flex().gap_1().items_center();
-        for (i, tab) in hints.tabs.iter().enumerate() {
-            let tab_bg = if tab.is_active {
-                active
-            } else {
-                gpui::Hsla::transparent_black()
-            };
-            let tab_color = if tab.is_active { fg } else { muted };
-            let tab_idx = i;
-
-            tabs = tabs.child(
-                div()
-                    .id(SharedString::from(format!("layout-tab-{}", i)))
-                    .px_3()
-                    .py_1()
-                    .rounded_md()
-                    .bg(tab_bg)
-                    .text_xs()
-                    .font_weight(if tab.is_active {
-                        FontWeight::SEMIBOLD
-                    } else {
-                        FontWeight::NORMAL
-                    })
-                    .text_color(tab_color)
-                    .cursor_pointer()
-                    .on_click(cx.listener(move |this, _: &ClickEvent, _window, cx| {
-                        this.toolbar.click_tab(tab_idx);
-                        // Apply the layout change to workspace
-                        if let Some(tab) = this.toolbar.tabs().get(tab_idx) {
-                            this.workspace.set_layout(tab.profile);
-                        }
-                        cx.notify();
-                    }))
-                    .child(tab.label.clone()),
-            );
-        }
-        bar = bar.child(tabs);
-
-        // Spacer
-        bar = bar.child(div().flex_1());
-
-        // Broadcast toggle
-        let broadcast_color = if hints.broadcast_enabled {
-            primary
-        } else {
-            muted
-        };
-        bar = bar.child(
-            div()
-                .id("broadcast-toggle")
-                .px_2()
-                .py_1()
-                .rounded_md()
-                .text_xs()
-                .text_color(broadcast_color)
-                .cursor_pointer()
-                .on_click(cx.listener(|this, _: &ClickEvent, _window, cx| {
-                    this.toolbar.toggle_broadcast();
-                    this.broadcast_enabled = this.toolbar.is_broadcast_enabled();
-                    cx.notify();
-                }))
-                .child(if hints.broadcast_enabled {
-                    "* Broadcast"
-                } else {
-                    "o Broadcast"
-                }),
-        );
-
-        // New session button
-        bar = bar.child(
-            div()
-                .id("new-session-toolbar-btn")
-                .px_3()
-                .py_1()
-                .rounded_md()
-                .bg(primary.opacity(0.1))
-                .text_xs()
-                .text_color(primary)
-                .cursor_pointer()
-                .hover(|style| style.bg(primary.opacity(0.2)))
-                .on_click(cx.listener(|this, _: &ClickEvent, _window, cx| {
-                    this.toolbar.request_new_session();
-                    this.create_session(cx);
-                }))
-                .child("+ New"),
-        );
-
-        bar
-    }
-
     /// Render the unified top bar (replaces separate TitleBar + Toolbar).
     ///
     /// A single 48px bar containing: logo, layout tabs, broadcast toggle,
@@ -2295,7 +2178,7 @@ impl WorkspaceView {
     /// Displays a modal overlay with input fields for rows and columns when the
     /// custom layout picker is open.
     pub(super) fn render_custom_layout_modal(&mut self, cx: &mut Context<Self>) -> Option<impl IntoElement> {
-        let picker = self.toolbar.custom_picker();
+        let picker = &self.custom_picker;
 
         if !picker.is_open {
             return None;
@@ -2335,7 +2218,7 @@ impl WorkspaceView {
                 .justify_center()
                 .bg(gpui::Hsla::black().opacity(0.5))
                 .on_click(cx.listener(|this, _: &ClickEvent, _window, cx| {
-                    this.toolbar.custom_picker_mut().close();
+                    this.custom_picker.close();
                     cx.notify();
                 }))
                 .child(
@@ -2404,7 +2287,7 @@ impl WorkspaceView {
                                               )
                                               .cursor_pointer()
                                               .on_mouse_down(MouseButton::Left, cx.listener(|this, _event, _window, cx| {
-                                                  this.toolbar.custom_picker_mut().set_focus(0);
+                                                  this.custom_picker.set_focus(0);
                                                   cx.notify();
                                               }))
                                           }),
@@ -2438,7 +2321,7 @@ impl WorkspaceView {
                                               )
                                               .cursor_pointer()
                                               .on_mouse_down(MouseButton::Left, cx.listener(|this, _event, _window, cx| {
-                                                  this.toolbar.custom_picker_mut().set_focus(1);
+                                                  this.custom_picker.set_focus(1);
                                                   cx.notify();
                                               }))
                                           }),
@@ -2492,7 +2375,7 @@ impl WorkspaceView {
                                         .cursor_pointer()
                                         .hover(|style| style.bg(border_color.opacity(0.1)))
                                         .on_click(cx.listener(|this, _: &ClickEvent, _window, cx| {
-                                            this.toolbar.custom_picker_mut().close();
+                                            this.custom_picker.close();
                                             cx.notify();
                                         }))
                                         .child("Cancel"),
@@ -2510,8 +2393,8 @@ impl WorkspaceView {
                                         .cursor_pointer()
                                         .hover(|style| style.bg(primary.opacity(0.8)))
                                         .on_click(cx.listener(|this, _: &ClickEvent, _window, cx| {
-                                            if let Some((rows, cols)) = this.toolbar.custom_picker_mut().validate() {
-                                                this.toolbar.custom_picker_mut().close();
+                                            if let Some((rows, cols)) = this.custom_picker.validate() {
+                                                this.custom_picker.close();
                                                 let profile = crate::layout::LayoutProfile::Custom { rows, cols };
                                                 this.workspace.set_layout(profile);
                                                 // Publish event through workspace method
