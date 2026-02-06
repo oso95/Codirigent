@@ -8,8 +8,6 @@ license.workspace = true
 
 [features]
 default = []
-# Git worktree support (Phase 4 feature)
-git-worktree = ["dep:git2"]
 
 [dependencies]
 codirigent-core.workspace = true
@@ -23,8 +21,7 @@ portable-pty.workspace = true
 dirs.workspace = true
 chrono.workspace = true
 
-# Optional: Git worktree support
-git2 = { workspace = true, optional = true }
+git2.workspace = true
 
 [dev-dependencies]
 tempfile.workspace = true

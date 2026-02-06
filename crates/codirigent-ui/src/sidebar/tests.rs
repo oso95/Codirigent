@@ -14,6 +14,7 @@ fn create_test_session(id: u64, name: &str, status: SessionStatus) -> Session {
         created_at: chrono::Utc::now(),
         group: None,
         color: None,
+        git_info: None,
     }
 }
 
@@ -34,6 +35,7 @@ fn create_grouped_session(
         created_at: chrono::Utc::now(),
         group: Some(group.to_string()),
         color: Some(color.to_string()),
+        git_info: None,
     }
 }
 
@@ -430,6 +432,7 @@ fn create_session_with_context(
         created_at: chrono::Utc::now(),
         group: None,
         color: None,
+        git_info: None,
     }
 }
 
@@ -450,6 +453,7 @@ fn create_session_with_task(
         created_at: chrono::Utc::now(),
         group: None,
         color: None,
+        git_info: None,
     }
 }
 

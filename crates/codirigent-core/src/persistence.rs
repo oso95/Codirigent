@@ -165,6 +165,7 @@ impl PersistentSession {
             created_at: self.started_at,
             group: self.group.clone(),
             color: self.color.clone(),
+            git_info: None, // Re-detected on restore
         }
     }
 

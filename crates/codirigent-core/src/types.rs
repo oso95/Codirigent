@@ -245,6 +245,42 @@ impl Default for LayoutMode {
     }
 }
 
+/// Git repository information for a session's working directory.
+///
+/// Contains branch name, dirty file count, staged status, and HEAD SHA.
+/// Populated by the git status service when the session's working directory
+/// is inside a git repository.
+///
+/// # Example
+///
+/// ```
+/// use codirigent_core::GitRepoInfo;
+/// use std::path::PathBuf;
+///
+/// let info = GitRepoInfo {
+///     repo_root: PathBuf::from("/home/user/project"),
+///     branch: "main".to_string(),
+///     dirty_count: 3,
+///     has_staged: true,
+///     head_sha: Some("abc12345".to_string()),
+/// };
+/// assert_eq!(info.branch, "main");
+/// assert_eq!(info.dirty_count, 3);
+/// ```
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub struct GitRepoInfo {
+    /// Absolute path to the git repository root.
+    pub repo_root: PathBuf,
+    /// Current branch name (or "HEAD detached" if detached).
+    pub branch: String,
+    /// Number of modified + untracked files.
+    pub dirty_count: usize,
+    /// Whether there are any staged changes.
+    pub has_staged: bool,
+    /// Short HEAD SHA (8 characters), if available.
+    pub head_sha: Option<String>,
+}
+
 /// Session metadata and state.
 ///
 /// This is the persistent representation of a session,
@@ -269,6 +305,8 @@ pub struct Session {
     pub group: Option<String>,
     /// Group color for visual identification.
     pub color: Option<String>,
+    /// Git repository information (branch, dirty count, etc.).
+    pub git_info: Option<GitRepoInfo>,
 }
 
 impl Session {
@@ -284,6 +322,7 @@ impl Session {
             created_at: chrono::Utc::now(),
             group: None,
             color: None,
+            git_info: None,
         }
     }
 }
@@ -1511,6 +1550,83 @@ mod tests {
             parsed.layout,
             LayoutMode::Grid { rows: 1, cols: 2 }
         ));
+    }
+
+    // GitRepoInfo tests
+    #[test]
+    fn test_git_repo_info_creation() {
+        let info = GitRepoInfo {
+            repo_root: PathBuf::from("/home/user/project"),
+            branch: "main".to_string(),
+            dirty_count: 3,
+            has_staged: true,
+            head_sha: Some("abc12345".to_string()),
+        };
+        assert_eq!(info.branch, "main");
+        assert_eq!(info.dirty_count, 3);
+        assert!(info.has_staged);
+        assert_eq!(info.head_sha, Some("abc12345".to_string()));
+    }
+
+    #[test]
+    fn test_git_repo_info_serialization() {
+        let info = GitRepoInfo {
+            repo_root: PathBuf::from("/repo"),
+            branch: "feature/test".to_string(),
+            dirty_count: 0,
+            has_staged: false,
+            head_sha: None,
+        };
+        let json = serde_json::to_string(&info).unwrap();
+        let parsed: GitRepoInfo = serde_json::from_str(&json).unwrap();
+        assert_eq!(info, parsed);
+    }
+
+    #[test]
+    fn test_git_repo_info_equality() {
+        let info1 = GitRepoInfo {
+            repo_root: PathBuf::from("/repo"),
+            branch: "main".to_string(),
+            dirty_count: 0,
+            has_staged: false,
+            head_sha: None,
+        };
+        let info2 = info1.clone();
+        assert_eq!(info1, info2);
+
+        let info3 = GitRepoInfo {
+            repo_root: PathBuf::from("/repo"),
+            branch: "develop".to_string(),
+            dirty_count: 0,
+            has_staged: false,
+            head_sha: None,
+        };
+        assert_ne!(info1, info3);
+    }
+
+    #[test]
+    fn test_session_with_git_info() {
+        let mut session = Session::new(
+            SessionId(1),
+            "Git Session".to_string(),
+            PathBuf::from("/project"),
+        );
+        assert!(session.git_info.is_none());
+
+        session.git_info = Some(GitRepoInfo {
+            repo_root: PathBuf::from("/project"),
+            branch: "main".to_string(),
+            dirty_count: 2,
+            has_staged: true,
+            head_sha: Some("deadbeef".to_string()),
+        });
+
+        let json = serde_json::to_string(&session).unwrap();
+        let parsed: Session = serde_json::from_str(&json).unwrap();
+        assert!(parsed.git_info.is_some());
+        let gi = parsed.git_info.unwrap();
+        assert_eq!(gi.branch, "main");
+        assert_eq!(gi.dirty_count, 2);
     }
 
     // Worktree tests

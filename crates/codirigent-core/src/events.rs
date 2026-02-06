@@ -466,6 +466,15 @@ pub enum CodirigentEvent {
         task_number: Option<u32>,
     },
 
+    // === Git Status Events ===
+    /// Git status was updated for a session.
+    GitStatusUpdated {
+        /// The session ID.
+        session_id: SessionId,
+        /// Updated git info (None if not in a git repo).
+        git_info: Option<crate::types::GitRepoInfo>,
+    },
+
     // === Clipboard Events ===
     /// Clipboard content was detected.
     ClipboardContentDetected {
@@ -1234,6 +1243,21 @@ mod tests {
                 success_count: 2,
                 failure_count: 1,
             },
+            // Git status events
+            CodirigentEvent::GitStatusUpdated {
+                session_id: SessionId(1),
+                git_info: Some(crate::types::GitRepoInfo {
+                    repo_root: PathBuf::from("/repo"),
+                    branch: "main".to_string(),
+                    dirty_count: 0,
+                    has_staged: false,
+                    head_sha: Some("abc12345".to_string()),
+                }),
+            },
+            CodirigentEvent::GitStatusUpdated {
+                session_id: SessionId(2),
+                git_info: None,
+            },
             // Clipboard events
             CodirigentEvent::ClipboardContentDetected {
                 content_type: ClipboardContentType::Text,
@@ -1607,6 +1631,55 @@ mod tests {
 
         for event in events {
             let _ = event.clone();
+        }
+    }
+
+    // === Git Status Event Tests ===
+
+    #[test]
+    fn test_git_status_updated_event_with_info() {
+        let git_info = crate::types::GitRepoInfo {
+            repo_root: PathBuf::from("/home/user/project"),
+            branch: "feature-branch".to_string(),
+            dirty_count: 5,
+            has_staged: true,
+            head_sha: Some("abc12345".to_string()),
+        };
+        let event = CodirigentEvent::GitStatusUpdated {
+            session_id: SessionId(1),
+            git_info: Some(git_info),
+        };
+        if let CodirigentEvent::GitStatusUpdated {
+            session_id,
+            git_info,
+        } = event
+        {
+            assert_eq!(session_id, SessionId(1));
+            let info = git_info.unwrap();
+            assert_eq!(info.branch, "feature-branch");
+            assert_eq!(info.dirty_count, 5);
+            assert!(info.has_staged);
+            assert_eq!(info.head_sha, Some("abc12345".to_string()));
+        } else {
+            panic!("Wrong event type");
+        }
+    }
+
+    #[test]
+    fn test_git_status_updated_event_none() {
+        let event = CodirigentEvent::GitStatusUpdated {
+            session_id: SessionId(1),
+            git_info: None,
+        };
+        if let CodirigentEvent::GitStatusUpdated {
+            session_id,
+            git_info,
+        } = event
+        {
+            assert_eq!(session_id, SessionId(1));
+            assert!(git_info.is_none());
+        } else {
+            panic!("Wrong event type");
         }
     }
 

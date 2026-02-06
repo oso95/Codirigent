@@ -3,16 +3,18 @@
 //! This module provides the default implementation of the [`SessionManager`]
 //! trait, managing session lifecycle, PTY I/O, and event publishing.
 
+use crate::git_status::GitStatusService;
 use crate::pty::{spawn_output_reader, PtyHandle};
 use crate::session::SessionState;
 use anyhow::{anyhow, Context, Result};
 use codirigent_core::{
-    CodirigentEvent, EventBus, Session, SessionId, SessionManager, SessionStatus,
+    CodirigentEvent, EventBus, GitRepoInfo, Session, SessionId, SessionManager, SessionStatus,
 };
 use std::collections::HashMap;
 use std::path::PathBuf;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Arc, Mutex, MutexGuard};
+use std::time::Duration;
 use tracing::{debug, info, warn};
 
 /// Default terminal height in rows.
@@ -53,6 +55,8 @@ pub struct DefaultSessionManager {
     next_id: AtomicU64,
     /// Event bus for publishing session events.
     event_bus: Arc<dyn EventBus>,
+    /// Git status detection service.
+    git_status: Mutex<GitStatusService>,
 }
 
 impl DefaultSessionManager {
@@ -66,6 +70,7 @@ impl DefaultSessionManager {
             sessions: Mutex::new(HashMap::new()),
             next_id: AtomicU64::new(1),
             event_bus,
+            git_status: Mutex::new(GitStatusService::new()),
         }
     }
 
@@ -179,6 +184,34 @@ impl DefaultSessionManager {
     pub fn get_child_pid(&self, id: SessionId) -> Option<u32> {
         self.lock_sessions().get(&id).map(|s| s.child_pid())
     }
+
+    /// Refresh git status for a session.
+    ///
+    /// Detects or refreshes git repository information for the session's
+    /// working directory. Uses cached results within the 3-second TTL.
+    ///
+    /// Returns the updated git info, or None if the session doesn't exist
+    /// or isn't in a git repository.
+    pub fn refresh_git_status(&self, id: SessionId) -> Option<GitRepoInfo> {
+        let working_dir = {
+            let sessions = self.lock_sessions();
+            sessions.get(&id)?.session.working_directory.clone()
+        };
+
+        let info = self
+            .git_status
+            .lock()
+            .unwrap_or_else(|p| p.into_inner())
+            .detect_cached(&working_dir, Duration::from_secs(3));
+
+        // Update session
+        let mut sessions = self.lock_sessions();
+        if let Some(state) = sessions.get_mut(&id) {
+            state.session.git_info = info.clone();
+        }
+
+        info
+    }
 }
 
 impl SessionManager for DefaultSessionManager {
@@ -224,7 +257,14 @@ impl SessionManager for DefaultSessionManager {
         let output_rx = spawn_output_reader(reader);
 
         // Create session metadata
-        let session = Session::new(id, name, working_dir);
+        let mut session = Session::new(id, name, working_dir.clone());
+
+        // Detect git info for the working directory
+        session.git_info = self
+            .git_status
+            .lock()
+            .unwrap_or_else(|p| p.into_inner())
+            .detect(&working_dir);
 
         // Create session state
         let state = SessionState::new(session, pty, output_rx);

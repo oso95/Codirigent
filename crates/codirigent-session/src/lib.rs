@@ -48,14 +48,12 @@
 pub mod broadcast_service;
 pub mod cli_detector;
 pub mod clipboard_service;
+pub mod git_status;
 pub mod manager;
 pub mod pty;
 pub mod ralph_controller;
 pub mod session;
 pub mod skill_manager;
-
-// Git worktree support (Phase 4 feature)
-#[cfg(feature = "git-worktree")]
 pub mod worktree;
 
 pub use broadcast_service::DefaultBroadcastService;
@@ -66,7 +64,5 @@ pub use pty::{spawn_output_reader, OutputReader, PtyHandle, PtySize};
 pub use ralph_controller::{DefaultRalphLoopController, LoopStats};
 pub use session::SessionState;
 pub use skill_manager::DefaultSkillManager;
-
-// Re-export worktree when feature is enabled
-#[cfg(feature = "git-worktree")]
+pub use git_status::GitStatusService;
 pub use worktree::WorktreeManager;

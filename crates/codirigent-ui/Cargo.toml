@@ -16,7 +16,7 @@ terminal = ["dep:alacritty_terminal"]
 
 [dependencies]
 codirigent-core.workspace = true
-codirigent-session = { workspace = true, features = ["git-worktree"] }
+codirigent-session.workspace = true
 codirigent-detector.workspace = true
 codirigent-filetree.workspace = true
 anyhow.workspace = true

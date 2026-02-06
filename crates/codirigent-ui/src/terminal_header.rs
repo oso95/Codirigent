@@ -31,6 +31,10 @@ pub struct TerminalHeader {
     pub is_waiting_for_input: bool,
     /// AI-generated summary of current activity.
     pub ai_summary: Option<String>,
+    /// Git branch name (if in a git repo).
+    pub git_branch: Option<String>,
+    /// Git dirty file count (if in a git repo).
+    pub git_dirty_count: Option<usize>,
 }
 
 impl Default for TerminalHeader {
@@ -46,6 +50,8 @@ impl Default for TerminalHeader {
             cli_name: None,
             is_waiting_for_input: false,
             ai_summary: None,
+            git_branch: None,
+            git_dirty_count: None,
         }
     }
 }
@@ -99,6 +105,13 @@ impl TerminalHeader {
     /// Set the AI summary.
     pub fn with_ai_summary(mut self, summary: impl Into<String>) -> Self {
         self.ai_summary = Some(summary.into());
+        self
+    }
+
+    /// Set git branch and dirty count info.
+    pub fn with_git_info(mut self, branch: String, dirty: usize) -> Self {
+        self.git_branch = Some(branch);
+        self.git_dirty_count = Some(dirty);
         self
     }
 
@@ -309,6 +322,10 @@ pub struct TerminalHeaderRenderHints {
     pub is_waiting_for_input: bool,
     /// AI-generated summary.
     pub ai_summary: Option<String>,
+    /// Git branch name.
+    pub git_branch: Option<String>,
+    /// Git dirty file count.
+    pub git_dirty_count: Option<usize>,
 }
 
 impl TerminalHeader {
@@ -329,6 +346,8 @@ impl TerminalHeader {
             cli_name: self.cli_name.clone(),
             is_waiting_for_input: self.is_waiting_for_input,
             ai_summary: self.ai_summary.clone(),
+            git_branch: self.git_branch.clone(),
+            git_dirty_count: self.git_dirty_count,
         }
     }
 }
