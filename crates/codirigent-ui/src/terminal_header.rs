@@ -23,17 +23,29 @@ pub struct TerminalHeader {
     pub context_usage: Option<f32>,
     /// Whether this terminal is focused.
     pub is_focused: bool,
+    /// Project/repository name (e.g., "backend-repo").
+    pub project_name: Option<String>,
+    /// CLI engine name (e.g., "Claude", "Gemini 2.0").
+    pub cli_name: Option<String>,
+    /// Whether the session is waiting for user input.
+    pub is_waiting_for_input: bool,
+    /// AI-generated summary of current activity.
+    pub ai_summary: Option<String>,
 }
 
 impl Default for TerminalHeader {
     fn default() -> Self {
         Self {
             session_name: "Session".to_string(),
-            session_color: Color::from_hex("#4ECDC4"),
+            session_color: Color::from_hex("#6366f1"),
             status: SessionStatus::Idle,
             task: None,
             context_usage: None,
             is_focused: false,
+            project_name: None,
+            cli_name: None,
+            is_waiting_for_input: false,
+            ai_summary: None,
         }
     }
 }
@@ -72,6 +84,29 @@ impl TerminalHeader {
         self
     }
 
+    /// Set the project name.
+    pub fn with_project_name(mut self, name: impl Into<String>) -> Self {
+        self.project_name = Some(name.into());
+        self
+    }
+
+    /// Set the CLI engine name.
+    pub fn with_cli_name(mut self, name: impl Into<String>) -> Self {
+        self.cli_name = Some(name.into());
+        self
+    }
+
+    /// Set the AI summary.
+    pub fn with_ai_summary(mut self, summary: impl Into<String>) -> Self {
+        self.ai_summary = Some(summary.into());
+        self
+    }
+
+    /// Set whether waiting for input.
+    pub fn set_waiting_for_input(&mut self, waiting: bool) {
+        self.is_waiting_for_input = waiting;
+    }
+
     /// Get the status indicator info.
     pub fn status_indicator(&self) -> StatusIndicator {
         StatusIndicator::for_status(self.status)
@@ -105,27 +140,27 @@ impl StatusIndicator {
         match status {
             SessionStatus::Idle => Self {
                 text: "Idle",
-                color: Color::from_hex("#666666"),
+                color: Color::from_hex("#52525b"),
                 animated: false,
             },
             SessionStatus::Working => Self {
                 text: "Working",
-                color: Color::from_hex("#4ECDC4"),
+                color: Color::from_hex("#f59e0b"),
                 animated: true,
             },
             SessionStatus::WaitingForInput => Self {
                 text: "Waiting",
-                color: Color::from_hex("#FF6B6B"),
+                color: Color::from_hex("#f43f5e"),
                 animated: true,
             },
             SessionStatus::Done => Self {
                 text: "Done",
-                color: Color::from_hex("#4ECDC4"),
+                color: Color::from_hex("#10b981"),
                 animated: false,
             },
             SessionStatus::Error => Self {
                 text: "Error",
-                color: Color::from_hex("#FF6B6B"),
+                color: Color::from_hex("#ef4444"),
                 animated: false,
             },
         }
@@ -266,6 +301,14 @@ pub struct TerminalHeaderRenderHints {
     pub is_focused: bool,
     /// Header height in pixels.
     pub height: f32,
+    /// Project/repository name.
+    pub project_name: Option<String>,
+    /// CLI engine name.
+    pub cli_name: Option<String>,
+    /// Whether waiting for user input.
+    pub is_waiting_for_input: bool,
+    /// AI-generated summary.
+    pub ai_summary: Option<String>,
 }
 
 impl TerminalHeader {
@@ -282,6 +325,10 @@ impl TerminalHeader {
             context: self.context_display(),
             is_focused: self.is_focused,
             height: Self::DEFAULT_HEIGHT,
+            project_name: self.project_name.clone(),
+            cli_name: self.cli_name.clone(),
+            is_waiting_for_input: self.is_waiting_for_input,
+            ai_summary: self.ai_summary.clone(),
         }
     }
 }
@@ -490,5 +537,60 @@ mod tests {
         let badge = header.task_badge();
         assert!(badge.is_some());
         assert_eq!(badge.unwrap().text, "Testing");
+    }
+
+    #[test]
+    fn test_terminal_header_project_name() {
+        let header = TerminalHeader::new("S1", SessionStatus::Working)
+            .with_project_name("backend-repo");
+        assert_eq!(header.project_name, Some("backend-repo".to_string()));
+        let hints = header.render_hints();
+        assert_eq!(hints.project_name, Some("backend-repo".to_string()));
+    }
+
+    #[test]
+    fn test_terminal_header_cli_name() {
+        let header = TerminalHeader::new("S1", SessionStatus::Working)
+            .with_cli_name("Gemini 2.0");
+        assert_eq!(header.cli_name, Some("Gemini 2.0".to_string()));
+    }
+
+    #[test]
+    fn test_terminal_header_ai_summary() {
+        let header = TerminalHeader::new("S1", SessionStatus::Working)
+            .with_ai_summary("Implementing JWT service");
+        assert_eq!(
+            header.ai_summary,
+            Some("Implementing JWT service".to_string())
+        );
+    }
+
+    #[test]
+    fn test_terminal_header_waiting_for_input() {
+        let mut header = TerminalHeader::new("S1", SessionStatus::WaitingForInput);
+        assert!(!header.is_waiting_for_input);
+        header.set_waiting_for_input(true);
+        assert!(header.is_waiting_for_input);
+        let hints = header.render_hints();
+        assert!(hints.is_waiting_for_input);
+    }
+
+    #[test]
+    fn test_terminal_header_full_builder() {
+        let header = TerminalHeader::new("Auth Refactor", SessionStatus::Working)
+            .with_color(Color::from_hex("#6366f1"))
+            .with_task("Refactor auth module")
+            .with_context_usage(0.72)
+            .with_focused(true)
+            .with_project_name("backend-repo")
+            .with_cli_name("Gemini 2.0")
+            .with_ai_summary("Implementing JWT...");
+
+        let hints = header.render_hints();
+        assert_eq!(hints.name, "Auth Refactor");
+        assert_eq!(hints.project_name, Some("backend-repo".to_string()));
+        assert_eq!(hints.cli_name, Some("Gemini 2.0".to_string()));
+        assert_eq!(hints.ai_summary, Some("Implementing JWT...".to_string()));
+        assert!(hints.is_focused);
     }
 }
