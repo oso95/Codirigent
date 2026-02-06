@@ -77,6 +77,17 @@ impl WorkspaceView {
 
     /// Render a Lucide icon inside a fixed square to keep visual alignment stable with text.
     fn centered_lucide_icon(&self, icon: String, color: gpui::Hsla, size: f32) -> impl IntoElement {
+        self.centered_lucide_icon_with_offset(icon, color, size, 1.0)
+    }
+
+    /// Render a Lucide icon in a fixed square with a subtle vertical offset for text-row alignment.
+    fn centered_lucide_icon_with_offset(
+        &self,
+        icon: String,
+        color: gpui::Hsla,
+        size: f32,
+        y_offset: f32,
+    ) -> impl IntoElement {
         div()
             .w(px(size + 2.0))
             .h(px(size + 2.0))
@@ -86,6 +97,7 @@ impl WorkspaceView {
             .flex_shrink_0()
             .child(
                 div()
+                    .pt(px(y_offset))
                     .text_size(px(size))
                     .text_color(color)
                     .font_family(icons::LUCIDE_FONT_FAMILY)
@@ -949,8 +961,9 @@ impl WorkspaceView {
         let profile = self.workspace().layout_profile();
         let (rows, cols) = profile.dimensions();
 
-        // Get grid layout to calculate cell bounds (used for terminal sizing hints)
+        // Get cell height from grid layout (height is calculated from available vertical space)
         let layout = self.grid_layout_with_task_board();
+        let cell_height = layout.cell_size().height;
 
         let mut grid = div()
             .flex_1()
@@ -968,9 +981,6 @@ impl WorkspaceView {
             for col in 0..cols {
                 let index = (row * cols + col) as usize;
                 let position = codirigent_core::GridPosition { row, col };
-
-                // Calculate cell bounds from layout (used for terminal sizing hints)
-                let cell_bounds = layout.cell_bounds(row, col);
 
                 let cell_div = if let Some(info) = cells.get(index) {
                     // Session cell with terminal header
@@ -998,11 +1008,12 @@ impl WorkspaceView {
                         cell_border,
                         border_color,
                         &theme,
+                        cell_height,
                         cx,
                     )
                 } else {
                     // Empty cell - render inline
-                    self.render_empty_cell_inline_with_colors(position, panel_bg, border_color, muted, cx)
+                    self.render_empty_cell_inline_with_colors(position, panel_bg, border_color, muted, cell_height, cx)
                 };
 
                 // Let flex distribute equal widths; use size_full so
@@ -1030,8 +1041,10 @@ impl WorkspaceView {
         cell_border: gpui::Hsla,
         border_color: gpui::Hsla,
         theme: &CodirigentTheme,
+        cell_height: f32,
         cx: &mut Context<Self>,
     ) -> gpui::Stateful<gpui::Div> {
+        const HEADER_HEIGHT: f32 = 32.0;
         let fg: gpui::Hsla = theme.foreground.into();
 
         let header_border = if hints.is_focused {
@@ -1114,9 +1127,12 @@ impl WorkspaceView {
         // mutable borrow on `self` is released before `cx.listener()`.
         let terminal_content = self.render_terminal_content(session_id, theme);
 
+        let terminal_height = cell_height - HEADER_HEIGHT;
+
         div()
             .id(SharedString::from(format!("session-cell-{}", session_id.0)))
-            .size_full()
+            .w_full()
+            .h(px(cell_height))
             .bg(panel_bg)
             .border_1()
             .border_color(cell_border)
@@ -1133,7 +1149,7 @@ impl WorkspaceView {
             .child(
                 div()
                     .w_full()
-                    .flex_1()
+                    .h(px(terminal_height))
                     .overflow_hidden()
                     .on_scroll_wheel(cx.listener(move |this, event: &ScrollWheelEvent, _window, cx| {
                         if let Some(tv) = this.terminals_mut().get_mut(&session_id) {
@@ -1257,11 +1273,13 @@ impl WorkspaceView {
         panel_bg: gpui::Hsla,
         border_color: gpui::Hsla,
         muted: gpui::Hsla,
+        cell_height: f32,
         cx: &mut Context<Self>,
     ) -> gpui::Stateful<gpui::Div> {
         div()
             .id(SharedString::from(format!("empty-cell-{}-{}", position.row, position.col)))
-            .size_full()
+            .w_full()
+            .h(px(cell_height))
             .bg(panel_bg)
             .border_1()
             .border_color(border_color)
@@ -1299,16 +1317,15 @@ impl WorkspaceView {
         position: codirigent_core::GridPosition,
         cx: &mut Context<Self>,
     ) -> gpui::Stateful<gpui::Div> {
-        let theme = self.workspace().theme();
+        let theme = self.workspace().theme().clone();
         let panel_bg: gpui::Hsla = theme.panel_background.into();
         let border_color: gpui::Hsla = theme.border.into();
         let muted: gpui::Hsla = theme.muted.into();
 
-        // Calculate cell bounds from grid layout (accounting for task board height)
         let layout = self.grid_layout_with_task_board();
-        let cell_bounds = layout.cell_bounds(position.row, position.col);
+        let cell_height = layout.cell_size().height;
 
-        self.render_empty_cell_inline_with_colors(position, panel_bg, border_color, muted, cell_bounds, cx)
+        self.render_empty_cell_inline_with_colors(position, panel_bg, border_color, muted, cell_height, cx)
     }
 
     /// Render the custom layout picker modal.
@@ -1949,7 +1966,7 @@ impl WorkspaceView {
                                             this.handle_worktree_event(crate::sidebar::WorktreeEvent::CancelCreate, cx);
                                         }))
                                         .child(div().flex().items_center().gap_1()
-                                            .child(div().text_xs().font_family(icons::LUCIDE_FONT_FAMILY).child(icons::x()))
+                                            .child(self.centered_lucide_icon(icons::x(), fg, 12.0))
                                             .child("Cancel")),
                                 )
                                 // Create button
@@ -1980,7 +1997,7 @@ impl WorkspaceView {
                                                 }))
                                         })
                                         .child(div().flex().items_center().gap_1()
-                                            .child(div().text_xs().font_family(icons::LUCIDE_FONT_FAMILY).child(icons::plus()))
+                                            .child(self.centered_lucide_icon(icons::plus(), gpui::Hsla::white(), 12.0))
                                             .child("Create")),
                                 ),
                         ),
@@ -3178,6 +3195,9 @@ impl WorkspaceView {
         let muted: gpui::Hsla = theme.muted.into();
         let primary: gpui::Hsla = theme.primary.into();
         let active_bg: gpui::Hsla = theme.active.into();
+        let panel_label_size = 11.0;
+        let panel_label_row_height = 14.0;
+        let panel_icon_y_offset = 1.0;
 
         div()
             .id("right-task-board")
@@ -3202,8 +3222,20 @@ impl WorkspaceView {
                     .px_4()
                     .child(
                         div().flex().items_center().gap_2()
-                            .child(self.centered_lucide_icon(icons::list_todo(), muted, 12.0))
-                            .child(div().text_xs().font_weight(FontWeight::BOLD).text_color(muted).child("TASKS")),
+                            .child(self.centered_lucide_icon_with_offset(icons::list_todo(), muted, panel_label_size, panel_icon_y_offset))
+                            .child(
+                                div()
+                                    .h(px(panel_label_row_height))
+                                    .flex()
+                                    .items_center()
+                                    .child(
+                                        div()
+                                            .text_size(px(panel_label_size))
+                                            .font_weight(FontWeight::BOLD)
+                                            .text_color(muted)
+                                            .child("TASKS"),
+                                    ),
+                            ),
                     )
                     .child(
                         div().flex().items_center().gap(px(6.0))
@@ -3214,7 +3246,18 @@ impl WorkspaceView {
                             .border_1()
                             .border_color(primary.opacity(0.2))
                             .child(div().w(px(6.0)).h(px(6.0)).rounded_full().bg(primary))
-                            .child(div().text_color(primary.opacity(0.8)).text_xs().child("Auto")),
+                            .child(
+                                div()
+                                    .h(px(panel_label_row_height))
+                                    .flex()
+                                    .items_center()
+                                    .child(
+                                        div()
+                                            .text_size(px(panel_label_size))
+                                            .text_color(primary.opacity(0.8))
+                                            .child("Auto"),
+                                    ),
+                            ),
                     ),
             )
             // Scrollable content - Running + Queue sections
@@ -3232,8 +3275,20 @@ impl WorkspaceView {
                             .child(
                                 div().flex().justify_between().items_center().mb_2()
                                     .child(div().flex().items_center().gap_1()
-                                        .child(self.centered_lucide_icon(icons::play(), muted, 12.0))
-                                        .child(div().text_xs().font_weight(FontWeight::BOLD).text_color(muted).child("RUNNING")))
+                                        .child(self.centered_lucide_icon_with_offset(icons::play(), muted, panel_label_size, panel_icon_y_offset))
+                                        .child(
+                                            div()
+                                                .h(px(panel_label_row_height))
+                                                .flex()
+                                                .items_center()
+                                                .child(
+                                                    div()
+                                                        .text_size(px(panel_label_size))
+                                                        .font_weight(FontWeight::BOLD)
+                                                        .text_color(muted)
+                                                        .child("RUNNING"),
+                                                ),
+                                        ))
                                     .child(div().px(px(6.0)).rounded_full().bg(active_bg)
                                         .child(div().text_xs().text_color(muted).child("0"))),
                             )
@@ -3247,8 +3302,20 @@ impl WorkspaceView {
                             .child(
                                 div().flex().justify_between().items_center().mb_2()
                                     .child(div().flex().items_center().gap_1()
-                                        .child(self.centered_lucide_icon(icons::clock(), muted, 12.0))
-                                        .child(div().text_xs().font_weight(FontWeight::BOLD).text_color(muted).child("QUEUE")))
+                                        .child(self.centered_lucide_icon_with_offset(icons::clock(), muted, panel_label_size, panel_icon_y_offset))
+                                        .child(
+                                            div()
+                                                .h(px(panel_label_row_height))
+                                                .flex()
+                                                .items_center()
+                                                .child(
+                                                    div()
+                                                        .text_size(px(panel_label_size))
+                                                        .font_weight(FontWeight::BOLD)
+                                                        .text_color(muted)
+                                                        .child("QUEUE"),
+                                                ),
+                                        ))
                                     .child(div().px(px(6.0)).rounded_full().bg(active_bg)
                                         .child(div().text_xs().text_color(muted).child("0"))),
                             )
@@ -3277,8 +3344,20 @@ impl WorkspaceView {
                             .cursor_pointer()
                             .child(
                                 div().flex().items_center().gap_1()
-                                    .child(self.centered_lucide_icon(icons::plus(), fg, 12.0))
-                                    .child(div().text_xs().font_weight(FontWeight::MEDIUM).text_color(fg).child("Add Task")),
+                                    .child(self.centered_lucide_icon_with_offset(icons::plus(), fg, panel_label_size, panel_icon_y_offset))
+                                    .child(
+                                        div()
+                                            .h(px(panel_label_row_height))
+                                            .flex()
+                                            .items_center()
+                                            .child(
+                                                div()
+                                                    .text_size(px(panel_label_size))
+                                                    .font_weight(FontWeight::MEDIUM)
+                                                    .text_color(fg)
+                                                    .child("Add Task"),
+                                            ),
+                                    ),
                             ),
                     ),
             )
