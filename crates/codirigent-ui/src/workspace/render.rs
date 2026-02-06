@@ -1473,6 +1473,201 @@ impl WorkspaceView {
         bar
     }
 
+    /// Render the unified top bar (replaces separate TitleBar + Toolbar).
+    ///
+    /// A single 48px bar containing: logo, layout tabs, broadcast toggle,
+    /// token counter, right-panel toggle, and window controls.
+    pub(super) fn render_top_bar(&mut self, cx: &mut Context<Self>) -> impl IntoElement {
+        let theme = self.workspace().theme();
+        let bg: gpui::Hsla = theme.header_background.into();
+        let border_color: gpui::Hsla = theme.border.into();
+        let fg: gpui::Hsla = theme.foreground.into();
+        let muted: gpui::Hsla = theme.muted.into();
+        let active: gpui::Hsla = theme.active.into();
+        let primary: gpui::Hsla = theme.primary.into();
+
+        // Clone tab data and state before building the element tree
+        let tabs: Vec<(usize, String, bool)> = self
+            .top_bar
+            .tabs()
+            .iter()
+            .enumerate()
+            .map(|(i, t)| (i, t.label.clone(), t.is_active))
+            .collect();
+        let broadcast_enabled = self.top_bar.is_broadcast_enabled();
+        let token_count = self.top_bar.token_count().to_string();
+        let right_panel_open = self.top_bar.is_right_panel_open();
+
+        let mut bar = div()
+            .id("top-bar")
+            .h(px(crate::top_bar::TopBar::HEIGHT))
+            .w_full()
+            .bg(bg)
+            .border_b_1()
+            .border_color(border_color)
+            .flex()
+            .items_center()
+            .px_3()
+            .gap_2();
+
+        // --- Left section ---
+
+        // Logo icon (small 3x3 grid)
+        bar = bar.child(
+            div()
+                .flex_shrink_0()
+                .child(self.render_logo_small()),
+        );
+
+        // Logo text
+        bar = bar.child(
+            div()
+                .text_sm()
+                .font_weight(FontWeight::BOLD)
+                .text_color(fg)
+                .mr_2()
+                .child(crate::top_bar::TopBar::LOGO_TEXT),
+        );
+
+        // Vertical divider
+        bar = bar.child(
+            div()
+                .w(px(1.0))
+                .h(px(20.0))
+                .bg(border_color)
+                .mx_1(),
+        );
+
+        // Layout tab pills
+        let mut tab_row = div().flex().gap_1().items_center();
+        for (idx, label, is_active) in &tabs {
+            let tab_bg = if *is_active {
+                active
+            } else {
+                gpui::Hsla::transparent_black()
+            };
+            let tab_color = if *is_active { fg } else { muted };
+            let tab_idx = *idx;
+
+            tab_row = tab_row.child(
+                div()
+                    .id(SharedString::from(format!("top-bar-tab-{}", tab_idx)))
+                    .px_3()
+                    .py_1()
+                    .rounded_md()
+                    .bg(tab_bg)
+                    .text_xs()
+                    .font_weight(if *is_active {
+                        FontWeight::SEMIBOLD
+                    } else {
+                        FontWeight::NORMAL
+                    })
+                    .text_color(tab_color)
+                    .cursor_pointer()
+                    .hover(|style| style.bg(active.opacity(0.5)))
+                    .on_click(cx.listener(move |this, _: &ClickEvent, _window, cx| {
+                        this.top_bar.click_tab(tab_idx);
+                        this.process_top_bar_events();
+                        cx.notify();
+                    }))
+                    .child(label.clone()),
+            );
+        }
+        bar = bar.child(tab_row);
+
+        // Vertical divider
+        bar = bar.child(
+            div()
+                .w(px(1.0))
+                .h(px(20.0))
+                .bg(border_color)
+                .mx_1(),
+        );
+
+        // Broadcast toggle
+        let broadcast_color = if broadcast_enabled { primary } else { muted };
+        let broadcast_label = if broadcast_enabled {
+            "* Broadcast"
+        } else {
+            "o Broadcast"
+        };
+        bar = bar.child(
+            div()
+                .id("top-bar-broadcast")
+                .px_2()
+                .py_1()
+                .rounded_md()
+                .text_xs()
+                .text_color(broadcast_color)
+                .cursor_pointer()
+                .hover(|style| style.bg(active.opacity(0.3)))
+                .on_click(cx.listener(|this, _: &ClickEvent, _window, cx| {
+                    this.top_bar.toggle_broadcast();
+                    this.process_top_bar_events();
+                    cx.notify();
+                }))
+                .child(broadcast_label),
+        );
+
+        // --- Spacer ---
+        bar = bar.child(div().flex_1());
+
+        // --- Right section ---
+
+        // Token counter pill
+        bar = bar.child(
+            div()
+                .id("top-bar-tokens")
+                .px_2()
+                .py_1()
+                .rounded_md()
+                .bg(border_color.opacity(0.3))
+                .text_xs()
+                .text_color(muted)
+                .child(SharedString::from(token_count)),
+        );
+
+        // Right panel toggle
+        let panel_icon = if right_panel_open { "|=" } else { "=|" };
+        bar = bar.child(
+            div()
+                .id("top-bar-right-panel")
+                .px_2()
+                .py_1()
+                .rounded_md()
+                .text_xs()
+                .text_color(if right_panel_open { fg } else { muted })
+                .cursor_pointer()
+                .hover(|style| style.bg(active.opacity(0.3)))
+                .on_click(cx.listener(|this, _: &ClickEvent, _window, cx| {
+                    this.top_bar.toggle_right_panel();
+                    this.process_top_bar_events();
+                    cx.notify();
+                }))
+                .child(panel_icon),
+        );
+
+        // New session button
+        bar = bar.child(
+            div()
+                .id("top-bar-new-session")
+                .px_3()
+                .py_1()
+                .rounded_md()
+                .bg(primary.opacity(0.1))
+                .text_xs()
+                .text_color(primary)
+                .cursor_pointer()
+                .hover(|style| style.bg(primary.opacity(0.2)))
+                .on_click(cx.listener(|this, _: &ClickEvent, _window, cx| {
+                    this.create_session(cx);
+                }))
+                .child("+ New"),
+        );
+
+        bar
+    }
+
     /// Render a terminal header for a session.
     ///
     /// Returns a GPUI element representing the terminal header with session name,
