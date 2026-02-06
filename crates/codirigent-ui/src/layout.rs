@@ -66,6 +66,9 @@ pub const TITLE_BAR_HEIGHT: f32 = 32.0;
 /// Height of the toolbar in pixels.
 pub const TOOLBAR_HEIGHT: f32 = 48.0;
 
+/// Height of the top bar in pixels (replaces TITLE_BAR_HEIGHT + TOOLBAR_HEIGHT).
+pub const TOP_BAR_HEIGHT: f32 = 48.0;
+
 /// Height of the status bar in pixels.
 pub const STATUS_BAR_HEIGHT: f32 = 24.0;
 

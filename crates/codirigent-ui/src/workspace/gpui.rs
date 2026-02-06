@@ -1712,6 +1712,7 @@ impl Render for WorkspaceView {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         // Process any pending UI events first
         self.process_ui_events(cx);
+        self.process_top_bar_events();
 
         // Sync UI state before rendering
         self.sync_ui_state();
@@ -1797,8 +1798,8 @@ impl Render for WorkspaceView {
             .flex()
             .flex_col();
 
-        // 1. TitleBar at top (32px)
-        container = container.child(self.render_title_bar(window, cx));
+        // 1. TopBar at top (48px, replaces TitleBar + Toolbar)
+        container = container.child(self.render_top_bar(cx));
 
         // 2. Main content area (flex-row: sidebar + grid area)
         let mut main_content = div()
@@ -1814,7 +1815,7 @@ impl Render for WorkspaceView {
             main_content = main_content.child(self.render_sidebar(cx));
         }
 
-        // Grid area (flex-col: toolbar + session grid)
+        // Grid area (session grid only, toolbar merged into top bar)
         let grid_area = div()
             .id("grid-area")
             .flex_1()
@@ -1822,8 +1823,6 @@ impl Render for WorkspaceView {
             .flex_col()
             .overflow_hidden()  // Prevent overflow
             .min_h(px(0.0))     // Allow flex shrinking
-            // Toolbar at top of grid area
-            .child(self.render_toolbar(cx))
             // Session grid (fills remaining space)
             .child(
                 div()
