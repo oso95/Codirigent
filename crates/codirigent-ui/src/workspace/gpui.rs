@@ -108,6 +108,8 @@ pub struct WorkspaceView {
     pub(super) toolbar: SessionsToolbar,
     /// Unified top bar component state.
     pub(super) top_bar: crate::top_bar::TopBar,
+    /// Broadcast input bar (below top bar when active).
+    pub(super) broadcast_bar: crate::broadcast_bar::BroadcastBar,
     /// Task board panel component state.
     pub(super) task_board: TaskBoardPanel,
     /// Empty session cells pool.
@@ -256,6 +258,7 @@ impl WorkspaceView {
             status_bar: StatusBar::new(),
             toolbar,
             top_bar: crate::top_bar::TopBar::new(),
+            broadcast_bar: crate::broadcast_bar::BroadcastBar::new(),
             task_board: TaskBoardPanel::new(),
             empty_cells: EmptySessionPool::new(),
             terminal_headers: Vec::new(),
@@ -719,6 +722,7 @@ impl WorkspaceView {
                 }
                 crate::top_bar::TopBarEvent::BroadcastToggled(enabled) => {
                     self.broadcast_enabled = enabled;
+                    self.broadcast_bar.set_visible(enabled);
                 }
                 crate::top_bar::TopBarEvent::RightPanelToggled => {
                     // Will be wired in plan 05 (right task board)
@@ -728,6 +732,32 @@ impl WorkspaceView {
                 }
                 crate::top_bar::TopBarEvent::NewSessionRequested => {
                     // Future: delegate to create_session logic
+                }
+            }
+        }
+    }
+
+    /// Process broadcast bar events -- send submitted text to all active sessions.
+    fn process_broadcast_events(&mut self) {
+        let events = self.broadcast_bar.drain_events();
+        for event in events {
+            match event {
+                crate::broadcast_bar::BroadcastBarEvent::BroadcastSubmitted(text) => {
+                    let input_bytes = format!("{}\n", text).into_bytes();
+                    let session_ids: Vec<SessionId> = self
+                        .workspace
+                        .sessions()
+                        .iter()
+                        .map(|s| s.id)
+                        .collect();
+                    if let Ok(manager) = self.session_manager.lock() {
+                        for id in session_ids {
+                            if let Err(e) = manager.send_input(id, &input_bytes) {
+                                warn!("Failed to broadcast input to session {}: {}", id, e);
+                            }
+                        }
+                    }
+                    info!(text = %text, sessions = self.workspace.sessions().len(), "Broadcast sent to all sessions");
                 }
             }
         }
@@ -1713,6 +1743,7 @@ impl Render for WorkspaceView {
         // Process any pending UI events first
         self.process_ui_events(cx);
         self.process_top_bar_events();
+        self.process_broadcast_events();
 
         // Sync UI state before rendering
         self.sync_ui_state();
