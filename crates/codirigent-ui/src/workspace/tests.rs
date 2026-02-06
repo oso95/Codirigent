@@ -372,3 +372,53 @@ fn test_workspace_grid_layout() {
     assert_eq!(layout.dimensions(), (2, 2));
     assert_eq!(layout.cell_count(), 4);
 }
+
+#[test]
+fn test_workspace_single_layout_shows_focused_session() {
+    // Test that switching to Single layout displays the focused session, not always the first
+    let mut ws = Workspace::with_profile(LayoutProfile::Grid2x2);
+    ws.set_bounds(Bounds::from_size(1000.0, 800.0));
+    ws.add_session(make_session(1, "Session 1"));
+    ws.add_session(make_session(2, "Session 2"));
+    ws.add_session(make_session(3, "Session 3"));
+
+    // Focus session 2 (index 1)
+    assert!(ws.focus_session(SessionId(2)));
+    assert_eq!(ws.focused_session_id(), Some(SessionId(2)));
+
+    // Switch to Single layout
+    ws.set_layout(LayoutProfile::Single);
+
+    // The focused session should now be at index 0
+    assert_eq!(ws.focused_session_id(), Some(SessionId(2)));
+
+    // cell_info should return only one cell with the focused session
+    let cells = ws.cell_info();
+    assert_eq!(cells.len(), 1);
+    assert_eq!(cells[0].session_id, SessionId(2));
+    assert!(cells[0].is_focused);
+    assert_eq!(cells[0].name, "Session 2");
+}
+
+#[test]
+fn test_workspace_single_layout_focused_session_already_first() {
+    // Test that switching to Single when focused session is already first works correctly
+    let mut ws = Workspace::with_profile(LayoutProfile::Grid2x2);
+    ws.set_bounds(Bounds::from_size(1000.0, 800.0));
+    ws.add_session(make_session(1, "Session 1"));
+    ws.add_session(make_session(2, "Session 2"));
+
+    // Session 1 is already focused at index 0
+    assert_eq!(ws.focused_session_id(), Some(SessionId(1)));
+
+    // Switch to Single layout
+    ws.set_layout(LayoutProfile::Single);
+
+    // Should still show session 1
+    assert_eq!(ws.focused_session_id(), Some(SessionId(1)));
+
+    let cells = ws.cell_info();
+    assert_eq!(cells.len(), 1);
+    assert_eq!(cells[0].session_id, SessionId(1));
+    assert!(cells[0].is_focused);
+}

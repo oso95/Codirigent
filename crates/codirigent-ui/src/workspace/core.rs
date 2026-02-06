@@ -98,7 +98,27 @@ impl Workspace {
     }
 
     /// Set the layout profile.
+    ///
+    /// When switching to Single layout, moves the currently focused session
+    /// to index 0 so it will be displayed in the single cell.
     pub fn set_layout(&mut self, profile: LayoutProfile) {
+        // If switching to Single layout and we have a focused session,
+        // move it to index 0 so it will be the one displayed
+        if profile == LayoutProfile::Single {
+            if let Some(focused_idx) = self.layout_state.focused_index() {
+                if focused_idx > 0 {
+                    // Move focused session to front of assignments
+                    let mut assignments = self.layout_state.assignments().to_vec();
+                    let focused_id = assignments[focused_idx];
+                    assignments.remove(focused_idx);
+                    assignments.insert(0, focused_id);
+                    self.layout_state.set_assignments(assignments);
+                    // Update focused index to reflect new position
+                    self.layout_state.focus_index(0);
+                }
+            }
+        }
+
         self.layout_state.set_profile(profile);
     }
 
