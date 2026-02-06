@@ -998,12 +998,11 @@ impl WorkspaceView {
                         cell_border,
                         border_color,
                         &theme,
-                        cell_bounds,
                         cx,
                     )
                 } else {
                     // Empty cell - render inline
-                    self.render_empty_cell_inline_with_colors(position, panel_bg, border_color, muted, cell_bounds, cx)
+                    self.render_empty_cell_inline_with_colors(position, panel_bg, border_color, muted, cx)
                 };
 
                 // Let flex distribute equal widths; use size_full so
@@ -1258,7 +1257,6 @@ impl WorkspaceView {
         panel_bg: gpui::Hsla,
         border_color: gpui::Hsla,
         muted: gpui::Hsla,
-        cell_bounds: crate::layout::Bounds,
         cx: &mut Context<Self>,
     ) -> gpui::Stateful<gpui::Div> {
         div()
