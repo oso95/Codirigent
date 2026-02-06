@@ -15,7 +15,7 @@ use crate::theme::CodirigentTheme;
 use codirigent_core::SessionId;
 use gpui::{
     div, px, ClickEvent, Context, FontWeight, InteractiveElement, IntoElement, ParentElement,
-    Window, prelude::FluentBuilder, SharedString, StatefulInteractiveElement,
+    prelude::FluentBuilder, SharedString, StatefulInteractiveElement,
     Styled, MouseButton, ScrollWheelEvent,
 };
 use tracing::info;
@@ -2585,7 +2585,7 @@ impl WorkspaceView {
             .child(
                 div()
                     .flex_1()
-                    .overflow_y_scroll()
+                    .overflow_hidden()
                     .p_3()
                     .child(div().text_xs().text_color(muted).child(session_label)),
             )
@@ -2724,7 +2724,7 @@ impl WorkspaceView {
             .child(
                 div()
                     .flex_1()
-                    .overflow_y_scroll()
+                    .overflow_hidden()
                     .p_3()
                     .flex()
                     .flex_col()

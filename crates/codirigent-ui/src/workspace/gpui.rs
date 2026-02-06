@@ -685,7 +685,7 @@ impl WorkspaceView {
     }
 
     /// Process pending top bar events and translate to workspace actions.
-    fn process_top_bar_events(&mut self) {
+    pub(super) fn process_top_bar_events(&mut self) {
         let events = self.top_bar.drain_events();
         for event in events {
             match event {
@@ -709,7 +709,7 @@ impl WorkspaceView {
     }
 
     /// Process broadcast bar events -- send submitted text to all active sessions.
-    fn process_broadcast_events(&mut self) {
+    pub(super) fn process_broadcast_events(&mut self) {
         let events = self.broadcast_bar.drain_events();
         for event in events {
             match event {
@@ -735,14 +735,14 @@ impl WorkspaceView {
     }
 
     /// Select a session (updates drawer context and grid focus).
-    fn select_session(&mut self, session_id: SessionId) {
+    pub(super) fn select_session(&mut self, session_id: SessionId) {
         self.selected_session_id = Some(session_id);
         self.drawer.set_selected_session(Some(session_id));
         self.workspace.focus_session(session_id);
     }
 
     /// Process icon rail events (drawer toggling, settings).
-    fn process_icon_rail_events(&mut self) {
+    pub(super) fn process_icon_rail_events(&mut self) {
         let events = self.icon_rail.drain_events();
         for event in events {
             match event {
