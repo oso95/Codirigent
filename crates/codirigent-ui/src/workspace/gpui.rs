@@ -459,12 +459,19 @@ impl WorkspaceView {
 
                 // Check for OSC 7 (working directory change) sequences
                 if let Some(new_cwd) = codirigent_session::extract_osc7_path(&data) {
-                    let new_cwd_for_tree = new_cwd.clone();
+                    let new_cwd_for_ui = new_cwd.clone();
                     let changed = {
                         let manager = self.session_manager.lock().unwrap();
                         manager.update_working_directory(session_id, new_cwd)
                     };
                     if changed {
+                        // Keep workspace's session copy in sync with the manager
+                        let canonical_cwd = std::fs::canonicalize(&new_cwd_for_ui)
+                            .unwrap_or_else(|_| new_cwd_for_ui.clone());
+                        if let Some(session) = self.workspace.session_mut(session_id) {
+                            session.working_directory = canonical_cwd.clone();
+                        }
+
                         // Force immediate git refresh for this session
                         let git_info = {
                             let manager = self.session_manager.lock().unwrap();
@@ -497,7 +504,7 @@ impl WorkspaceView {
 
                         // Update file tree panel if this is the focused session
                         if self.workspace.focused_session_id() == Some(session_id) {
-                            self.set_project_root(new_cwd_for_tree);
+                            self.set_project_root(canonical_cwd);
                         }
                     }
                 }
