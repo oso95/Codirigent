@@ -31,7 +31,6 @@ use crate::status_bar::StatusBar;
 use crate::task_board::TaskBoardPanel;
 use crate::terminal_header::TerminalHeader;
 use crate::theme::CodirigentTheme;
-use crate::title_bar::TitleBar;
 use crate::toolbar::{SessionsToolbar, ToolbarEvent};
 // Core imports (combined)
 use codirigent_core::{
@@ -100,8 +99,6 @@ pub struct WorkspaceView {
     terminals: HashMap<SessionId, TerminalView>,
     /// Next session ID counter (kept for UI session tracking).
     next_session_id: u64,
-    /// Title bar component state.
-    pub(super) title_bar: TitleBar,
     /// Status bar component state.
     pub(super) status_bar: StatusBar,
     /// Sessions toolbar component state.
@@ -207,8 +204,6 @@ impl WorkspaceView {
         })
         .detach();
 
-        let title_bar = TitleBar::new();
-
         // Initialize toolbar with current layout (from feature branch)
         let mut toolbar = SessionsToolbar::new();
         toolbar.set_active_layout(workspace.layout_profile());
@@ -260,7 +255,6 @@ impl WorkspaceView {
             task_manager,
             terminals: HashMap::new(),
             next_session_id: 1,
-            title_bar,
             status_bar: StatusBar::new(),
             toolbar,
             top_bar: crate::top_bar::TopBar::new(),
