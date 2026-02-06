@@ -315,7 +315,7 @@ impl WorkspaceView {
     }
 
     /// Refresh the file tree panel from the current model.
-    fn refresh_file_tree_panel(&mut self) {
+    pub(super) fn refresh_file_tree_panel(&mut self) {
         let entries = if let Some(tree) = &self.file_tree_model {
             let tree: &FileTree = tree;
             tree.visible_entries()

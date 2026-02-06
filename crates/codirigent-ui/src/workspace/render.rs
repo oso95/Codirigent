@@ -3458,7 +3458,7 @@ impl WorkspaceView {
         let item_count = self.file_tree.visible_count();
 
         // Collect items into owned vec for the closure
-        let items: Vec<crate::sidebar::file_tree::FileTreeRenderItem> =
+        let items: Vec<crate::sidebar::FileTreeRenderItem> =
             self.file_tree.visible_items().to_vec();
 
         // Build scrollable tree rows
@@ -3601,7 +3601,7 @@ impl WorkspaceView {
     fn render_file_tree_row(
         &mut self,
         idx: usize,
-        item: &crate::sidebar::file_tree::FileTreeRenderItem,
+        item: &crate::sidebar::FileTreeRenderItem,
         theme: &CodirigentTheme,
         cx: &mut Context<Self>,
     ) -> impl IntoElement {
@@ -3660,9 +3660,9 @@ impl WorkspaceView {
 
         div()
             .id(SharedString::from(format!("file-tree-row-{}", idx)))
-            .h(px(crate::sidebar::file_tree::FileTreePanel::ITEM_HEIGHT))
+            .h(px(crate::sidebar::FileTreePanel::ITEM_HEIGHT))
             .w_full()
-            .pl(px(depth * crate::sidebar::file_tree::FileTreePanel::INDENT_SIZE + 4.0))
+            .pl(px(depth * crate::sidebar::FileTreePanel::INDENT_SIZE + 4.0))
             .pr(px(8.0))
             .flex()
             .items_center()
@@ -3670,22 +3670,22 @@ impl WorkspaceView {
             .bg(row_bg)
             .cursor_pointer()
             .hover(|style| style.bg(active_bg))
-            .on_click(cx.listener(move |this, event: &ClickEvent, _, cx| {
-                if event.up.click_count >= 2 && !is_dir {
+            .on_click(cx.listener(move |this, event: &ClickEvent, _window, cx| {
+                if event.click_count() >= 2 && !is_dir {
                     // Double-click on file -> activate
-                    let ev = crate::sidebar::file_tree::FileTreeEvent::FileActivated(
+                    let ev = crate::sidebar::FileTreeEvent::FileActivated(
                         path_for_dbl.clone(),
                     );
                     this.handle_file_tree_event(ev, cx);
                 } else if is_dir {
                     // Click on directory -> toggle
-                    let ev = crate::sidebar::file_tree::FileTreeEvent::DirectoryToggled(
+                    let ev = crate::sidebar::FileTreeEvent::DirectoryToggled(
                         path_for_click.clone(),
                     );
                     this.handle_file_tree_event(ev, cx);
                 } else {
                     // Single click on file -> select
-                    let ev = crate::sidebar::file_tree::FileTreeEvent::FileSelected(
+                    let ev = crate::sidebar::FileTreeEvent::FileSelected(
                         path_for_click.clone(),
                     );
                     this.handle_file_tree_event(ev, cx);
