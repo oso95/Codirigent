@@ -22,6 +22,7 @@ dirs.workspace = true
 chrono.workspace = true
 
 git2.workspace = true
+image.workspace = true
 
 [dev-dependencies]
 tempfile.workspace = true

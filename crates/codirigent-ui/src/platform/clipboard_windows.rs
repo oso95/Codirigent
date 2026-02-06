@@ -157,29 +157,40 @@ impl WindowsSmartClipboard {
     /// - Offset 4-7: biWidth (4 bytes, signed 32-bit)
     /// - Offset 8-11: biHeight (4 bytes, signed 32-bit, negative = top-down)
     fn parse_dib_dimensions(dib_data: &[u8]) -> Result<(u32, u32)> {
-        if dib_data.len() < BITMAPINFOHEADER_SIZE {
+        // The clipboard-win crate may return a full BMP file (starting with "BM")
+        // or raw DIB data (starting with BITMAPINFOHEADER). Detect and skip the
+        // 14-byte BITMAPFILEHEADER if present.
+        let offset = if dib_data.len() >= 2 && dib_data[0] == b'B' && dib_data[1] == b'M' {
+            14 // Skip BITMAPFILEHEADER
+        } else {
+            0
+        };
+
+        if dib_data.len() < offset + BITMAPINFOHEADER_SIZE {
             return Err(anyhow!(
                 "DIB data too small: {} bytes, expected at least {}",
                 dib_data.len(),
-                BITMAPINFOHEADER_SIZE
+                offset + BITMAPINFOHEADER_SIZE
             ));
         }
 
+        let hdr = &dib_data[offset..];
+
         // Read width at offset 4 (signed 32-bit little-endian)
         let width = i32::from_le_bytes([
-            dib_data[4],
-            dib_data[5],
-            dib_data[6],
-            dib_data[7],
+            hdr[4],
+            hdr[5],
+            hdr[6],
+            hdr[7],
         ]);
 
         // Read height at offset 8 (signed 32-bit little-endian)
         // Negative height indicates top-down bitmap, we take absolute value
         let height = i32::from_le_bytes([
-            dib_data[8],
-            dib_data[9],
-            dib_data[10],
-            dib_data[11],
+            hdr[8],
+            hdr[9],
+            hdr[10],
+            hdr[11],
         ]);
 
         // Convert to unsigned, handling negative height for top-down bitmaps

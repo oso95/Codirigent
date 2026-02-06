@@ -24,9 +24,9 @@
 //! assert_eq!(cli_type, CliType::ClaudeCode); // default
 //! ```
 
-use anyhow::Result;
+use anyhow::{Context, Result};
 use chrono::Local;
-use codirigent_core::{CliType, ClipboardContent, ImageData, SessionId};
+use codirigent_core::{CliType, ClipboardContent, ImageData, ImageFormat, SessionId};
 use std::collections::HashMap;
 use std::fs;
 use std::path::{Path, PathBuf};
@@ -204,17 +204,161 @@ impl DefaultClipboardService {
     }
 }
 
+/// Convert raw Windows DIB (BITMAPINFOHEADER + pixel data) to RGBA pixel buffer.
+///
+/// DIB from CF_DIB clipboard format has this layout:
+/// - BITMAPINFOHEADER (40+ bytes): header with dimensions, bit depth, compression
+/// - Optional color table (for <= 8 bpp, or BI_BITFIELDS masks)
+/// - Pixel data (bottom-up by default, or top-down if height is negative)
+///
+/// This function handles 32-bit (BGRA/BGRX) and 24-bit (BGR) bitmaps,
+/// which are the most common formats from Windows screenshots.
+fn dib_to_rgba(dib: &[u8], width: u32, height: u32) -> Result<Vec<u8>> {
+    if dib.len() < 40 {
+        anyhow::bail!("DIB data too small: {} bytes", dib.len());
+    }
+
+    // Parse BITMAPINFOHEADER fields
+    let header_size = u32::from_le_bytes([dib[0], dib[1], dib[2], dib[3]]);
+    let bi_width = i32::from_le_bytes([dib[4], dib[5], dib[6], dib[7]]);
+    let bi_height = i32::from_le_bytes([dib[8], dib[9], dib[10], dib[11]]);
+    let bi_bit_count = u16::from_le_bytes([dib[14], dib[15]]);
+    let bi_compression = u32::from_le_bytes([dib[16], dib[17], dib[18], dib[19]]);
+
+    let w = bi_width.unsigned_abs() as usize;
+    let h = bi_height.unsigned_abs() as usize;
+    let bottom_up = bi_height > 0; // Positive height = bottom-up rows
+
+    // Use the passed-in width/height as fallback (they should match)
+    let w = if w > 0 { w } else { width as usize };
+    let h = if h > 0 { h } else { height as usize };
+
+    // Calculate pixel data offset: header + optional color masks/table
+    let pixel_offset = match (bi_bit_count, bi_compression) {
+        (32, 3) => header_size as usize + 12, // BI_BITFIELDS: 3 x u32 color masks
+        (16, 3) => header_size as usize + 12, // BI_BITFIELDS for 16bpp
+        _ => header_size as usize,            // No extra data for 24/32 bpp BI_RGB
+    };
+
+    if pixel_offset >= dib.len() {
+        anyhow::bail!(
+            "DIB pixel offset {} exceeds data length {}",
+            pixel_offset,
+            dib.len()
+        );
+    }
+
+    let pixel_data = &dib[pixel_offset..];
+    let bytes_per_pixel = (bi_bit_count as usize) / 8;
+    // BMP rows are padded to 4-byte boundaries
+    let row_stride = ((w * bytes_per_pixel + 3) / 4) * 4;
+
+    let mut rgba = vec![255u8; w * h * 4]; // Pre-fill alpha to 255
+
+    for y in 0..h {
+        let src_y = if bottom_up { h - 1 - y } else { y };
+        let row_start = src_y * row_stride;
+
+        if row_start + w * bytes_per_pixel > pixel_data.len() {
+            break; // Truncated data — render what we can
+        }
+
+        for x in 0..w {
+            let src_offset = row_start + x * bytes_per_pixel;
+            let dst_offset = (y * w + x) * 4;
+
+            match bi_bit_count {
+                32 => {
+                    // BGRA or BGRX → RGBA
+                    rgba[dst_offset] = pixel_data[src_offset + 2]; // R
+                    rgba[dst_offset + 1] = pixel_data[src_offset + 1]; // G
+                    rgba[dst_offset + 2] = pixel_data[src_offset]; // B
+                    rgba[dst_offset + 3] = pixel_data[src_offset + 3]; // A (or X=0)
+                    // Many screenshots have A=0 (BGRX). Force opaque.
+                    if rgba[dst_offset + 3] == 0 {
+                        rgba[dst_offset + 3] = 255;
+                    }
+                }
+                24 => {
+                    // BGR → RGBA
+                    rgba[dst_offset] = pixel_data[src_offset + 2]; // R
+                    rgba[dst_offset + 1] = pixel_data[src_offset + 1]; // G
+                    rgba[dst_offset + 2] = pixel_data[src_offset]; // B
+                    rgba[dst_offset + 3] = 255; // A
+                }
+                _ => {
+                    anyhow::bail!("Unsupported DIB bit depth: {}", bi_bit_count);
+                }
+            }
+        }
+    }
+
+    Ok(rgba)
+}
+
 impl ClipboardService for DefaultClipboardService {
     fn save_image(&self, image: &ImageData) -> Result<PathBuf> {
         // Ensure temp directory exists
         self.ensure_temp_dir()?;
 
-        // Generate filename based on format
-        let extension = image.format.extension();
-        let path = self.generate_filename(extension);
+        // Always save as PNG for maximum compatibility with CLI tools.
+        // Windows clipboard provides DIB format which is large and poorly supported.
+        let path = self.generate_filename("png");
 
-        // Write image bytes to file
-        fs::write(&path, &image.bytes)?;
+        match image.format {
+            ImageFormat::Png => {
+                // Already PNG — write directly
+                fs::write(&path, &image.bytes)?;
+            }
+            ImageFormat::Dib => {
+                // Windows clipboard may return either:
+                // a) Full BMP file (starts with "BM" magic) — from clipboard-win
+                // b) Raw DIB data (BITMAPINFOHEADER + pixels, no file header)
+                let is_full_bmp = image.bytes.len() >= 2
+                    && image.bytes[0] == b'B'
+                    && image.bytes[1] == b'M';
+
+                if is_full_bmp {
+                    let decoded = image::load_from_memory_with_format(
+                        &image.bytes,
+                        image::ImageFormat::Bmp,
+                    )
+                    .context("Failed to decode BMP clipboard image")?;
+                    decoded
+                        .save_with_format(&path, image::ImageFormat::Png)
+                        .context("Failed to encode BMP as PNG")?;
+                } else {
+                    let rgba = dib_to_rgba(&image.bytes, image.width, image.height)
+                        .context("Failed to convert raw DIB to RGBA")?;
+                    let rgba_image =
+                        image::RgbaImage::from_raw(image.width, image.height, rgba)
+                            .context("Failed to create RGBA image from DIB")?;
+                    rgba_image
+                        .save_with_format(&path, image::ImageFormat::Png)
+                        .context("Failed to encode DIB as PNG")?;
+                }
+            }
+            ImageFormat::Tiff | ImageFormat::Jpeg => {
+                // Decode from source format and re-encode as PNG
+                let decoded = image::load_from_memory(&image.bytes)
+                    .context("Failed to decode clipboard image")?;
+                decoded
+                    .save_with_format(&path, image::ImageFormat::Png)
+                    .context("Failed to encode image as PNG")?;
+            }
+            ImageFormat::Rgba => {
+                // Raw RGBA pixel data — construct image from dimensions
+                let rgba_image = image::RgbaImage::from_raw(
+                    image.width,
+                    image.height,
+                    image.bytes.clone(),
+                )
+                .context("Invalid RGBA dimensions for clipboard image")?;
+                rgba_image
+                    .save_with_format(&path, image::ImageFormat::Png)
+                    .context("Failed to encode RGBA image as PNG")?;
+            }
+        }
 
         Ok(path)
     }
@@ -580,20 +724,20 @@ mod tests {
     }
 
     #[test]
-    fn test_save_image_jpeg_format() {
+    fn test_save_image_always_outputs_png() {
         let (service, _temp_dir) = create_test_service();
-        let image = ImageData {
-            bytes: vec![0xFF, 0xD8, 0xFF, 0xE0],
-            width: 200,
-            height: 150,
-            format: ImageFormat::Jpeg,
-        };
+        // Use a valid PNG for this test (all formats save as .png)
+        let image = create_test_image(); // PNG format
 
         let path = service.save_image(&image).unwrap();
 
         assert!(path.exists());
         let filename = path.file_name().unwrap().to_str().unwrap();
-        assert!(filename.ends_with(".jpg"));
+        assert!(
+            filename.ends_with(".png"),
+            "All clipboard images should save as PNG, got: {}",
+            filename
+        );
     }
 
     #[test]

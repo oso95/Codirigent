@@ -46,6 +46,9 @@ async-trait = "0.1"
 # Duration serialization
 humantime-serde = "1.1.1"
 
+# Image processing
+image = { version = "0.25.9", default-features = false, features = ["png", "bmp", "tiff", "jpeg"] }
+
 # Git operations
 git2 = "0.17"
 

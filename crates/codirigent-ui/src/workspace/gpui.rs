@@ -1612,19 +1612,6 @@ impl WorkspaceView {
                 }
             }
             ClipboardContent::Image(ref _image_data) => {
-                // Debug: hex dump first 20 bytes to identify data format
-                if _image_data.bytes.len() >= 20 {
-                    let hex: String = _image_data.bytes[..20].iter()
-                        .map(|b| format!("{:02X}", b))
-                        .collect::<Vec<_>>()
-                        .join(" ");
-                    info!(
-                        "DIB debug: len={} w={} h={} format={:?} first20=[{}]",
-                        _image_data.bytes.len(), _image_data.width, _image_data.height,
-                        _image_data.format, hex
-                    );
-                }
-
                 // Get the CLI type for the focused session (defaults to ClaudeCode)
                 let cli_type = self.clipboard_service.get_session_cli_type(session_id);
 

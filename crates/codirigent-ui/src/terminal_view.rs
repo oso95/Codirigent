@@ -566,6 +566,48 @@ impl TerminalView {
         self.terminal.resize(rows, cols);
     }
 
+    /// Start a new text selection at the given cell position.
+    ///
+    /// Sets the selection start, clears any previous end, and marks dirty.
+    pub fn start_selection(&mut self, row: usize, col: usize) {
+        self.selection.set_start(row, col);
+        self.selection.end = None;
+        self.content_dirty = true;
+    }
+
+    /// Update the selection end position during a drag.
+    ///
+    /// Sets the selection end and marks dirty for re-rendering.
+    pub fn update_selection(&mut self, row: usize, col: usize) {
+        self.selection.set_end(row, col);
+        self.content_dirty = true;
+    }
+
+    /// End the selection (no-op — selection stays active until explicitly cleared).
+    pub fn end_selection(&mut self) {
+        // Selection remains active until cleared by next click or copy
+    }
+
+    /// Clear the current selection.
+    pub fn clear_selection(&mut self) {
+        self.selection.clear();
+        self.content_dirty = true;
+    }
+
+    /// Get the currently selected text, if any.
+    ///
+    /// Returns `None` if no selection is active. Extracts text from the
+    /// terminal grid between the normalized selection start and end.
+    pub fn get_selected_text(&self) -> Option<String> {
+        let (start, end) = self.selection.normalized()?;
+        let text = crate::clipboard::copy_selection(self.terminal.term(), start, end);
+        if text.is_empty() {
+            None
+        } else {
+            Some(text)
+        }
+    }
+
     /// Mark content as dirty, forcing recomputation on next access.
     pub fn mark_dirty(&mut self) {
         self.content_dirty = true;
@@ -997,6 +1039,73 @@ mod tests {
                 "Rows must be consecutive but found gap: {:?}", rows
             );
         }
+    }
+
+    #[test]
+    fn test_start_selection() {
+        let mut view = create_test_view();
+        view.start_selection(5, 10);
+        assert!(view.selection().start.is_some());
+        assert_eq!(view.selection().start.unwrap(), (5, 10));
+        assert!(view.selection().end.is_none());
+    }
+
+    #[test]
+    fn test_update_selection() {
+        let mut view = create_test_view();
+        view.start_selection(5, 10);
+        view.update_selection(10, 20);
+        assert!(view.selection().is_active());
+        assert_eq!(view.selection().end.unwrap(), (10, 20));
+    }
+
+    #[test]
+    fn test_clear_selection() {
+        let mut view = create_test_view();
+        view.start_selection(5, 10);
+        view.update_selection(10, 20);
+        assert!(view.selection().is_active());
+        view.clear_selection();
+        assert!(!view.selection().is_active());
+    }
+
+    #[test]
+    fn test_end_selection_keeps_active() {
+        let mut view = create_test_view();
+        view.start_selection(5, 10);
+        view.update_selection(10, 20);
+        view.end_selection();
+        // Selection should remain active after end_selection
+        assert!(view.selection().is_active());
+    }
+
+    #[test]
+    fn test_get_selected_text_no_selection() {
+        let view = create_test_view();
+        assert!(view.get_selected_text().is_none());
+    }
+
+    #[test]
+    fn test_get_selected_text_with_content() {
+        let mut view = create_test_view();
+        view.terminal_mut().process_output(b"Hello, World!");
+        view.start_selection(0, 0);
+        view.update_selection(0, 4);
+        let text = view.get_selected_text();
+        assert!(text.is_some());
+        assert_eq!(text.unwrap(), "Hello");
+    }
+
+    #[test]
+    fn test_get_selected_text_empty_region() {
+        let view = create_test_view();
+        // No content rendered, so even with selection, text should be empty/None
+        let mut view = view;
+        view.start_selection(0, 0);
+        view.update_selection(0, 0);
+        // Single cell with no content = None (empty string filtered)
+        let text = view.get_selected_text();
+        assert!(text.is_none());
     }
 
     #[test]
