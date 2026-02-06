@@ -350,6 +350,8 @@ pub struct CodirigentTheme {
     pub font_size_small: f32,
     /// Large font size.
     pub font_size_large: f32,
+    /// Terminal font size (separate from UI font size).
+    pub terminal_font_size: f32,
 
     // === Spacing ===
     /// Base spacing unit in pixels.
@@ -437,6 +439,7 @@ impl CodirigentTheme {
             font_size_base: 13.0,
             font_size_small: 11.0,
             font_size_large: 15.0,
+            terminal_font_size: 13.0,
 
             // === Spacing ===
             spacing_base: 8.0,
@@ -522,6 +525,7 @@ impl CodirigentTheme {
             font_size_base: 13.0,
             font_size_small: 11.0,
             font_size_large: 15.0,
+            terminal_font_size: 13.0,
 
             // === Spacing ===
             spacing_base: 8.0,

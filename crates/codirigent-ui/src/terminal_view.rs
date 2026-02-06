@@ -237,7 +237,7 @@ pub struct TerminalView {
 impl TerminalView {
     /// Create a new terminal view.
     pub fn new(terminal: Terminal, theme: CodirigentTheme) -> Self {
-        let font_size = theme.font_size_base;
+        let font_size = theme.terminal_font_size;
         // Approximate cell dimensions until real font metrics arrive via
         // compute_cell_dimensions() on first render. Using conservative
         // ratios that slightly overestimate so the initial grid doesn't

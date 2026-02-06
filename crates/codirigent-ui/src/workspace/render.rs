@@ -2350,8 +2350,10 @@ impl WorkspaceView {
 
     /// Render a small logo for the title bar using the embedded PNG.
     fn render_logo_small(&self) -> impl IntoElement {
-        // Old size was 3*4 + 2*1 = 14px
-        let logo_size = 14.0;
+        // The PNG (120x120 / 240x240 @2x) has ~25% built-in padding around
+        // the 3x3 grid.  We render it slightly oversized so the visible grid
+        // fills roughly 20px, which looks balanced in the 32px title bar.
+        let logo_size = 24.0;
         let image = Arc::new(Image::from_bytes(
             ImageFormat::Png,
             crate::splash_screen::LOGO_PNG_BYTES.to_vec(),
@@ -2768,6 +2770,7 @@ impl WorkspaceView {
         // Add cursor only to focused field
         let title_focused = modal.focused_field == 0;
         let desc_focused = modal.focused_field == 1;
+        let plan_focused = modal.focused_field == 2;
 
         let title_value = if title_focused {
             if modal.title.is_empty() {
@@ -2796,6 +2799,26 @@ impl WorkspaceView {
                 modal.description.clone()
             }
         };
+
+        let plan_file_value = if plan_focused {
+            if modal.plan_file.is_empty() {
+                "|".to_string()
+            } else {
+                format!("{}|", modal.plan_file)
+            }
+        } else {
+            if modal.plan_file.is_empty() {
+                "e.g. plans/phase-1-stage-2.md".to_string()
+            } else {
+                modal.plan_file.clone()
+            }
+        };
+
+        let project_dir_display = modal
+            .project_dir
+            .as_ref()
+            .map(|p| format!("Project: {}", p.display()))
+            .unwrap_or_else(|| "Project: (none)".to_string());
 
         Some(
             div()
@@ -2913,6 +2936,131 @@ impl WorkspaceView {
                                                 }))
                                                 .child(description_value),
                                         ),
+                                )
+                                // Priority selector
+                                .child(
+                                    div()
+                                        .flex()
+                                        .flex_col()
+                                        .gap_2()
+                                        .child(
+                                            div()
+                                                .text_sm()
+                                                .text_color(muted)
+                                                .child("Priority:"),
+                                        )
+                                        .child(
+                                            div().flex().items_center().gap_2()
+                                                .child({
+                                                    let is_high = modal.priority == codirigent_core::TaskPriority::High;
+                                                    let high_color = gpui::Hsla::from(gpui::Rgba { r: 1.0, g: 0.42, b: 0.42, a: 1.0 });
+                                                    div()
+                                                        .id("priority-high")
+                                                        .px_3()
+                                                        .py(px(4.0))
+                                                        .rounded_md()
+                                                        .border_1()
+                                                        .border_color(if is_high { high_color } else { border_color })
+                                                        .bg(if is_high { high_color.opacity(0.15) } else { input_bg })
+                                                        .cursor_pointer()
+                                                        .hover(|style| style.bg(high_color.opacity(0.1)))
+                                                        .on_click(cx.listener(|this, _: &ClickEvent, _window, cx| {
+                                                            if let Some(modal) = &mut this.task_creation_modal {
+                                                                modal.priority = codirigent_core::TaskPriority::High;
+                                                            }
+                                                            cx.notify();
+                                                        }))
+                                                        .child(
+                                                            div().flex().items_center().gap(px(4.0))
+                                                                .child(div().w(px(6.0)).h(px(6.0)).rounded_full().bg(high_color))
+                                                                .child(div().text_size(px(12.0)).text_color(if is_high { fg } else { muted }).child("High")),
+                                                        )
+                                                })
+                                                .child({
+                                                    let is_medium = modal.priority == codirigent_core::TaskPriority::Medium;
+                                                    let medium_color = gpui::Hsla::from(gpui::Rgba { r: 0.96, g: 0.62, b: 0.04, a: 1.0 });
+                                                    div()
+                                                        .id("priority-medium")
+                                                        .px_3()
+                                                        .py(px(4.0))
+                                                        .rounded_md()
+                                                        .border_1()
+                                                        .border_color(if is_medium { medium_color } else { border_color })
+                                                        .bg(if is_medium { medium_color.opacity(0.15) } else { input_bg })
+                                                        .cursor_pointer()
+                                                        .hover(|style| style.bg(medium_color.opacity(0.1)))
+                                                        .on_click(cx.listener(|this, _: &ClickEvent, _window, cx| {
+                                                            if let Some(modal) = &mut this.task_creation_modal {
+                                                                modal.priority = codirigent_core::TaskPriority::Medium;
+                                                            }
+                                                            cx.notify();
+                                                        }))
+                                                        .child(
+                                                            div().flex().items_center().gap(px(4.0))
+                                                                .child(div().w(px(6.0)).h(px(6.0)).rounded_full().bg(medium_color))
+                                                                .child(div().text_size(px(12.0)).text_color(if is_medium { fg } else { muted }).child("Medium")),
+                                                        )
+                                                })
+                                                .child({
+                                                    let is_low = modal.priority == codirigent_core::TaskPriority::Low;
+                                                    let low_color = gpui::Hsla::from(gpui::Rgba { r: 0.36, g: 0.55, b: 0.94, a: 1.0 });
+                                                    div()
+                                                        .id("priority-low")
+                                                        .px_3()
+                                                        .py(px(4.0))
+                                                        .rounded_md()
+                                                        .border_1()
+                                                        .border_color(if is_low { low_color } else { border_color })
+                                                        .bg(if is_low { low_color.opacity(0.15) } else { input_bg })
+                                                        .cursor_pointer()
+                                                        .hover(|style| style.bg(low_color.opacity(0.1)))
+                                                        .on_click(cx.listener(|this, _: &ClickEvent, _window, cx| {
+                                                            if let Some(modal) = &mut this.task_creation_modal {
+                                                                modal.priority = codirigent_core::TaskPriority::Low;
+                                                            }
+                                                            cx.notify();
+                                                        }))
+                                                        .child(
+                                                            div().flex().items_center().gap(px(4.0))
+                                                                .child(div().w(px(6.0)).h(px(6.0)).rounded_full().bg(low_color))
+                                                                .child(div().text_size(px(12.0)).text_color(if is_low { fg } else { muted }).child("Low")),
+                                                        )
+                                                }),
+                                        ),
+                                )
+                                // Project dir label (read-only)
+                                .child(
+                                    div()
+                                        .text_sm()
+                                        .text_color(muted)
+                                        .child(project_dir_display),
+                                )
+                                // Plan file input
+                                .child(
+                                    div()
+                                        .flex()
+                                        .flex_col()
+                                        .gap_2()
+                                        .child(
+                                            div()
+                                                .text_sm()
+                                                .text_color(muted)
+                                                .child(format!("Plan File (relative path):{}",
+                                                    if modal.focused_field == 2 { " (active)" } else { "" }
+                                                )),
+                                        )
+                                        .child(text_input(
+                                            "task-plan-file-input",
+                                            plan_file_value,
+                                            plan_focused,
+                                            false,
+                                            &input_style,
+                                        ).on_mouse_down(MouseButton::Left, cx.listener(|this, _event, _window, cx| {
+                                            if let Some(modal) = &mut this.task_creation_modal {
+                                                modal.focused_field = 2;
+                                            }
+                                            cx.notify();
+                                        }))),
                                 )
                                 .when_some(modal.error.clone(), |this, error| {
                                     this.child(
@@ -3151,6 +3299,10 @@ impl WorkspaceView {
                     .items_center()
                     .justify_center()
                     .cursor_pointer()
+                    .on_mouse_down(MouseButton::Left, cx.listener(|this, _, _, cx| {
+                        this.open_settings();
+                        cx.notify();
+                    }))
                     .child(div().text_size(px(20.0)).text_color(muted).font_family(icons::LUCIDE_FONT_FAMILY).child(icons::settings()))
             )
     }
@@ -4040,12 +4192,13 @@ impl WorkspaceView {
                         }),
                 )
             })
-            // Context percentage (if available)
+            // Context percentage (if available) with threshold-based coloring
             .when_some(context_pct, |el, pct| {
+                let context_color: gpui::Hsla = crate::terminal_header::ContextLevel::from_percentage(pct).color().into();
                 el.child(
                     div()
                         .text_xs()
-                        .text_color(muted.opacity(0.6))
+                        .text_color(context_color)
                         .flex_shrink_0()
                         .child(format!("{}%", (pct * 100.0) as u32)),
                 )
@@ -4150,8 +4303,117 @@ impl WorkspaceView {
             ))
     }
 
+    /// Render a single task card for the right task board.
+    fn render_task_card(
+        &self,
+        item: &crate::task_board::TaskItem,
+        theme: &CodirigentTheme,
+        cx: &mut Context<Self>,
+    ) -> impl IntoElement {
+        use crate::task_board::{TaskAction, TaskItemAction};
+
+        let border_color: gpui::Hsla = theme.border.into();
+        let fg: gpui::Hsla = theme.foreground.into();
+        let muted: gpui::Hsla = theme.muted.into();
+        let active_bg: gpui::Hsla = theme.active.into();
+        let priority_color = item.priority.color().to_hsla();
+        let status_color = item.status.badge_color().to_hsla();
+
+        let task_id = item.id.clone();
+        let task_id_for_click = task_id.clone();
+
+        let mut card = div()
+            .id(SharedString::from(format!("task-card-{}", task_id)))
+            .w_full()
+            .p_2()
+            .bg(active_bg.opacity(0.3))
+            .border_1()
+            .border_color(border_color.opacity(0.5))
+            .rounded_md()
+            .cursor_pointer()
+            .hover(|style| style.bg(active_bg.opacity(0.6)))
+            .on_click(cx.listener(move |this, _: &ClickEvent, _window, _cx| {
+                this.task_board.select_task(task_id_for_click.clone());
+            }))
+            // Row 1: priority dot + title
+            .child(
+                div().flex().items_center().gap(px(6.0))
+                    .child(div().w(px(6.0)).h(px(6.0)).rounded_full().bg(priority_color).flex_shrink_0())
+                    .child(
+                        div()
+                            .text_size(px(12.0))
+                            .font_weight(FontWeight::MEDIUM)
+                            .text_color(fg)
+                            .overflow_hidden()
+                            .child(item.title.clone()),
+                    ),
+            )
+            // Row 2: status badge + assigned session
+            .child(
+                div().flex().items_center().gap(px(4.0)).mt(px(4.0))
+                    .child(
+                        div()
+                            .px(px(4.0))
+                            .py(px(1.0))
+                            .rounded(px(3.0))
+                            .bg(status_color.opacity(0.15))
+                            .child(
+                                div()
+                                    .text_size(px(9.0))
+                                    .text_color(status_color)
+                                    .child(item.status.label()),
+                            ),
+                    )
+                    .when_some(item.assigned_to.clone(), |this, session| {
+                        this.child(
+                            div()
+                                .text_size(px(9.0))
+                                .text_color(muted.opacity(0.7))
+                                .child(format!("→ {}", session)),
+                        )
+                    }),
+            );
+
+        // Row 3: action buttons from available_actions()
+        let actions = item.available_actions();
+        if !actions.is_empty() {
+            let mut action_row = div().flex().items_center().gap(px(3.0)).mt(px(4.0));
+            for action in actions {
+                let (label, board_action) = match action {
+                    TaskItemAction::Assign => ("Assign", TaskAction::Assign),
+                    TaskItemAction::Edit => ("Edit", TaskAction::Edit),
+                    TaskItemAction::Delete => ("Delete", TaskAction::Delete),
+                    TaskItemAction::MarkForReview => ("Review", TaskAction::Review),
+                    TaskItemAction::Approve => ("Approve", TaskAction::Complete),
+                    TaskItemAction::Reject => ("Delete", TaskAction::Delete),
+                    TaskItemAction::Reopen => ("Start", TaskAction::Start),
+                };
+                let action_task_id = task_id.clone();
+                action_row = action_row.child(
+                    div()
+                        .id(SharedString::from(format!("task-action-{}-{}", task_id, label)))
+                        .px(px(4.0))
+                        .py(px(1.0))
+                        .rounded(px(3.0))
+                        .bg(active_bg)
+                        .cursor_pointer()
+                        .hover(|style| style.bg(active_bg.opacity(0.8)))
+                        .on_click(cx.listener(move |this, _: &ClickEvent, _window, _cx| {
+                            this.task_board.trigger_task_action(action_task_id.clone(), board_action);
+                        }))
+                        .child(
+                            div().text_size(px(9.0)).text_color(muted).child(label),
+                        ),
+                );
+            }
+            card = card.child(action_row);
+        }
+
+        card
+    }
+
     /// Render the task board as a right sidebar panel (288px).
-    pub(super) fn render_right_task_board(&mut self, _cx: &mut Context<Self>) -> impl IntoElement {
+    pub(super) fn render_right_task_board(&mut self, cx: &mut Context<Self>) -> impl IntoElement {
         let theme = self.workspace().theme();
         let panel_bg: gpui::Hsla = theme.icon_rail_background.into();
         let header_bg: gpui::Hsla = theme.drawer_background.into();
@@ -4163,6 +4425,62 @@ impl WorkspaceView {
         let panel_label_size = 11.0;
         let panel_label_row_height = 14.0;
         let panel_icon_y_offset = 1.0;
+
+        // Fetch real task data from TaskManager
+        let (running_items, queued_items, auto_assign_enabled) = if let Ok(manager) = self.task_manager.lock() {
+            let running: Vec<_> = manager.in_progress_tasks().iter()
+                .map(|t| self.core_task_to_ui_item(t))
+                .collect();
+            let queued: Vec<_> = manager.queued_tasks().iter()
+                .map(|t| self.core_task_to_ui_item(t))
+                .collect();
+            let auto_assign = manager.assignment().config().auto_assign;
+
+            // Update task board counts
+            let all_tasks = manager.list_tasks();
+            let queue_count = all_tasks.iter()
+                .filter(|t| matches!(t.status,
+                    codirigent_core::TaskStatus::Queued | codirigent_core::TaskStatus::Blocked))
+                .count();
+            let in_progress_count = all_tasks.iter()
+                .filter(|t| matches!(t.status,
+                    codirigent_core::TaskStatus::Assigned | codirigent_core::TaskStatus::Working))
+                .count();
+            let review_count = all_tasks.iter()
+                .filter(|t| matches!(t.status,
+                    codirigent_core::TaskStatus::Verifying | codirigent_core::TaskStatus::Review))
+                .count();
+            let done_count = all_tasks.iter()
+                .filter(|t| t.status == codirigent_core::TaskStatus::Done)
+                .count();
+            drop(manager);
+            self.task_board.set_task_counts(queue_count, in_progress_count, review_count, done_count);
+
+            (running, queued, auto_assign)
+        } else {
+            (Vec::new(), Vec::new(), true)
+        };
+
+        let running_count = running_items.len();
+        let queued_count = queued_items.len();
+
+        // Auto-assign badge colors
+        let auto_dot_color = if auto_assign_enabled { primary } else { muted.opacity(0.4) };
+        let auto_text_opacity = if auto_assign_enabled { 0.8 } else { 0.4 };
+        let auto_bg_opacity = if auto_assign_enabled { 0.1 } else { 0.05 };
+        let auto_border_opacity = if auto_assign_enabled { 0.2 } else { 0.1 };
+
+        // Render task cards for the running section
+        let theme_ref = self.workspace().theme().clone();
+        let mut running_section = div().flex().flex_col().gap(px(4.0));
+        for item in &running_items {
+            running_section = running_section.child(self.render_task_card(item, &theme_ref, cx));
+        }
+
+        let mut queued_section = div().flex().flex_col().gap(px(4.0));
+        for item in &queued_items {
+            queued_section = queued_section.child(self.render_task_card(item, &theme_ref, cx));
+        }
 
         div()
             .id("right-task-board")
@@ -4203,14 +4521,23 @@ impl WorkspaceView {
                             ),
                     )
                     .child(
-                        div().flex().items_center().gap(px(6.0))
+                        div()
+                            .id("auto-assign-toggle")
+                            .flex().items_center().gap(px(6.0))
                             .px_2()
                             .py(px(2.0))
                             .rounded_md()
-                            .bg(primary.opacity(0.1))
+                            .bg(primary.opacity(auto_bg_opacity))
                             .border_1()
-                            .border_color(primary.opacity(0.2))
-                            .child(div().w(px(6.0)).h(px(6.0)).rounded_full().bg(primary))
+                            .border_color(primary.opacity(auto_border_opacity))
+                            .cursor_pointer()
+                            .on_click(cx.listener(move |this, _: &ClickEvent, _window, _cx| {
+                                if let Ok(mut manager) = this.task_manager.lock() {
+                                    let current = manager.assignment().config().auto_assign;
+                                    manager.assignment_mut().set_auto_assign(!current);
+                                }
+                            }))
+                            .child(div().w(px(6.0)).h(px(6.0)).rounded_full().bg(auto_dot_color))
                             .child(
                                 div()
                                     .h(px(panel_label_row_height))
@@ -4219,7 +4546,7 @@ impl WorkspaceView {
                                     .child(
                                         div()
                                             .text_size(px(panel_label_size))
-                                            .text_color(primary.opacity(0.8))
+                                            .text_color(primary.opacity(auto_text_opacity))
                                             .child("Auto"),
                                     ),
                             ),
@@ -4234,7 +4561,7 @@ impl WorkspaceView {
                     .flex()
                     .flex_col()
                     .gap_6()
-                    // Running section header
+                    // Running section
                     .child(
                         div().flex().flex_col()
                             .child(
@@ -4255,13 +4582,18 @@ impl WorkspaceView {
                                                 ),
                                         ))
                                     .child(div().px(px(6.0)).rounded_full().bg(active_bg)
-                                        .child(div().text_xs().text_color(muted).child("0"))),
+                                        .child(div().text_xs().text_color(muted).child(format!("{}", running_count)))),
                             )
-                            .child(
-                                div().text_xs().text_color(muted.opacity(0.5)).child("No running tasks"),
-                            ),
+                            .when(running_count == 0, |this| {
+                                this.child(
+                                    div().text_xs().text_color(muted.opacity(0.5)).child("No running tasks"),
+                                )
+                            })
+                            .when(running_count > 0, |this| {
+                                this.child(running_section)
+                            }),
                     )
-                    // Queue section header
+                    // Queue section
                     .child(
                         div().flex().flex_col()
                             .child(
@@ -4282,11 +4614,16 @@ impl WorkspaceView {
                                                 ),
                                         ))
                                     .child(div().px(px(6.0)).rounded_full().bg(active_bg)
-                                        .child(div().text_xs().text_color(muted).child("0"))),
+                                        .child(div().text_xs().text_color(muted).child(format!("{}", queued_count)))),
                             )
-                            .child(
-                                div().text_xs().text_color(muted.opacity(0.5)).child("No queued tasks"),
-                            ),
+                            .when(queued_count == 0, |this| {
+                                this.child(
+                                    div().text_xs().text_color(muted.opacity(0.5)).child("No queued tasks"),
+                                )
+                            })
+                            .when(queued_count > 0, |this| {
+                                this.child(queued_section)
+                            }),
                     ),
             )
             // Footer: Add Task button
@@ -4307,6 +4644,10 @@ impl WorkspaceView {
                             .items_center()
                             .justify_center()
                             .cursor_pointer()
+                            .on_click(cx.listener(|this, _: &ClickEvent, _window, cx| {
+                                this.open_task_creation_modal();
+                                cx.notify();
+                            }))
                             .child(
                                 div().flex().items_center().gap_1()
                                     .child(self.centered_lucide_icon_with_offset(icons::plus(), fg, panel_label_size, panel_icon_y_offset))

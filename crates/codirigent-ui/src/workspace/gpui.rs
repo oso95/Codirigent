@@ -38,6 +38,9 @@ use codirigent_core::{
     SessionManager, SessionStatus, TaskManager, TaskManagerConfig, Task, TaskId,
     FileStorageService, WorktreeCreateOptions,
 };
+use codirigent_core::config_service::{ConfigService, DefaultConfigService};
+use codirigent_core::context::{ContextConfig, ContextTracker};
+use codirigent_core::storage::ContextFileData;
 use codirigent_filetree::FileTree;
 use codirigent_detector::InputDetector;
 use codirigent_session::DefaultSessionManager;
@@ -80,8 +83,11 @@ pub(super) struct SessionActionModal {
 pub(super) struct TaskCreationModal {
     pub(super) title: String,
     pub(super) description: String,
-    pub(super) focused_field: usize, // 0=title, 1=description
+    pub(super) priority: codirigent_core::TaskPriority,
+    pub(super) focused_field: usize, // 0=title, 1=description, 2=plan_file
     pub(super) error: Option<String>,
+    pub(super) project_dir: Option<PathBuf>,
+    pub(super) plan_file: String,
 }
 
 /// Context menu state for file tree right-click.
@@ -180,8 +186,16 @@ pub struct WorkspaceView {
     pub(super) is_selecting: bool,
     /// Session ID that is currently being selected in (for mouse move events).
     pub(super) selecting_session_id: Option<SessionId>,
-    /// Settings page state (None = settings closed, Some = settings open).
+    /// Settings page state (persists between open/close).
     pub(super) settings_page: Option<SettingsPage>,
+    /// Whether the settings overlay is visible.
+    pub(super) settings_open: bool,
+    /// Config service for loading/saving settings to disk.
+    config_service: Option<DefaultConfigService>,
+    /// Context tracker for detecting context usage from CLI output (regex fallback).
+    context_tracker: ContextTracker,
+    /// Last time context files were polled.
+    last_context_poll: Instant,
 }
 
 impl WorkspaceView {
@@ -324,6 +338,10 @@ impl WorkspaceView {
             is_selecting: false,
             selecting_session_id: None,
             settings_page: None,
+            settings_open: false,
+            config_service: DefaultConfigService::new().ok(),
+            context_tracker: ContextTracker::new(ContextConfig::default()),
+            last_context_poll: Instant::now(),
         };
 
         view.refresh_file_tree_panel();
@@ -461,6 +479,19 @@ impl WorkspaceView {
                     detector.process_output(session_id, &data);
                 }
 
+                // Regex fallback: detect context usage from PTY output
+                // (used for CLIs without hook support, e.g. Codex)
+                {
+                    let output_str = String::from_utf8_lossy(&data);
+                    if let Some(event) = self.context_tracker.detect_from_output(session_id, &output_str) {
+                        self.event_bus.publish(event);
+                    }
+                    if let Some(usage) = self.context_tracker.get_usage(session_id) {
+                        let manager = self.session_manager.lock().unwrap();
+                        manager.update_context_usage(session_id, Some(usage.effective_usage));
+                    }
+                }
+
                 // Check for OSC 7 (working directory change) sequences
                 if let Some(new_cwd) = codirigent_session::extract_osc7_path(&data) {
                     let changed = {
@@ -542,6 +573,62 @@ impl WorkspaceView {
             };
             self.workspace.sync_sessions_from_manager(&manager_sessions);
             any_dirty = true;
+        }
+
+        // Poll context files every ~1 second (file-based IPC from CLI hooks).
+        // This is the primary context tracking mechanism; regex fallback above
+        // handles CLIs without hook support.
+        if self.last_context_poll.elapsed() >= Duration::from_secs(1) {
+            self.last_context_poll = Instant::now();
+
+            // Collect (session_id, context_file_path) pairs while holding lock briefly
+            let context_paths: Vec<(SessionId, std::path::PathBuf)> = {
+                let manager = self.session_manager.lock().unwrap();
+                self.workspace
+                    .sessions()
+                    .iter()
+                    .filter_map(|s| {
+                        manager
+                            .get_context_file_path(s.id)
+                            .map(|path| (s.id, path))
+                    })
+                    .collect()
+            };
+
+            // Read files without holding the manager lock (non-blocking I/O)
+            let mut updates: Vec<(SessionId, f32)> = Vec::new();
+            for (id, path) in &context_paths {
+                if let Ok(content) = std::fs::read_to_string(path) {
+                    if let Ok(data) = serde_json::from_str::<ContextFileData>(&content) {
+                        updates.push((*id, data.usage.clamp(0.0, 1.0)));
+                    }
+                }
+            }
+
+            // Apply updates
+            if !updates.is_empty() {
+                {
+                    let manager = self.session_manager.lock().unwrap();
+                    for (id, usage) in &updates {
+                        manager.update_context_usage(*id, Some(*usage));
+                    }
+                }
+
+                // Sync workspace sessions so UI picks up new context_usage values
+                let manager_sessions = {
+                    let manager = self.session_manager.lock().unwrap();
+                    manager.list_sessions()
+                };
+                self.workspace.sync_sessions_from_manager(&manager_sessions);
+
+                // Update context tracker for threshold events
+                for (id, usage) in &updates {
+                    if let Some(event) = self.context_tracker.update_usage(*id, *usage) {
+                        self.event_bus.publish(event);
+                    }
+                }
+                any_dirty = true;
+            }
         }
 
         // Clipboard preview: show for 4 seconds whenever clipboard content changes and has an image.
@@ -913,6 +1000,9 @@ impl WorkspaceView {
                 crate::top_bar::TopBarEvent::NewSessionRequested => {
                     // Future: delegate to create_session logic
                 }
+                crate::top_bar::TopBarEvent::BroadcastToggled(_) => {
+                    // Broadcast feature removed
+                }
             }
         }
     }
@@ -943,16 +1033,85 @@ impl WorkspaceView {
     /// Open the settings page overlay.
     pub(super) fn open_settings(&mut self) {
         if self.settings_page.is_none() {
-            let user_settings = codirigent_core::config::UserSettings::default();
-            let project_config = codirigent_core::config::ProjectConfig::default();
-            // TODO: Load actual settings from ConfigService once wired in
+            // Try to load from disk, fall back to defaults
+            let mut user_settings = self
+                .config_service
+                .as_ref()
+                .and_then(|cs| cs.load_user_settings().ok())
+                .unwrap_or_default();
+
+            let project_config = self
+                .config_service
+                .as_ref()
+                .and_then(|cs| {
+                    std::env::current_dir()
+                        .ok()
+                        .and_then(|cwd| cs.load_project_config(&cwd).ok())
+                })
+                .unwrap_or_default();
+
+            // Filter keybindings: only keep actions that exist in defaults
+            let default_keys = codirigent_core::config::UserSettings::default_keybindings();
+            user_settings.keybindings.retain(|k, _| default_keys.contains_key(k));
+            // Add any new default keybindings that aren't in the saved settings
+            for (k, v) in &default_keys {
+                user_settings
+                    .keybindings
+                    .entry(k.clone())
+                    .or_insert_with(|| v.clone());
+            }
+
+            // Sync theme detection from current workspace state
+            let bg: gpui::Hsla = self.workspace.theme().background.into();
+            user_settings.appearance.theme = if bg.l > 0.5 {
+                "light".to_string()
+            } else {
+                "dark".to_string()
+            };
+
+            // Sync current UI font size and terminal font size from theme
+            let theme = self.workspace.theme();
+            user_settings.appearance.font_size = theme.font_size_base as u32;
+            user_settings.appearance.grid_gap = theme.grid_gap as u32;
+            user_settings.terminal.font_size = theme.terminal_font_size as u32;
+
             self.settings_page = Some(SettingsPage::new(user_settings, project_config));
         }
+        self.settings_open = true;
     }
 
-    /// Close the settings page overlay.
+    /// Close the settings page overlay, saving any pending changes to disk.
     pub(super) fn close_settings(&mut self) {
-        self.settings_page = None;
+        // Save pending changes before closing
+        self.flush_settings();
+        // Close any open dropdown
+        if let Some(ref mut page) = self.settings_page {
+            page.open_dropdown = None;
+        }
+        self.settings_open = false;
+    }
+
+    /// Flush pending settings changes to disk.
+    pub(super) fn flush_settings(&mut self) {
+        if let (Some(page), Some(cs)) = (self.settings_page.as_mut(), self.config_service.as_ref())
+        {
+            if page.user_save_pending {
+                if let Err(e) = cs.save_user_settings(&page.user_settings) {
+                    warn!("Failed to save user settings: {}", e);
+                } else {
+                    page.mark_user_saved();
+                }
+            }
+            if page.project_save_pending {
+                if let Ok(cwd) = std::env::current_dir() {
+                    if let Err(e) = cs.save_project_config(&cwd, &page.project_config) {
+                        warn!("Failed to save project config: {}", e);
+                    } else {
+                        page.mark_project_saved();
+                    }
+                }
+            }
+        }
     }
 
     /// Handle the OpenSettings action (Ctrl+,).
@@ -976,7 +1135,9 @@ impl WorkspaceView {
             }
             crate::task_board::TaskBoardEvent::AutoAssignToggled(enabled) => {
                 info!(enabled, "Auto-assign toggled");
-                // TODO: Wire to TaskManager auto-assignment config
+                if let Ok(mut manager) = self.task_manager.lock() {
+                    manager.assignment_mut().set_auto_assign(enabled);
+                }
             }
             crate::task_board::TaskBoardEvent::AddTaskClicked => {
                 info!("Add task clicked");
@@ -1268,12 +1429,22 @@ impl WorkspaceView {
         self.session_action_modal = None;
     }
 
-    fn open_task_creation_modal(&mut self) {
+    pub(super) fn open_task_creation_modal(&mut self) {
+        let project_dir = self.workspace.focused_session().and_then(|s| {
+            s.git_info
+                .as_ref()
+                .map(|g| g.repo_root.clone())
+                .or_else(|| Some(s.working_directory.clone()))
+        });
+
         self.task_creation_modal = Some(TaskCreationModal {
             title: String::new(),
             description: String::new(),
+            priority: codirigent_core::TaskPriority::Medium,
             focused_field: 0,
             error: None,
+            project_dir,
+            plan_file: String::new(),
         });
     }
 
@@ -1302,7 +1473,14 @@ impl WorkspaceView {
         let task_id = TaskId(format!("task-{}", self.next_session_id));
         self.next_session_id += 1;
 
-        let task = Task::new(task_id.clone(), title, description);
+        let mut task = Task::new(task_id.clone(), title, description);
+        task.priority = modal.priority;
+        task.project_dir = modal.project_dir.clone();
+        task.plan_file = if modal.plan_file.trim().is_empty() {
+            None
+        } else {
+            Some(modal.plan_file.trim().to_string())
+        };
 
         if let Ok(mut manager) = self.task_manager.lock() {
             if let Err(e) = manager.create_task(task) {
@@ -1834,7 +2012,7 @@ impl WorkspaceView {
         cx: &mut Context<Self>,
     ) {
         // Escape closes settings page if open
-        if self.settings_page.is_some() && event.keystroke.key == "escape" {
+        if self.settings_open && event.keystroke.key == "escape" {
             self.close_settings();
             cx.notify();
             return;
@@ -2029,8 +2207,8 @@ impl WorkspaceView {
                 return true;
             }
             "enter" => {
-                // Only submit if in title field, otherwise insert newline in description
-                if modal.focused_field == 0 {
+                // Submit from title or plan_file field, newline in description
+                if modal.focused_field == 0 || modal.focused_field == 2 {
                     self.apply_task_creation_modal(cx);
                 } else {
                     modal.description.push('\n');
@@ -2039,26 +2217,28 @@ impl WorkspaceView {
                 return true;
             }
             "tab" => {
-                // Switch between title and description
-                modal.focused_field = if modal.focused_field == 0 { 1 } else { 0 };
+                // Cycle: title(0) -> description(1) -> plan_file(2) -> title(0)
+                modal.focused_field = (modal.focused_field + 1) % 3;
                 cx.notify();
                 return true;
             }
             "backspace" => {
-                if modal.focused_field == 0 {
-                    modal.title.pop();
-                } else {
-                    modal.description.pop();
+                match modal.focused_field {
+                    0 => { modal.title.pop(); }
+                    1 => { modal.description.pop(); }
+                    2 => { modal.plan_file.pop(); }
+                    _ => {}
                 }
                 modal.error = None;
                 cx.notify();
                 return true;
             }
             "space" => {
-                if modal.focused_field == 0 {
-                    modal.title.push(' ');
-                } else {
-                    modal.description.push(' ');
+                match modal.focused_field {
+                    0 => modal.title.push(' '),
+                    1 => modal.description.push(' '),
+                    2 => modal.plan_file.push(' '),
+                    _ => {}
                 }
                 modal.error = None;
                 cx.notify();
@@ -2071,10 +2251,11 @@ impl WorkspaceView {
         if (event.keystroke.modifiers.control || event.keystroke.modifiers.platform)
             && key == "a"
         {
-            if modal.focused_field == 0 {
-                modal.title.clear();
-            } else {
-                modal.description.clear();
+            match modal.focused_field {
+                0 => modal.title.clear(),
+                1 => modal.description.clear(),
+                2 => modal.plan_file.clear(),
+                _ => {}
             }
             modal.error = None;
             cx.notify();
@@ -2092,10 +2273,11 @@ impl WorkspaceView {
         if let Some(ref key_char) = event.keystroke.key_char {
             if let Some(ch) = key_char.chars().next() {
                 if ch.is_ascii_graphic() || ch == ' ' || ch == '\n' {
-                    if modal.focused_field == 0 {
-                        modal.title.push(ch);
-                    } else {
-                        modal.description.push(ch);
+                    match modal.focused_field {
+                        0 => modal.title.push(ch),
+                        1 => modal.description.push(ch),
+                        2 => modal.plan_file.push(ch),
+                        _ => {}
                     }
                     modal.error = None;
                     cx.notify();
@@ -2223,6 +2405,11 @@ impl Render for WorkspaceView {
         // Ensure Lucide icon font is loaded (no-op after first call)
         crate::icons::ensure_font_loaded(window);
 
+        // Scale all rem-based text sizes (text_xs, text_sm, etc.) proportionally
+        // to font_size_base. Default rem is 16px when font_size_base is 13.
+        let rem = 16.0 * (self.workspace.theme().font_size_base / 13.0);
+        window.set_rem_size(gpui::px(rem));
+
         // Process any pending UI events first
         self.process_ui_events(cx);
         self.process_top_bar_events();
@@ -2260,7 +2447,7 @@ impl Render for WorkspaceView {
             let (real_w, real_h) = crate::terminal_view::compute_cell_dimensions(
                 window.text_system(),
                 crate::terminal_view::default_terminal_font_family(),
-                self.workspace.theme().font_size_base,
+                self.workspace.theme().terminal_font_size,
             );
             for tv in self.terminals.values_mut() {
                 if !tv.dimensions_initialized() {
@@ -2296,11 +2483,13 @@ impl Render for WorkspaceView {
         let theme = self.workspace.theme();
         let bg: gpui::Hsla = theme.background.into();
         let grid_gap = theme.grid_gap;
+        let ui_font_size = theme.font_size_base;
 
         // Build the main container with flex-col layout
         let mut container = div()
             .id("workspace-container")
             .size_full()
+            .text_size(gpui::px(ui_font_size))
             .track_focus(&self.focus_handle(cx))
             // Register action handlers for keyboard shortcuts
             .on_action(cx.listener(Self::handle_new_session))
@@ -2331,7 +2520,16 @@ impl Render for WorkspaceView {
         container = container.child(self.render_title_bar(window, cx));
 
         // Settings page overlay (replaces all content below title bar)
-        if self.settings_page.is_some() {
+        if self.settings_open && self.settings_page.is_some() {
+            // Auto-save pending settings changes
+            let should_flush = self
+                .settings_page
+                .as_ref()
+                .map(|p| p.user_save_pending || p.project_save_pending)
+                .unwrap_or(false);
+            if should_flush {
+                self.flush_settings();
+            }
             container = container.child(self.render_settings_overlay(cx));
             return container;
         }
