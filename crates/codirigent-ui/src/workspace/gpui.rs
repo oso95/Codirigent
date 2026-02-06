@@ -459,52 +459,44 @@ impl WorkspaceView {
 
                 // Check for OSC 7 (working directory change) sequences
                 if let Some(new_cwd) = codirigent_session::extract_osc7_path(&data) {
-                    let new_cwd_for_ui = new_cwd.clone();
                     let changed = {
                         let manager = self.session_manager.lock().unwrap();
                         manager.update_working_directory(session_id, new_cwd)
                     };
                     if changed {
-                        // Keep workspace's session copy in sync with the manager
-                        let canonical_cwd = std::fs::canonicalize(&new_cwd_for_ui)
-                            .unwrap_or_else(|_| new_cwd_for_ui.clone());
-                        if let Some(session) = self.workspace.session_mut(session_id) {
-                            session.working_directory = canonical_cwd.clone();
-                        }
-
-                        // Force immediate git refresh for this session
+                        // Force immediate git refresh (updates the manager's copy)
                         let git_info = {
                             let manager = self.session_manager.lock().unwrap();
                             manager.refresh_git_status(session_id)
                         };
-                        if let Some(git_info) = git_info {
-                            if let Some((_, header)) = self
-                                .terminal_headers
-                                .iter_mut()
-                                .find(|(sid, _)| *sid == session_id)
-                            {
-                                header.git_branch = Some(git_info.branch.clone());
-                                header.git_dirty_count = Some(git_info.dirty_count);
-                            }
-                            self.workspace
-                                .update_session_git_info(session_id, Some(git_info));
-                        } else {
-                            // New dir is not a git repo - clear git info
-                            if let Some((_, header)) = self
-                                .terminal_headers
-                                .iter_mut()
-                                .find(|(sid, _)| *sid == session_id)
-                            {
+
+                        // Update terminal header (UI-only state, not part of Session)
+                        if let Some((_, header)) = self
+                            .terminal_headers
+                            .iter_mut()
+                            .find(|(sid, _)| *sid == session_id)
+                        {
+                            if let Some(ref info) = git_info {
+                                header.git_branch = Some(info.branch.clone());
+                                header.git_dirty_count = Some(info.dirty_count);
+                            } else {
                                 header.git_branch = None;
                                 header.git_dirty_count = None;
                             }
-                            self.workspace
-                                .update_session_git_info(session_id, None);
                         }
+
+                        // Sync workspace cache so file tree sees the new CWD
+                        let manager_sessions = {
+                            let manager = self.session_manager.lock().unwrap();
+                            manager.list_sessions()
+                        };
+                        self.workspace.sync_sessions_from_manager(&manager_sessions);
 
                         // Update file tree panel if this is the focused session
                         if self.workspace.focused_session_id() == Some(session_id) {
-                            self.set_project_root(canonical_cwd);
+                            if let Some(session) = self.workspace.session(session_id) {
+                                self.set_project_root(session.working_directory.clone());
+                            }
                         }
                     }
                 }
@@ -525,21 +517,26 @@ impl WorkspaceView {
             self.last_git_refresh = Instant::now();
             let session_ids: Vec<SessionId> =
                 self.workspace.sessions().iter().map(|s| s.id).collect();
-            let manager = self.session_manager.lock().unwrap();
-            for id in session_ids {
-                if let Some(git_info) = manager.refresh_git_status(id) {
-                    // Update terminal header
-                    if let Some((_, header)) =
-                        self.terminal_headers.iter_mut().find(|(sid, _)| *sid == id)
-                    {
-                        header.git_branch = Some(git_info.branch.clone());
-                        header.git_dirty_count = Some(git_info.dirty_count);
+            {
+                let manager = self.session_manager.lock().unwrap();
+                for id in &session_ids {
+                    if let Some(git_info) = manager.refresh_git_status(*id) {
+                        // Update terminal header (UI-only state)
+                        if let Some((_, header)) =
+                            self.terminal_headers.iter_mut().find(|(sid, _)| sid == id)
+                        {
+                            header.git_branch = Some(git_info.branch.clone());
+                            header.git_dirty_count = Some(git_info.dirty_count);
+                        }
                     }
-                    // Update workspace session
-                    self.workspace
-                        .update_session_git_info(id, Some(git_info));
                 }
             }
+            // Bulk-sync git_info (and all other fields) from manager
+            let manager_sessions = {
+                let manager = self.session_manager.lock().unwrap();
+                manager.list_sessions()
+            };
+            self.workspace.sync_sessions_from_manager(&manager_sessions);
             any_dirty = true;
         }
 
@@ -1343,26 +1340,24 @@ impl WorkspaceView {
         match modal.kind {
             SessionActionKind::Rename => {
                 if let Ok(manager) = self.session_manager.lock() {
-                    if let Err(e) = manager.rename_session(modal.session_id, value.clone()) {
+                    if let Err(e) = manager.rename_session(modal.session_id, value) {
                         warn!("Failed to rename session: {}", e);
                     }
-                }
-                if let Some(session) = self.workspace.session_mut(modal.session_id) {
-                    session.name = value;
                 }
             }
             SessionActionKind::AssignGroup => {
                 if let Ok(manager) = self.session_manager.lock() {
-                    if let Err(e) = manager.set_session_group(modal.session_id, Some(value.clone()), None) {
+                    if let Err(e) = manager.set_session_group(modal.session_id, Some(value), None) {
                         warn!("Failed to set session group: {}", e);
                     }
-                }
-                if let Some(session) = self.workspace.session_mut(modal.session_id) {
-                    session.group = Some(value);
                 }
             }
         }
 
+        // Sync workspace cache immediately so the UI reflects the change
+        if let Ok(manager) = self.session_manager.lock() {
+            self.workspace.sync_sessions_from_manager(&manager.list_sessions());
+        }
         self.close_session_action_modal();
         cx.notify();
     }
@@ -1396,13 +1391,9 @@ impl WorkspaceView {
                 if let Ok(manager) = self.session_manager.lock() {
                     let _ = manager.set_session_group(
                         session_id,
-                        Some(group_name.clone()),
-                        color.clone(),
+                        Some(group_name),
+                        color,
                     );
-                }
-                if let Some(session) = self.workspace.session_mut(session_id) {
-                    session.group = Some(group_name);
-                    session.color = color;
                 }
                 self.close_session_menu(cx);
             }
@@ -1415,16 +1406,16 @@ impl WorkspaceView {
                 if let Ok(manager) = self.session_manager.lock() {
                     let _ = manager.set_session_group(session_id, None, None);
                 }
-                if let Some(session) = self.workspace.session_mut(session_id) {
-                    session.group = None;
-                    session.color = None;
-                }
                 self.close_session_menu(cx);
             }
             SessionMenuAction::EndSession => {
                 self.close_session(session_id, cx);
                 self.close_session_menu(cx);
             }
+        }
+        // Sync workspace cache immediately so the UI reflects the change
+        if let Ok(manager) = self.session_manager.lock() {
+            self.workspace.sync_sessions_from_manager(&manager.list_sessions());
         }
         cx.notify();
     }

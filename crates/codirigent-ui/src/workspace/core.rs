@@ -193,14 +193,25 @@ impl Workspace {
         }
     }
 
-    /// Update git info for a session.
-    pub fn update_session_git_info(
-        &mut self,
-        id: SessionId,
-        info: Option<codirigent_core::GitRepoInfo>,
-    ) {
-        if let Some(session) = self.session_mut(id) {
-            session.git_info = info;
+    /// Sync session metadata from the authoritative source (SessionManager).
+    ///
+    /// Copies all fields from `manager_sessions` into the workspace's cached
+    /// sessions, **except `status`** which is owned by the detector/UI side.
+    /// This replaces the previous piecemeal dual-write pattern and ensures the
+    /// workspace cache never drifts from the manager.
+    pub fn sync_sessions_from_manager(&mut self, manager_sessions: &[Session]) {
+        for src in manager_sessions {
+            if let Some(dst) = self.session_mut(src.id) {
+                dst.name = src.name.clone();
+                dst.working_directory = src.working_directory.clone();
+                dst.current_task = src.current_task.clone();
+                dst.context_usage = src.context_usage;
+                dst.group = src.group.clone();
+                dst.color = src.color.clone();
+                dst.git_info = src.git_info.clone();
+                // `status` is NOT synced — the detector is the authority.
+                // `id` and `created_at` are immutable.
+            }
         }
     }
 
