@@ -120,8 +120,6 @@ pub struct WorkspaceView {
     pub(super) title_bar: crate::title_bar::TitleBar,
     /// Unified top bar component state.
     pub(super) top_bar: crate::top_bar::TopBar,
-    /// Broadcast input bar (below top bar when active).
-    pub(super) broadcast_bar: crate::broadcast_bar::BroadcastBar,
     /// Narrow icon rail (left edge).
     pub(super) icon_rail: crate::icon_rail::IconRail,
     /// Expandable drawer panel (next to icon rail).
@@ -290,7 +288,6 @@ impl WorkspaceView {
             custom_picker: CustomLayoutPicker::new(),
             title_bar: crate::title_bar::TitleBar::new(),
             top_bar: crate::top_bar::TopBar::new(),
-            broadcast_bar: crate::broadcast_bar::BroadcastBar::new(),
             icon_rail: crate::icon_rail::IconRail::new(),
             drawer: crate::drawer::Drawer::new(),
             selected_session_id: None,
@@ -898,9 +895,6 @@ impl WorkspaceView {
                 crate::top_bar::TopBarEvent::LayoutSelected(profile) => {
                     self.workspace.set_layout(profile);
                 }
-                crate::top_bar::TopBarEvent::BroadcastToggled(enabled) => {
-                    self.broadcast_bar.set_visible(enabled);
-                }
                 crate::top_bar::TopBarEvent::RightPanelToggled => {
                     // Will be wired in plan 05 (right task board)
                 }
@@ -918,32 +912,6 @@ impl WorkspaceView {
                 }
                 crate::top_bar::TopBarEvent::NewSessionRequested => {
                     // Future: delegate to create_session logic
-                }
-            }
-        }
-    }
-
-    /// Process broadcast bar events -- send submitted text to all active sessions.
-    pub(super) fn process_broadcast_events(&mut self) {
-        let events = self.broadcast_bar.drain_events();
-        for event in events {
-            match event {
-                crate::broadcast_bar::BroadcastBarEvent::BroadcastSubmitted(text) => {
-                    let input_bytes = format!("{}\n", text).into_bytes();
-                    let session_ids: Vec<SessionId> = self
-                        .workspace
-                        .sessions()
-                        .iter()
-                        .map(|s| s.id)
-                        .collect();
-                    if let Ok(manager) = self.session_manager.lock() {
-                        for id in session_ids {
-                            if let Err(e) = manager.send_input(id, &input_bytes) {
-                                warn!("Failed to broadcast input to session {}: {}", id, e);
-                            }
-                        }
-                    }
-                    info!(text = %text, sessions = self.workspace.sessions().len(), "Broadcast sent to all sessions");
                 }
             }
         }
@@ -1257,13 +1225,6 @@ impl WorkspaceView {
     /// Toggle task board panel visibility.
     pub fn toggle_task_board(&mut self, cx: &mut Context<Self>) {
         self.task_board.toggle_expanded();
-        cx.notify();
-    }
-
-    /// Toggle broadcast mode.
-    pub fn toggle_broadcast(&mut self, cx: &mut Context<Self>) {
-        self.top_bar.toggle_broadcast();
-        self.broadcast_bar.set_visible(self.top_bar.is_broadcast_enabled());
         cx.notify();
     }
 
@@ -2265,7 +2226,6 @@ impl Render for WorkspaceView {
         // Process any pending UI events first
         self.process_ui_events(cx);
         self.process_top_bar_events();
-        self.process_broadcast_events();
         self.process_icon_rail_events();
 
         // Sync UI state before rendering
@@ -2371,30 +2331,13 @@ impl Render for WorkspaceView {
         container = container.child(self.render_title_bar(window, cx));
 
         // Settings page overlay (replaces all content below title bar)
-        if let Some(ref settings_page) = self.settings_page {
-            let settings_content = crate::settings::render::render_settings_page(
-                settings_page,
-                self.workspace.theme(),
-            );
-            // Wrap with click handlers for interactivity
-            container = container.child(
-                div()
-                    .id("settings-overlay")
-                    .flex_1()
-                    .overflow_hidden()
-                    .on_mouse_down(gpui::MouseButton::Left, cx.listener(Self::handle_settings_click))
-                    .child(settings_content),
-            );
+        if self.settings_page.is_some() {
+            container = container.child(self.render_settings_overlay(cx));
             return container;
         }
 
         // 1. TopBar at top (48px)
         container = container.child(self.render_top_bar(cx));
-
-        // 1.5. Broadcast bar (conditional, 52px)
-        if self.broadcast_bar.is_visible() {
-            container = container.child(self.render_broadcast_bar(cx));
-        }
 
         // 2. Main content area (flex-row: icon rail + drawer + grid + right task board)
         let mut main_content = div()

@@ -1,7 +1,7 @@
 //! GPUI rendering components for WorkspaceView.
 //!
 //! This module contains the rendering logic for the workspace grid, top bar,
-//! icon rail, drawer, broadcast bar, and right task board panel,
+//! icon rail, drawer, and right task board panel,
 //! separated from the main WorkspaceView to keep file sizes manageable.
 
 use super::gpui::WorkspaceView;
@@ -732,7 +732,6 @@ impl WorkspaceView {
             .enumerate()
             .map(|(i, t)| (i, t.label.clone(), t.is_active))
             .collect();
-        let broadcast_enabled = self.top_bar.is_broadcast_enabled();
         let right_panel_open = self.top_bar.is_right_panel_open();
         let is_custom_layout = self.workspace.layout_profile().is_custom();
         let custom_label = if let LayoutProfile::Custom { rows, cols } = self.workspace.layout_profile() {
@@ -826,47 +825,6 @@ impl WorkspaceView {
         );
 
         bar = bar.child(tab_row);
-
-        // Vertical divider
-        bar = bar.child(
-            div()
-                .w(px(1.0))
-                .h(px(20.0))
-                .bg(border_color)
-                .mx_1(),
-        );
-
-        // Broadcast toggle
-        let broadcast_color = if broadcast_enabled { primary } else { muted };
-        bar = bar.child(
-            div()
-                .id("top-bar-broadcast")
-                .px_2()
-                .py_1()
-                .rounded_md()
-                .flex()
-                .items_center()
-                .gap_1()
-                .cursor_pointer()
-                .hover(|style| style.bg(active.opacity(0.3)))
-                .on_click(cx.listener(|this, _: &ClickEvent, _window, cx| {
-                    this.top_bar.toggle_broadcast();
-                    this.process_top_bar_events();
-                    cx.notify();
-                }))
-                .child(self.aligned_icon_label_row_with_offset(
-                    icons::zap(),
-                    broadcast_color,
-                    12.0,
-                    "Broadcast",
-                    broadcast_color,
-                    11.0,
-                    FontWeight::MEDIUM,
-                    14.0,
-                    4.0,
-                    3.0,
-                )),
-        );
 
         // --- Spacer ---
         bar = bar.child(div().flex_1());
@@ -4190,93 +4148,6 @@ impl WorkspaceView {
                 14.0,
                 6.0,
             ))
-    }
-
-    /// Render the broadcast input bar (52px, rose-accented).
-    pub(super) fn render_broadcast_bar(&mut self, cx: &mut Context<Self>) -> impl IntoElement {
-        let theme = self.workspace().theme();
-        let accent: gpui::Hsla = theme.broadcast_accent.into();
-        let fg: gpui::Hsla = theme.foreground.into();
-        let input_text = self.broadcast_bar.input().to_string();
-
-        let bar_bg = gpui::Hsla { h: accent.h, s: accent.s, l: 0.05, a: 0.2 };
-        let bar_border = gpui::Hsla { a: 0.3, ..accent };
-
-        div()
-            .id("broadcast-bar")
-            .w_full()
-            .h(px(crate::broadcast_bar::BroadcastBar::HEIGHT))
-            .bg(bar_bg)
-            .border_b_1()
-            .border_color(bar_border)
-            .flex()
-            .items_center()
-            .justify_center()
-            .px_4()
-            .child(
-                div()
-                    .w_full()
-                    .max_w(px(768.0))
-                    .flex()
-                    .items_center()
-                    .gap_2()
-                    // Label
-                    .child(
-                        div()
-                            .flex_shrink_0()
-                            .child(self.aligned_icon_label_row(
-                                icons::radio(),
-                                accent,
-                                14.0,
-                                "BROADCAST TO ALL:",
-                                accent,
-                                11.0,
-                                FontWeight::BOLD,
-                                14.0,
-                                4.0,
-                            )),
-                    )
-                    // Input display
-                    .child(
-                        div()
-                            .flex_1()
-                            .h(px(36.0))
-                            .bg(gpui::Hsla { h: 0.0, s: 0.0, l: 0.04, a: 1.0 })
-                            .border_1()
-                            .border_color(gpui::Hsla { a: 0.3, ..accent })
-                            .rounded_md()
-                            .px_4()
-                            .flex()
-                            .items_center()
-                            .child(
-                                if input_text.is_empty() {
-                                    div().text_sm().text_color(gpui::Hsla { h: 0.0, s: 0.0, l: 0.35, a: 1.0 })
-                                        .child(crate::broadcast_bar::BroadcastBar::PLACEHOLDER)
-                                } else {
-                                    div().text_sm().text_color(fg).child(input_text)
-                                },
-                            ),
-                    )
-                    // Send button
-                    .child(
-                        div()
-                            .id("broadcast-send")
-                            .w(px(36.0))
-                            .h(px(36.0))
-                            .bg(accent)
-                            .rounded_md()
-                            .flex()
-                            .items_center()
-                            .justify_center()
-                            .cursor_pointer()
-                            .on_mouse_down(MouseButton::Left, cx.listener(|this, _, _, cx| {
-                                this.broadcast_bar.submit();
-                                this.process_broadcast_events();
-                                cx.notify();
-                            }))
-                            .child(div().text_sm().text_color(gpui::Hsla::white()).font_family(icons::LUCIDE_FONT_FAMILY).child(icons::send())),
-                    ),
-            )
     }
 
     /// Render the task board as a right sidebar panel (288px).

@@ -102,12 +102,13 @@ pub mod theme_manager;
 pub mod title_bar;
 pub mod toolbar;
 pub mod top_bar;
-pub mod broadcast_bar;
 pub mod workspace;
 
 // Modules that require GPUI feature only
 #[cfg(feature = "gpui-full")]
 pub mod app;
+#[cfg(feature = "gpui-full")]
+pub mod settings;
 #[cfg(feature = "gpui-full")]
 pub mod splash_screen;
 
