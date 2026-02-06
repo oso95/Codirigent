@@ -99,6 +99,7 @@ pub mod theme_manager;
 pub mod title_bar;
 pub mod toolbar;
 pub mod top_bar;
+pub mod broadcast_bar;
 pub mod workspace;
 
 // Modules that require GPUI feature only
