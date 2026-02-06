@@ -489,27 +489,12 @@ impl WorkspaceView {
             }
         }
 
-        // Logo and title
-        // Zap icon in indigo circle (matching mockup)
-        let primary: gpui::Hsla = theme.primary.into();
+        // Logo (3x3 grid matching logo-primary-dark.svg)
         bar = bar.child(
             div()
                 .flex_shrink_0()
                 .ml_2()
-                .w(px(22.0))
-                .h(px(22.0))
-                .rounded_md()
-                .bg(primary)
-                .flex()
-                .items_center()
-                .justify_center()
-                .child(
-                    div()
-                        .text_size(px(12.0))
-                        .text_color(gpui::Hsla::white())
-                        .font_family(icons::LUCIDE_FONT_FAMILY)
-                        .child(icons::zap()),
-                ),
+                .child(self.render_logo_small()),
         );
         bar = bar.child(
             div()
@@ -626,7 +611,6 @@ impl WorkspaceView {
             .map(|(i, t)| (i, t.label.clone(), t.is_active))
             .collect();
         let broadcast_enabled = self.top_bar.is_broadcast_enabled();
-        let token_count = self.top_bar.token_count().to_string();
         let right_panel_open = self.top_bar.is_right_panel_open();
 
         let mut bar = div()
@@ -715,21 +699,6 @@ impl WorkspaceView {
         bar = bar.child(div().flex_1());
 
         // --- Right section ---
-
-        // Token counter pill
-        bar = bar.child(
-            div()
-                .id("top-bar-tokens")
-                .px_2()
-                .py_1()
-                .rounded_md()
-                .bg(border_color.opacity(0.3))
-                .flex()
-                .items_center()
-                .gap_1()
-                .child(div().text_xs().text_color(muted).font_family(icons::LUCIDE_FONT_FAMILY).child(icons::cpu()))
-                .child(div().text_xs().text_color(muted).child(SharedString::from(token_count))),
-        );
 
         // Right panel toggle
         let panel_color = if right_panel_open { fg } else { muted };
@@ -2620,7 +2589,7 @@ impl WorkspaceView {
                         this.process_icon_rail_events();
                         cx.notify();
                     }))
-                    .child(div().text_sm().text_color(btn_fg).font_family(icons::LUCIDE_FONT_FAMILY).child(icons::folder_tree()))
+                    .child(div().text_size(px(20.0)).text_color(btn_fg).font_family(icons::LUCIDE_FONT_FAMILY).child(icons::folder_tree()))
             })
             // Worktrees button
             .child({
@@ -2642,7 +2611,7 @@ impl WorkspaceView {
                         this.process_icon_rail_events();
                         cx.notify();
                     }))
-                    .child(div().text_sm().text_color(btn_fg).font_family(icons::LUCIDE_FONT_FAMILY).child(icons::git_branch()))
+                    .child(div().text_size(px(20.0)).text_color(btn_fg).font_family(icons::LUCIDE_FONT_FAMILY).child(icons::git_branch()))
             })
             // Spacer
             .child(div().flex_1())
@@ -2657,7 +2626,7 @@ impl WorkspaceView {
                     .items_center()
                     .justify_center()
                     .cursor_pointer()
-                    .child(div().text_sm().text_color(muted).font_family(icons::LUCIDE_FONT_FAMILY).child(icons::settings()))
+                    .child(div().text_size(px(20.0)).text_color(muted).font_family(icons::LUCIDE_FONT_FAMILY).child(icons::settings()))
             )
     }
 
