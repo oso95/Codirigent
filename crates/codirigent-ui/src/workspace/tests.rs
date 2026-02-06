@@ -264,7 +264,8 @@ fn test_workspace_grid_bounds_with_sidebar() {
 
     let grid_bounds = ws.grid_bounds();
     assert_eq!(grid_bounds.origin.x, 200.0);
-    assert_eq!(grid_bounds.size.width, 800.0);
+    // grid_gap=4.0, grid container padding = 4*2 = 8
+    assert_eq!(grid_bounds.size.width, 800.0 - 8.0);
 }
 
 #[test]
@@ -275,7 +276,8 @@ fn test_workspace_grid_bounds_without_sidebar() {
 
     let grid_bounds = ws.grid_bounds();
     assert_eq!(grid_bounds.origin.x, 0.0);
-    assert_eq!(grid_bounds.size.width, 1000.0);
+    // grid_gap=4.0, grid container padding = 4*2 = 8
+    assert_eq!(grid_bounds.size.width, 1000.0 - 8.0);
 }
 
 #[test]

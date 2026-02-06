@@ -43,6 +43,14 @@ use alacritty_terminal::vte::ansi::{Color as TermColor, NamedColor};
 #[allow(unused_imports)]
 use codirigent_core::SessionId;
 
+/// Line height multiplier applied to font metrics (ascent + |descent|).
+///
+/// GPUI's Win metrics already include extra ascent space for accented
+/// characters, so the base glyph height (ascent + |descent|) is larger
+/// than font_size. A 1.0x factor gives natural terminal line spacing.
+/// If lines appear too tight, increase slightly (e.g. 1.05).
+const TERMINAL_LINE_HEIGHT_FACTOR: f32 = 1.0;
+
 /// A run of text with uniform style for efficient canvas painting.
 #[derive(Debug, Clone)]
 pub struct TextRunSegment {
@@ -235,7 +243,7 @@ impl TerminalView {
         // ratios that slightly overestimate so the initial grid doesn't
         // allocate more rows/cols than will fit after correction.
         let cell_width = (font_size * 0.55).max(7.0);
-        let cell_height = font_size.max(14.0);
+        let cell_height = (font_size * TERMINAL_LINE_HEIGHT_FACTOR).max(14.0);
 
         let mut terminal = terminal;
         terminal.resize_with_cells(TerminalSize::new(
@@ -718,8 +726,8 @@ pub fn default_terminal_font_family() -> &'static str {
 /// Compute cell dimensions from actual font metrics using the text system.
 ///
 /// Uses `text_system.advance('m')` to get the actual character width and
-/// `text_system.ascent() + text_system.descent()` to get the actual line
-/// height for the monospace font.
+/// `(ascent + descent) * TERMINAL_LINE_HEIGHT_FACTOR` to get the line height
+/// with comfortable inter-line spacing for the monospace font.
 ///
 /// Returns `(cell_width, cell_height)` in pixels.
 pub fn compute_cell_dimensions(
@@ -745,12 +753,17 @@ pub fn compute_cell_dimensions(
         .map(|adv| f32::from(adv.width))
         .unwrap_or(font_size * 0.6);
 
-    // Use actual font ascent + descent for line height instead of an
-    // arbitrary multiplier. This prevents the double-spacing artifact
-    // caused by the previous hardcoded 1.3x factor.
+    // Use font ascent + |descent| as the base line height, then apply a
+    // leading factor for readability. GPUI returns descent as a negative
+    // value (below baseline), so we use abs() to get the true glyph height.
+    // Without the leading factor, rows are packed with zero inter-line space.
+    // The previous 1.3x factor on font_size caused double-spacing.
+    // TERMINAL_LINE_HEIGHT_FACTOR (1.0x) gives natural terminal spacing
+    // since GPUI's ascent already includes room for accented characters.
     let ascent: f32 = text_system.ascent(font_id, font_size_px).into();
     let descent: f32 = text_system.descent(font_id, font_size_px).into();
-    let cell_height = ascent + descent;
+    let glyph_height = ascent + descent.abs();
+    let cell_height = glyph_height * TERMINAL_LINE_HEIGHT_FACTOR;
 
     (cell_width, cell_height)
 }

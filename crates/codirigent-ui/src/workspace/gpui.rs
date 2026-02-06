@@ -151,6 +151,8 @@ pub struct WorkspaceView {
     pty_sizes: HashMap<SessionId, (u16, u16)>,
     /// Tracks which session groups are expanded in the drawer's Sessions panel.
     pub(super) drawer_group_expanded: HashMap<String, bool>,
+    /// Last time git status was refreshed for sessions.
+    last_git_refresh: Instant,
 }
 
 impl WorkspaceView {
@@ -277,6 +279,7 @@ impl WorkspaceView {
             idle_poll_count: 0,
             pty_sizes: HashMap::new(),
             drawer_group_expanded: HashMap::new(),
+            last_git_refresh: Instant::now(),
         };
 
         view.refresh_file_tree_panel();
@@ -408,6 +411,29 @@ impl WorkspaceView {
             }
         }
 
+        // Refresh git status every 3 seconds
+        if self.last_git_refresh.elapsed() >= Duration::from_secs(3) {
+            self.last_git_refresh = Instant::now();
+            let session_ids: Vec<SessionId> =
+                self.workspace.sessions().iter().map(|s| s.id).collect();
+            let manager = self.session_manager.lock().unwrap();
+            for id in session_ids {
+                if let Some(git_info) = manager.refresh_git_status(id) {
+                    // Update terminal header
+                    if let Some((_, header)) =
+                        self.terminal_headers.iter_mut().find(|(sid, _)| *sid == id)
+                    {
+                        header.git_branch = Some(git_info.branch.clone());
+                        header.git_dirty_count = Some(git_info.dirty_count);
+                    }
+                    // Update workspace session
+                    self.workspace
+                        .update_session_git_info(id, Some(git_info));
+                }
+            }
+            any_dirty = true;
+        }
+
         // Track output activity for adaptive polling
         self.last_poll_had_output = any_dirty;
 
@@ -492,12 +518,22 @@ impl WorkspaceView {
         let terminal_view = TerminalView::new(terminal, theme.clone());
         self.terminals.insert(session_id, terminal_view);
 
-        // Create UI session for workspace
-        let session = Session::new(session_id, name.clone(), working_dir);
+        // Get session from manager (has git_info populated during creation)
+        let session = {
+            let manager = self.session_manager.lock().unwrap();
+            manager.get_session(session_id).unwrap_or_else(|| {
+                Session::new(session_id, name.clone(), working_dir)
+            })
+        };
 
-        if self.workspace.add_session(session) {
+        if self.workspace.add_session(session.clone()) {
             // Create terminal header for this session (from feature branch)
-            let header = TerminalHeader::new(&name, SessionStatus::Idle);
+            let mut header = TerminalHeader::new(&name, SessionStatus::Idle);
+
+            // Populate git info on header if available from session manager
+            if let Some(ref gi) = session.git_info {
+                header = header.with_git_info(gi.branch.clone(), gi.dirty_count);
+            }
             self.terminal_headers.push((session_id, header));
 
             // Immediately resize PTY to match actual grid cell bounds
@@ -1427,17 +1463,20 @@ impl WorkspaceView {
         const HEADER_HEIGHT: f32 = 32.0;
         // Must match the padding used in render_terminal_content's canvas prepaint
         const TERMINAL_CONTENT_PADDING: f32 = 4.0;
+        // Session cell has .border_1() which consumes 1px on each side
+        const CELL_BORDER_WIDTH: f32 = 2.0;
         let cell_info = self.workspace.cell_info();
 
         for info in cell_info {
             if let Some(terminal_view) = self.terminals.get_mut(&info.session_id) {
-                // Subtract header height and rendering padding from available space.
-                // The canvas prepaint offsets content by TERMINAL_CONTENT_PADDING from
-                // the top-left, so we subtract 2*padding (top+bottom, left+right) to
-                // prevent the last row/column from being clipped by overflow_hidden.
+                // Subtract all chrome between the grid cell bounds and the
+                // actual terminal canvas drawing area:
+                //   - border: .border_1() on session cell (1px each side)
+                //   - padding: canvas prepaint offsets by TERMINAL_CONTENT_PADDING
+                //   - header: 32px header bar above terminal content
                 let padding2 = TERMINAL_CONTENT_PADDING * 2.0;
-                let available_width = (info.bounds.size.width - padding2).max(0.0);
-                let available_height = (info.bounds.size.height - HEADER_HEIGHT - padding2).max(0.0);
+                let available_width = (info.bounds.size.width - CELL_BORDER_WIDTH - padding2).max(0.0);
+                let available_height = (info.bounds.size.height - CELL_BORDER_WIDTH - HEADER_HEIGHT - padding2).max(0.0);
 
                 // Resize terminal emulator to fit the remaining space
                 terminal_view.resize_to_fit(available_width, available_height);
@@ -1815,6 +1854,14 @@ impl Render for WorkspaceView {
         let actual_sidebar_width = crate::icon_rail::IconRail::WIDTH
             + if self.drawer.is_open() { self.drawer.width() } else { 0.0 };
         self.workspace.set_sidebar_width(actual_sidebar_width);
+
+        // Account for right panel width when open
+        let right_panel_w = if self.top_bar.is_right_panel_open() {
+            crate::layout::RIGHT_PANEL_WIDTH
+        } else {
+            0.0
+        };
+        self.workspace.set_right_panel_width(right_panel_w);
 
         // Sync terminal cell dimensions with actual font metrics so the
         // emulator calculates the correct row/col counts.

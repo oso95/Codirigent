@@ -51,6 +51,8 @@ pub struct Workspace {
     show_sidebar: bool,
     /// Sidebar width in pixels.
     sidebar_width: f32,
+    /// Right panel width in pixels (0.0 when closed).
+    right_panel_width: f32,
     /// Current workspace bounds.
     bounds: Bounds,
 }
@@ -70,6 +72,7 @@ impl Workspace {
             theme: CodirigentTheme::default(),
             show_sidebar: true,
             sidebar_width: 56.0,
+            right_panel_width: 0.0,
             bounds: Bounds::from_size(1280.0, 720.0),
         }
     }
@@ -82,6 +85,7 @@ impl Workspace {
             theme: CodirigentTheme::default(),
             show_sidebar: true,
             sidebar_width: 56.0,
+            right_panel_width: 0.0,
             bounds: Bounds::from_size(1280.0, 720.0),
         }
     }
@@ -189,6 +193,17 @@ impl Workspace {
         }
     }
 
+    /// Update git info for a session.
+    pub fn update_session_git_info(
+        &mut self,
+        id: SessionId,
+        info: Option<codirigent_core::GitRepoInfo>,
+    ) {
+        if let Some(session) = self.session_mut(id) {
+            session.git_info = info;
+        }
+    }
+
     /// Get the visible sessions (those assigned to grid cells).
     pub fn visible_sessions(&self) -> Vec<&Session> {
         self.layout_state
@@ -279,6 +294,11 @@ impl Workspace {
         self.sidebar_width = width.max(0.0);
     }
 
+    /// Set the right panel width (0.0 when closed).
+    pub fn set_right_panel_width(&mut self, width: f32) {
+        self.right_panel_width = width.max(0.0);
+    }
+
     // --- Theme ---
 
     /// Get the current theme.
@@ -304,9 +324,16 @@ impl Workspace {
     }
 
     /// Get the bounds available for the grid (excluding sidebar and chrome).
+    ///
+    /// Subtracts vertical chrome (title bar, top bar, grid padding) and
+    /// horizontal chrome (sidebar, grid container padding) so that
+    /// `cell_size()` and `cell_bounds_for_index()` return dimensions
+    /// matching the actual GPUI flex-allocated space.
     pub fn grid_bounds(&self) -> Bounds {
         // Title bar (32px) + Top bar (48px) + grid container padding (gap * 2)
         let chrome_height = 32.0 + TOP_BAR_HEIGHT + self.theme.grid_gap * 2.0;
+        // Grid container has .p(px(grid_gap)) padding on all sides
+        let grid_padding_h = self.theme.grid_gap * 2.0;
 
         let x = if self.show_sidebar {
             self.sidebar_width
@@ -315,9 +342,9 @@ impl Workspace {
         };
 
         let width = if self.show_sidebar {
-            (self.bounds.size.width - self.sidebar_width).max(0.0)
+            (self.bounds.size.width - self.sidebar_width - self.right_panel_width - grid_padding_h).max(0.0)
         } else {
-            self.bounds.size.width
+            (self.bounds.size.width - self.right_panel_width - grid_padding_h).max(0.0)
         };
 
         // Subtract chrome heights from vertical space

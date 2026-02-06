@@ -105,6 +105,72 @@ impl WorkspaceView {
             )
     }
 
+    /// Render an icon+text row with consistent vertical alignment.
+    fn aligned_icon_label_row(
+        &self,
+        icon: String,
+        icon_color: gpui::Hsla,
+        icon_size: f32,
+        label: impl Into<SharedString>,
+        label_color: gpui::Hsla,
+        label_size: f32,
+        label_weight: FontWeight,
+        row_height: f32,
+        gap: f32,
+    ) -> impl IntoElement {
+        self.aligned_icon_label_row_with_offset(
+            icon,
+            icon_color,
+            icon_size,
+            label,
+            label_color,
+            label_size,
+            label_weight,
+            row_height,
+            gap,
+            2.0,
+        )
+    }
+
+    /// Render an icon+text row with a custom icon vertical offset.
+    fn aligned_icon_label_row_with_offset(
+        &self,
+        icon: String,
+        icon_color: gpui::Hsla,
+        icon_size: f32,
+        label: impl Into<SharedString>,
+        label_color: gpui::Hsla,
+        label_size: f32,
+        label_weight: FontWeight,
+        row_height: f32,
+        gap: f32,
+        icon_y_offset: f32,
+    ) -> impl IntoElement {
+        div()
+            .flex()
+            .items_center()
+            .gap(px(gap))
+            .child(self.centered_lucide_icon_with_offset(
+                icon,
+                icon_color,
+                icon_size,
+                icon_y_offset,
+            ))
+            .child(
+                div()
+                    .h(px(row_height))
+                    .flex()
+                    .items_center()
+                    .child(
+                        div()
+                            .text_size(px(label_size))
+                            .font_weight(label_weight)
+                            .text_color(label_color)
+                            .child(label.into()),
+                    ),
+            )
+    }
+
 
     /// Render the grid of session panes.
     pub(super) fn render_grid(&mut self) -> impl IntoElement {
@@ -765,8 +831,18 @@ impl WorkspaceView {
                     this.process_top_bar_events();
                     cx.notify();
                 }))
-                .child(self.centered_lucide_icon(icons::zap(), broadcast_color, 12.0))
-                .child(div().text_xs().text_color(broadcast_color).child("Broadcast")),
+                .child(self.aligned_icon_label_row_with_offset(
+                    icons::zap(),
+                    broadcast_color,
+                    12.0,
+                    "Broadcast",
+                    broadcast_color,
+                    11.0,
+                    FontWeight::MEDIUM,
+                    14.0,
+                    4.0,
+                    3.0,
+                )),
         );
 
         // --- Spacer ---
@@ -861,6 +937,61 @@ impl WorkspaceView {
                 .text_ellipsis()
                 .child(hints.name.clone()),
         );
+
+        // Git branch badge (after session name)
+        if let Some(branch) = &hints.git_branch {
+            let git_muted = gpui::Hsla {
+                h: 0.0,
+                s: 0.0,
+                l: 0.6,
+                a: 0.8,
+            };
+            let branch_label = if branch.chars().count() > 16 {
+                let truncated: String = branch.chars().take(13).collect();
+                format!("{}...", truncated)
+            } else {
+                branch.clone()
+            };
+            let mut git_badge = div()
+                .px(px(4.0))
+                .py_px()
+                .rounded_sm()
+                .bg(gpui::Hsla {
+                    h: 0.0,
+                    s: 0.0,
+                    l: 1.0,
+                    a: 0.06,
+                })
+                .flex()
+                .flex_shrink_0()
+                .items_center()
+                .gap_1()
+                .child(
+                    div()
+                        .text_xs()
+                        .text_color(git_muted)
+                        .child(icons::git_branch()),
+                )
+                .child(div().text_xs().text_color(git_muted).child(branch_label));
+
+            if let Some(count) = hints.git_dirty_count {
+                if count > 0 {
+                    git_badge = git_badge.child(
+                        div()
+                            .text_xs()
+                            .text_color(gpui::Hsla {
+                                h: 0.1,
+                                s: 0.8,
+                                l: 0.6,
+                                a: 1.0,
+                            })
+                            .child(format!("+{}", count)),
+                    );
+                }
+            }
+
+            header = header.child(git_badge);
+        }
 
         // Spacer
         header = header.child(div().flex_1());
@@ -1231,6 +1362,61 @@ impl WorkspaceView {
                 .child(hints.name.clone()),
         );
 
+        // Git branch badge (after session name)
+        if let Some(branch) = &hints.git_branch {
+            let git_muted = gpui::Hsla {
+                h: 0.0,
+                s: 0.0,
+                l: 0.6,
+                a: 0.8,
+            };
+            let branch_label = if branch.chars().count() > 16 {
+                let truncated: String = branch.chars().take(13).collect();
+                format!("{}...", truncated)
+            } else {
+                branch.clone()
+            };
+            let mut git_badge = div()
+                .px(px(4.0))
+                .py_px()
+                .rounded_sm()
+                .bg(gpui::Hsla {
+                    h: 0.0,
+                    s: 0.0,
+                    l: 1.0,
+                    a: 0.06,
+                })
+                .flex()
+                .flex_shrink_0()
+                .items_center()
+                .gap_1()
+                .child(
+                    div()
+                        .text_xs()
+                        .text_color(git_muted)
+                        .child(icons::git_branch()),
+                )
+                .child(div().text_xs().text_color(git_muted).child(branch_label));
+
+            if let Some(count) = hints.git_dirty_count {
+                if count > 0 {
+                    git_badge = git_badge.child(
+                        div()
+                            .text_xs()
+                            .text_color(gpui::Hsla {
+                                h: 0.1,
+                                s: 0.8,
+                                l: 0.6,
+                                a: 1.0,
+                            })
+                            .child(format!("+{}", count)),
+                    );
+                }
+            }
+
+            header = header.child(git_badge);
+        }
+
         // Spacer
         header = header.child(div().flex_1());
 
@@ -1399,12 +1585,17 @@ impl WorkspaceView {
                                 .flex()
                                 .items_center()
                                 .child(
-                                    div()
-                                        .flex()
-                                        .items_center()
-                                        .gap_2()
-                                        .child(self.centered_lucide_icon(icons::layout_grid(), fg, 16.0))
-                                        .child(div().text_base().font_weight(FontWeight::SEMIBOLD).text_color(fg).child("Custom Grid Layout")),
+                                    self.aligned_icon_label_row(
+                                        icons::layout_grid(),
+                                        fg,
+                                        16.0,
+                                        "Custom Grid Layout",
+                                        fg,
+                                        16.0,
+                                        FontWeight::SEMIBOLD,
+                                        20.0,
+                                        8.0,
+                                    ),
                                 ),
                         )
                         // Content
@@ -1534,9 +1725,17 @@ impl WorkspaceView {
                                             this.custom_picker.close();
                                             cx.notify();
                                         }))
-                                        .child(div().flex().items_center().gap_1()
-                                            .child(self.centered_lucide_icon(icons::x(), fg, 12.0))
-                                            .child("Cancel")),
+                                        .child(self.aligned_icon_label_row(
+                                            icons::x(),
+                                            fg,
+                                            12.0,
+                                            "Cancel",
+                                            fg,
+                                            14.0,
+                                            FontWeight::MEDIUM,
+                                            16.0,
+                                            4.0,
+                                        )),
                                 )
                                 // Apply button
                                 .child(
@@ -1560,9 +1759,17 @@ impl WorkspaceView {
                                                 cx.notify();
                                             }
                                         }))
-                                        .child(div().flex().items_center().gap_1()
-                                            .child(self.centered_lucide_icon(icons::check(), gpui::Hsla::white(), 12.0))
-                                            .child("Apply")),
+                                        .child(self.aligned_icon_label_row(
+                                            icons::check(),
+                                            gpui::Hsla::white(),
+                                            12.0,
+                                            "Apply",
+                                            gpui::Hsla::white(),
+                                            14.0,
+                                            FontWeight::MEDIUM,
+                                            16.0,
+                                            4.0,
+                                        )),
                                 ),
                         ),
                 ),
@@ -1680,12 +1887,17 @@ impl WorkspaceView {
                                 .flex()
                                 .items_center()
                                 .child(
-                                    div()
-                                        .flex()
-                                        .items_center()
-                                        .gap_2()
-                                        .child(self.centered_lucide_icon(icons::git_branch(), fg, 16.0))
-                                        .child(div().text_base().font_weight(FontWeight::SEMIBOLD).text_color(fg).child("Create Git Worktree")),
+                                    self.aligned_icon_label_row(
+                                        icons::git_branch(),
+                                        fg,
+                                        16.0,
+                                        "Create Git Worktree",
+                                        fg,
+                                        16.0,
+                                        FontWeight::SEMIBOLD,
+                                        20.0,
+                                        8.0,
+                                    ),
                                 ),
                         )
                         // Content
@@ -1731,9 +1943,17 @@ impl WorkspaceView {
                                                                 cx.notify();
                                                             }
                                                         }))
-                                                        .child(div().flex().items_center().gap_1()
-                                                            .child(self.centered_lucide_icon(icons::git_branch(), if !use_existing { primary } else { fg }, 12.0))
-                                                            .child("New Branch")),
+                                                        .child(self.aligned_icon_label_row(
+                                                            icons::git_branch(),
+                                                            if !use_existing { primary } else { fg },
+                                                            12.0,
+                                                            "New Branch",
+                                                            if !use_existing { primary } else { fg },
+                                                            14.0,
+                                                            FontWeight::MEDIUM,
+                                                            16.0,
+                                                            4.0,
+                                                        )),
                                                 )
                                                 // Existing branch button
                                                 .child(
@@ -1755,9 +1975,17 @@ impl WorkspaceView {
                                                                 cx.notify();
                                                             }
                                                         }))
-                                                        .child(div().flex().items_center().gap_1()
-                                                            .child(self.centered_lucide_icon(icons::git_fork(), if use_existing { primary } else { fg }, 12.0))
-                                                            .child("Existing Branch")),
+                                                        .child(self.aligned_icon_label_row(
+                                                            icons::git_fork(),
+                                                            if use_existing { primary } else { fg },
+                                                            12.0,
+                                                            "Existing Branch",
+                                                            if use_existing { primary } else { fg },
+                                                            14.0,
+                                                            FontWeight::MEDIUM,
+                                                            16.0,
+                                                            4.0,
+                                                        )),
                                                 ),
                                         ),
                                 )
@@ -1965,9 +2193,17 @@ impl WorkspaceView {
                                         .on_click(cx.listener(|this, _: &ClickEvent, _window, cx| {
                                             this.handle_worktree_event(crate::sidebar::WorktreeEvent::CancelCreate, cx);
                                         }))
-                                        .child(div().flex().items_center().gap_1()
-                                            .child(self.centered_lucide_icon(icons::x(), fg, 12.0))
-                                            .child("Cancel")),
+                                        .child(self.aligned_icon_label_row(
+                                            icons::x(),
+                                            fg,
+                                            12.0,
+                                            "Cancel",
+                                            fg,
+                                            14.0,
+                                            FontWeight::MEDIUM,
+                                            16.0,
+                                            4.0,
+                                        )),
                                 )
                                 // Create button
                                 .child(
@@ -1996,9 +2232,17 @@ impl WorkspaceView {
                                                     );
                                                 }))
                                         })
-                                        .child(div().flex().items_center().gap_1()
-                                            .child(self.centered_lucide_icon(icons::plus(), gpui::Hsla::white(), 12.0))
-                                            .child("Create")),
+                                        .child(self.aligned_icon_label_row(
+                                            icons::plus(),
+                                            gpui::Hsla::white(),
+                                            12.0,
+                                            "Create",
+                                            gpui::Hsla::white(),
+                                            14.0,
+                                            FontWeight::MEDIUM,
+                                            16.0,
+                                            4.0,
+                                        )),
                                 ),
                         ),
                 ),
@@ -2282,12 +2526,18 @@ impl WorkspaceView {
                                 .flex()
                                 .items_center()
                                 .child(
-                                    div()
-                                        .flex()
-                                        .items_center()
-                                        .gap_2()
-                                        .child(self.centered_lucide_icon(title_icon, fg, 16.0))
-                                        .child(div().text_base().font_weight(FontWeight::SEMIBOLD).text_color(fg).child(title)),
+                                    self.aligned_icon_label_row_with_offset(
+                                        title_icon,
+                                        fg,
+                                        16.0,
+                                        title,
+                                        fg,
+                                        16.0,
+                                        FontWeight::SEMIBOLD,
+                                        20.0,
+                                        8.0,
+                                        3.0,
+                                    ),
                                 ),
                         )
                         // Content
@@ -2349,9 +2599,18 @@ impl WorkspaceView {
                                             this.close_session_action_modal();
                                             cx.notify();
                                         }))
-                                        .child(div().flex().items_center().gap_1()
-                                            .child(self.centered_lucide_icon(icons::x(), fg, 12.0))
-                                            .child("Cancel")),
+                                        .child(self.aligned_icon_label_row_with_offset(
+                                            icons::x(),
+                                            fg,
+                                            12.0,
+                                            "Cancel",
+                                            fg,
+                                            14.0,
+                                            FontWeight::MEDIUM,
+                                            16.0,
+                                            4.0,
+                                            3.0,
+                                        )),
                                 )
                                 .child(
                                     div()
@@ -2367,9 +2626,18 @@ impl WorkspaceView {
                                         .on_click(cx.listener(|this, _: &ClickEvent, _window, cx| {
                                             this.apply_session_action_modal(cx);
                                         }))
-                                        .child(div().flex().items_center().gap_1()
-                                            .child(self.centered_lucide_icon(icons::check(), gpui::Hsla::white(), 12.0))
-                                            .child("Apply")),
+                                        .child(self.aligned_icon_label_row_with_offset(
+                                            icons::check(),
+                                            gpui::Hsla::white(),
+                                            12.0,
+                                            "Apply",
+                                            gpui::Hsla::white(),
+                                            14.0,
+                                            FontWeight::MEDIUM,
+                                            16.0,
+                                            4.0,
+                                            3.0,
+                                        )),
                                 ),
                         ),
                 ),
@@ -2467,12 +2735,17 @@ impl WorkspaceView {
                                 .flex()
                                 .items_center()
                                 .child(
-                                    div()
-                                        .flex()
-                                        .items_center()
-                                        .gap_2()
-                                        .child(self.centered_lucide_icon(icons::clipboard_plus(), fg, 16.0))
-                                        .child(div().text_base().font_weight(FontWeight::SEMIBOLD).text_color(fg).child("Create New Task")),
+                                    self.aligned_icon_label_row(
+                                        icons::clipboard_plus(),
+                                        fg,
+                                        16.0,
+                                        "Create New Task",
+                                        fg,
+                                        16.0,
+                                        FontWeight::SEMIBOLD,
+                                        20.0,
+                                        8.0,
+                                    ),
                                 ),
                         )
                         // Content
@@ -2584,9 +2857,17 @@ impl WorkspaceView {
                                             this.close_task_creation_modal();
                                             cx.notify();
                                         }))
-                                        .child(div().flex().items_center().gap_1()
-                                            .child(self.centered_lucide_icon(icons::x(), fg, 12.0))
-                                            .child("Cancel")),
+                                        .child(self.aligned_icon_label_row(
+                                            icons::x(),
+                                            fg,
+                                            12.0,
+                                            "Cancel",
+                                            fg,
+                                            14.0,
+                                            FontWeight::MEDIUM,
+                                            16.0,
+                                            4.0,
+                                        )),
                                 )
                                 .child(
                                     div()
@@ -2602,9 +2883,17 @@ impl WorkspaceView {
                                         .on_click(cx.listener(|this, _: &ClickEvent, _window, cx| {
                                             this.apply_task_creation_modal(cx);
                                         }))
-                                        .child(div().flex().items_center().gap_1()
-                                            .child(self.centered_lucide_icon(icons::plus(), gpui::Hsla::white(), 12.0))
-                                            .child("Create Task")),
+                                        .child(self.aligned_icon_label_row(
+                                            icons::plus(),
+                                            gpui::Hsla::white(),
+                                            12.0,
+                                            "Create Task",
+                                            gpui::Hsla::white(),
+                                            14.0,
+                                            FontWeight::MEDIUM,
+                                            16.0,
+                                            4.0,
+                                        )),
                                 ),
                         ),
                 ),
@@ -2640,19 +2929,22 @@ impl WorkspaceView {
             .px_3()
             .flex()
             .items_center()
-            .gap(px(8.0))
             .cursor_pointer()
             .hover(move |style| style.bg(hover_bg.opacity(0.1)))
             .on_click(cx.listener(move |this, _: &ClickEvent, _window, cx| {
                 this.handle_session_menu_action(session_id, action.clone(), cx);
             }))
-            .child(self.centered_lucide_icon(icon, fg, 12.0))
-            .child(
-                div()
-                    .text_xs()
-                    .text_color(fg)
-                    .child(label),
-            )
+            .child(self.aligned_icon_label_row(
+                icon,
+                fg,
+                12.0,
+                label,
+                fg,
+                11.0,
+                FontWeight::MEDIUM,
+                14.0,
+                8.0,
+            ))
     }
 
     // =========================================================================
@@ -2931,11 +3223,17 @@ impl WorkspaceView {
                             .on_mouse_down(MouseButton::Left, cx.listener(|this, _, _, cx| {
                                 this.create_session(cx);
                             }))
-                            .child(
-                                div().flex().items_center().gap_1()
-                                    .child(self.centered_lucide_icon(icons::plus(), fg, 12.0))
-                                    .child(div().text_xs().font_weight(FontWeight::MEDIUM).text_color(fg).child("New Session")),
-                            ),
+                            .child(self.aligned_icon_label_row(
+                                icons::plus(),
+                                fg,
+                                12.0,
+                                "New Session",
+                                fg,
+                                11.0,
+                                FontWeight::MEDIUM,
+                                14.0,
+                                4.0,
+                            )),
                     ),
             )
     }
@@ -2996,6 +3294,35 @@ impl WorkspaceView {
                     .text_color(if is_focused { fg } else { muted })
                     .child(session_name),
             )
+            // Git branch (compact) - between name and context%
+            .when_some(session.git_info.as_ref(), |el, gi| {
+                let mut branch = gi.branch.clone();
+                if branch.chars().count() > 12 {
+                    branch = branch.chars().take(9).collect::<String>() + "...";
+                }
+                let branch_color = muted.opacity(0.5);
+                el.child(
+                    div()
+                        .flex_shrink_0()
+                        .flex()
+                        .items_center()
+                        .gap_1()
+                        .child(div().text_xs().text_color(branch_color).child(branch))
+                        .when(gi.dirty_count > 0, |el| {
+                            el.child(
+                                div()
+                                    .text_xs()
+                                    .text_color(gpui::Hsla {
+                                        h: 0.1,
+                                        s: 0.8,
+                                        l: 0.6,
+                                        a: 1.0,
+                                    })
+                                    .child(format!("\u{25CF}{}", gi.dirty_count)),
+                            )
+                        }),
+                )
+            })
             // Context percentage (if available)
             .when_some(context_pct, |el, pct| {
                 el.child(
@@ -3093,15 +3420,17 @@ impl WorkspaceView {
                     .bg(bar_color)
                     .flex_shrink_0(),
             )
-            // Chevron
-            .child(
-                self.centered_lucide_icon(chevron, muted, 12.0),
-            )
-            // Group name + count
-            .child(
-                div().text_xs().font_weight(FontWeight::BOLD).text_color(muted)
-                    .child(group_label),
-            )
+            .child(self.aligned_icon_label_row(
+                chevron,
+                muted,
+                12.0,
+                group_label,
+                muted,
+                11.0,
+                FontWeight::BOLD,
+                14.0,
+                6.0,
+            ))
     }
 
     /// Render the broadcast input bar (52px, rose-accented).
@@ -3135,12 +3464,18 @@ impl WorkspaceView {
                     // Label
                     .child(
                         div()
-                            .flex()
-                            .items_center()
-                            .gap_1()
                             .flex_shrink_0()
-                            .child(self.centered_lucide_icon(icons::radio(), accent, 14.0))
-                            .child(div().text_xs().font_weight(FontWeight::BOLD).text_color(accent).child("BROADCAST TO ALL:")),
+                            .child(self.aligned_icon_label_row(
+                                icons::radio(),
+                                accent,
+                                14.0,
+                                "BROADCAST TO ALL:",
+                                accent,
+                                11.0,
+                                FontWeight::BOLD,
+                                14.0,
+                                4.0,
+                            )),
                     )
                     // Input display
                     .child(
