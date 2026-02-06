@@ -1547,10 +1547,25 @@ impl WorkspaceView {
                 cx.notify();
                 return true;
             }
+            "space" => {
+                // GPUI on Windows reports space as key="space" with key_char=None
+                modal.input.push(' ');
+                cx.notify();
+                return true;
+            }
             _ => {}
         }
 
-        // Ignore modifier-based shortcuts inside the modal.
+        // Ctrl+A selects all (clears input for easy replacement)
+        if (event.keystroke.modifiers.control || event.keystroke.modifiers.platform)
+            && key == "a"
+        {
+            modal.input.clear();
+            cx.notify();
+            return true;
+        }
+
+        // Ignore other modifier-based shortcuts inside the modal.
         if event.keystroke.modifiers.control
             || event.keystroke.modifiers.alt
             || event.keystroke.modifiers.platform
@@ -1608,10 +1623,34 @@ impl WorkspaceView {
                 cx.notify();
                 return true;
             }
+            "space" => {
+                if modal.focused_field == 0 {
+                    modal.title.push(' ');
+                } else {
+                    modal.description.push(' ');
+                }
+                modal.error = None;
+                cx.notify();
+                return true;
+            }
             _ => {}
         }
 
-        // Ignore modifier-based shortcuts inside the modal.
+        // Ctrl+A selects all (clears focused field for easy replacement)
+        if (event.keystroke.modifiers.control || event.keystroke.modifiers.platform)
+            && key == "a"
+        {
+            if modal.focused_field == 0 {
+                modal.title.clear();
+            } else {
+                modal.description.clear();
+            }
+            modal.error = None;
+            cx.notify();
+            return true;
+        }
+
+        // Ignore other modifier-based shortcuts inside the modal.
         if event.keystroke.modifiers.control
             || event.keystroke.modifiers.alt
             || event.keystroke.modifiers.platform
@@ -1711,6 +1750,11 @@ impl WorkspaceView {
             }
             "backspace" => {
                 self.worktree_panel.handle_backspace();
+                cx.notify();
+                return true;
+            }
+            "space" => {
+                self.worktree_panel.handle_char_input(' ');
                 cx.notify();
                 return true;
             }

@@ -1031,10 +1031,8 @@ impl WorkspaceView {
         cell_border: gpui::Hsla,
         border_color: gpui::Hsla,
         theme: &CodirigentTheme,
-        cell_bounds: crate::layout::Bounds,
         cx: &mut Context<Self>,
     ) -> gpui::Stateful<gpui::Div> {
-        const HEADER_HEIGHT: f32 = 32.0;
         let fg: gpui::Hsla = theme.foreground.into();
 
         let header_border = if hints.is_focused {
@@ -1113,16 +1111,13 @@ impl WorkspaceView {
             );
         }
 
-        let terminal_height = cell_bounds.size.height - HEADER_HEIGHT;
-
         // Render terminal content before building the div tree so the
         // mutable borrow on `self` is released before `cx.listener()`.
         let terminal_content = self.render_terminal_content(session_id, theme);
 
         div()
             .id(SharedString::from(format!("session-cell-{}", session_id.0)))
-            .w(px(cell_bounds.size.width))
-            .h(px(cell_bounds.size.height))
+            .size_full()
             .bg(panel_bg)
             .border_1()
             .border_color(cell_border)
@@ -1138,8 +1133,8 @@ impl WorkspaceView {
             .child(header)
             .child(
                 div()
-                    .w(px(cell_bounds.size.width))
-                    .h(px(terminal_height))
+                    .w_full()
+                    .flex_1()
                     .overflow_hidden()
                     .on_scroll_wheel(cx.listener(move |this, event: &ScrollWheelEvent, _window, cx| {
                         if let Some(tv) = this.terminals_mut().get_mut(&session_id) {
@@ -1268,8 +1263,7 @@ impl WorkspaceView {
     ) -> gpui::Stateful<gpui::Div> {
         div()
             .id(SharedString::from(format!("empty-cell-{}-{}", position.row, position.col)))
-            .w(px(cell_bounds.size.width))
-            .h(px(cell_bounds.size.height))
+            .size_full()
             .bg(panel_bg)
             .border_1()
             .border_color(border_color)
