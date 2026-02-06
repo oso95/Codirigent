@@ -5,10 +5,14 @@
 //! to the main workspace.
 
 use gpui::{
-    div, hsla, px, App, AppContext, Context, Entity, FocusHandle, Focusable, InteractiveElement,
-    IntoElement, ParentElement, Render, Styled, Window,
+    div, hsla, px, App, AppContext, Context, Entity, FocusHandle, Focusable, Image, ImageFormat,
+    InteractiveElement, IntoElement, ObjectFit, ParentElement, Render, Styled, StyledImage, Window,
 };
+use std::sync::Arc;
 use std::time::Duration;
+
+/// Embedded logo PNG (240x240 @2x, matches logo-primary-dark.svg).
+pub const LOGO_PNG_BYTES: &[u8] = include_bytes!("../../../assets/icons/logo-primary-dark@2x.png");
 
 /// Brand colors used in the splash screen.
 pub mod brand {
@@ -158,77 +162,13 @@ impl SplashScreen {
         self.complete(cx);
     }
 
-    /// Render a single grid cell of the logo.
-    fn render_logo_cell(
-        &self,
-        color: gpui::Hsla,
-        size: f32,
-        radius: f32,
-    ) -> impl IntoElement {
-        div()
+    /// Render the logo from the embedded PNG image.
+    fn render_logo(&self, size: f32) -> impl IntoElement {
+        let image = Arc::new(Image::from_bytes(ImageFormat::Png, LOGO_PNG_BYTES.to_vec()));
+        gpui::img(image)
             .w(px(size))
             .h(px(size))
-            .rounded(px(radius))
-            .bg(color)
-    }
-
-    /// Render the 3x3 grid logo.
-    fn render_logo(&self, scale: f32) -> impl IntoElement {
-        let cell_size = 25.0 * scale;
-        let gap = 7.0 * scale;
-        let radius = 5.0 * scale;
-
-        // Logo grid layout:
-        // [100%] [70%]  [40%]
-        // [70%]  [RED]  [70%]
-        // [40%]  [70%]  [100%]
-
-        div()
-            .flex()
-            .flex_col()
-            .gap(px(gap))
-            .child(
-                // Row 1
-                div()
-                    .flex()
-                    .flex_row()
-                    .gap(px(gap))
-                    .child(self.render_logo_cell(brand::TEAL, cell_size, radius))
-                    .child(self.render_logo_cell(brand::TEAL_70, cell_size, radius))
-                    .child(self.render_logo_cell(brand::TEAL_40, cell_size, radius)),
-            )
-            .child(
-                // Row 2
-                div()
-                    .flex()
-                    .flex_row()
-                    .gap(px(gap))
-                    .child(self.render_logo_cell(brand::TEAL_70, cell_size, radius))
-                    .child(self.render_logo_cell(brand::CORAL, cell_size, radius))
-                    .child(self.render_logo_cell(brand::TEAL_70, cell_size, radius)),
-            )
-            .child(
-                // Row 3
-                div()
-                    .flex()
-                    .flex_row()
-                    .gap(px(gap))
-                    .child(self.render_logo_cell(brand::TEAL_40, cell_size, radius))
-                    .child(self.render_logo_cell(brand::TEAL_70, cell_size, radius))
-                    .child(self.render_logo_cell(brand::TEAL, cell_size, radius)),
-            )
-    }
-
-    /// Render the glow effect behind the logo.
-    #[allow(dead_code)]
-    fn render_glow(&self, size: f32) -> impl IntoElement {
-        // Simulated radial gradient with concentric circles
-        div()
-            .absolute()
-            .w(px(size))
-            .h(px(size))
-            .rounded_full()
-            .bg(brand::GLOW)
+            .object_fit(ObjectFit::Contain)
     }
 }
 
@@ -268,8 +208,8 @@ impl Render for SplashScreen {
                     .items_center()
                     .gap_6()
                     .child(
-                        // Logo
-                        self.render_logo(1.0),
+                        // Logo (89px matches old 3x25 + 2x7 grid size)
+                        self.render_logo(89.0),
                     )
                     .child(
                         // Wordmark - using letter-spaced text via individual characters

@@ -122,6 +122,11 @@ impl TopBar {
         self.broadcast_enabled
     }
 
+    /// Request opening the custom layout picker.
+    pub fn request_custom_layout(&mut self) {
+        self.pending_events.push(TopBarEvent::CustomLayoutRequested);
+    }
+
     /// Toggle right panel visibility.
     pub fn toggle_right_panel(&mut self) {
         self.right_panel_open = !self.right_panel_open;

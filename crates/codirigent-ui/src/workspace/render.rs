@@ -12,14 +12,16 @@ use crate::components::text_input::{text_input, TextInputStyle};
 use crate::empty_session::EmptySessionRenderHints;
 use crate::terminal_header::TerminalHeaderRenderHints;
 use crate::theme::CodirigentTheme;
-use codirigent_core::SessionId;
+use codirigent_core::{Session, SessionId, SessionStatus};
 use crate::icons;
+use crate::layout::LayoutProfile;
 use crate::title_bar::TitleBar;
 use gpui::{
-    div, px, ClickEvent, Context, FontWeight, InteractiveElement, IntoElement, ParentElement,
-    Window, WindowControlArea, prelude::FluentBuilder, SharedString, StatefulInteractiveElement,
-    Styled, MouseButton, ScrollWheelEvent,
+    div, px, ClickEvent, Context, FontWeight, Image, ImageFormat, InteractiveElement, IntoElement,
+    ObjectFit, ParentElement, Window, WindowControlArea, prelude::FluentBuilder, SharedString,
+    StatefulInteractiveElement, Styled, StyledImage, MouseButton, ScrollWheelEvent,
 };
+use std::sync::Arc;
 use tracing::info;
 
 impl WorkspaceView {
@@ -613,6 +615,12 @@ impl WorkspaceView {
             .collect();
         let broadcast_enabled = self.top_bar.is_broadcast_enabled();
         let right_panel_open = self.top_bar.is_right_panel_open();
+        let is_custom_layout = self.workspace.layout_profile().is_custom();
+        let custom_label = if let LayoutProfile::Custom { rows, cols } = self.workspace.layout_profile() {
+            format!("{}x{}", rows, cols)
+        } else {
+            "Custom".to_string()
+        };
 
         let mut bar = div()
             .id("top-bar")
@@ -663,6 +671,41 @@ impl WorkspaceView {
                     .child(label.clone()),
             );
         }
+
+        // Custom layout button
+        let custom_bg = if is_custom_layout {
+            active
+        } else {
+            gpui::Hsla::transparent_black()
+        };
+        let custom_color = if is_custom_layout { fg } else { muted };
+        tab_row = tab_row.child(
+            div()
+                .id("top-bar-tab-custom")
+                .px_3()
+                .py_1()
+                .rounded_md()
+                .bg(custom_bg)
+                .text_xs()
+                .font_weight(if is_custom_layout {
+                    FontWeight::SEMIBOLD
+                } else {
+                    FontWeight::NORMAL
+                })
+                .text_color(custom_color)
+                .cursor_pointer()
+                .hover(|style| style.bg(active.opacity(0.5)))
+                .flex()
+                .items_center()
+                .gap_1()
+                .on_click(cx.listener(|this, _: &ClickEvent, _window, cx| {
+                    this.top_bar.request_custom_layout();
+                    this.process_top_bar_events();
+                    cx.notify();
+                }))
+                .child(custom_label),
+        );
+
         bar = bar.child(tab_row);
 
         // Vertical divider
@@ -1930,88 +1973,18 @@ impl WorkspaceView {
         )
     }
 
-    /// Render a small logo for the title bar.
+    /// Render a small logo for the title bar using the embedded PNG.
     fn render_logo_small(&self) -> impl IntoElement {
-        // Scale for title bar (smaller than splash screen)
-        // Reduced by additional 35% for better title bar fit
-        let cell_size = 4.0;   // Match text cap-height for visual balance
-        let gap = 1.0;         // 1.5px -> 1.0px
-        let radius = 1.0;      // 1.5px -> 1.0px
-
-        // Brand colors (from splash_screen.rs)
-        let teal = gpui::Hsla {
-            h: 0.52,
-            s: 0.70,
-            l: 0.60,
-            a: 1.0,
-        };
-        let teal_70 = gpui::Hsla {
-            h: 0.52,
-            s: 0.70,
-            l: 0.60,
-            a: 0.7,
-        };
-        let teal_40 = gpui::Hsla {
-            h: 0.52,
-            s: 0.70,
-            l: 0.60,
-            a: 0.4,
-        };
-        let coral = gpui::Hsla {
-            h: 0.03,
-            s: 0.80,
-            l: 0.62,
-            a: 1.0,
-        };
-
-        // Logo grid layout (3x3):
-        // [100%] [70%]  [40%]
-        // [70%]  [CORAL] [70%]
-        // [40%]  [70%]  [100%]
-
-        div()
-            .flex()
-            .flex_col()
-            .gap(px(gap))
-            .child(
-                // Row 1
-                div()
-                    .flex()
-                    .flex_row()
-                    .gap(px(gap))
-                    .child(self.render_logo_cell_small(teal, cell_size, radius))
-                    .child(self.render_logo_cell_small(teal_70, cell_size, radius))
-                    .child(self.render_logo_cell_small(teal_40, cell_size, radius)),
-            )
-            .child(
-                // Row 2
-                div()
-                    .flex()
-                    .flex_row()
-                    .gap(px(gap))
-                    .child(self.render_logo_cell_small(teal_70, cell_size, radius))
-                    .child(self.render_logo_cell_small(coral, cell_size, radius))
-                    .child(self.render_logo_cell_small(teal_70, cell_size, radius)),
-            )
-            .child(
-                // Row 3
-                div()
-                    .flex()
-                    .flex_row()
-                    .gap(px(gap))
-                    .child(self.render_logo_cell_small(teal_40, cell_size, radius))
-                    .child(self.render_logo_cell_small(teal_70, cell_size, radius))
-                    .child(self.render_logo_cell_small(teal, cell_size, radius)),
-            )
-    }
-
-    /// Render a single logo cell (small version for title bar).
-    fn render_logo_cell_small(&self, color: gpui::Hsla, size: f32, radius: f32) -> impl IntoElement {
-        div()
-            .w(px(size))
-            .h(px(size))
-            .rounded(px(radius))
-            .bg(color)
+        // Old size was 3*4 + 2*1 = 14px
+        let logo_size = 14.0;
+        let image = Arc::new(Image::from_bytes(
+            ImageFormat::Png,
+            crate::splash_screen::LOGO_PNG_BYTES.to_vec(),
+        ));
+        gpui::img(image)
+            .w(px(logo_size))
+            .h(px(logo_size))
+            .object_fit(ObjectFit::Contain)
     }
 
     /// Parse a group color string into Hsla.
@@ -2613,6 +2586,28 @@ impl WorkspaceView {
             .items_center()
             .py_4()
             .gap_2()
+            // Sessions button
+            .child({
+                let is_active = active_panel == Some(crate::icon_rail::DrawerPanel::Sessions);
+                let btn_bg = if is_active { active_bg } else { gpui::Hsla::transparent_black() };
+                let btn_fg = if is_active { fg } else { muted };
+                div()
+                    .id("rail-sessions")
+                    .w(px(40.0))
+                    .h(px(40.0))
+                    .rounded_xl()
+                    .bg(btn_bg)
+                    .flex()
+                    .items_center()
+                    .justify_center()
+                    .cursor_pointer()
+                    .on_mouse_down(MouseButton::Left, cx.listener(|this, _, _, cx| {
+                        this.icon_rail.toggle_panel(crate::icon_rail::DrawerPanel::Sessions);
+                        this.process_icon_rail_events();
+                        cx.notify();
+                    }))
+                    .child(div().text_size(px(20.0)).text_color(btn_fg).font_family(icons::LUCIDE_FONT_FAMILY).child(icons::terminal()))
+            })
             // Files button
             .child({
                 let is_active = active_panel == Some(crate::icon_rail::DrawerPanel::Files);
@@ -2685,14 +2680,29 @@ impl WorkspaceView {
         let panel = self.drawer.active_panel();
 
         let panel_title = match panel {
+            Some(crate::icon_rail::DrawerPanel::Sessions) => "SESSIONS",
             Some(crate::icon_rail::DrawerPanel::Files) => "EXPLORER",
             Some(crate::icon_rail::DrawerPanel::Worktrees) => "WORKTREES",
             None => "",
         };
 
-        let session_label = match self.selected_session_id {
-            Some(id) => format!("Session {}", id.0),
-            None => "No session selected".to_string(),
+        // Build content based on active panel
+        let content = match panel {
+            Some(crate::icon_rail::DrawerPanel::Sessions) => {
+                self.render_drawer_sessions_content(cx).into_any_element()
+            }
+            _ => {
+                let session_label = match self.selected_session_id {
+                    Some(id) => format!("Session {}", id.0),
+                    None => "No session selected".to_string(),
+                };
+                div()
+                    .flex_1()
+                    .overflow_hidden()
+                    .p_3()
+                    .child(div().text_xs().text_color(muted).child(session_label))
+                    .into_any_element()
+            }
         };
 
         div()
@@ -2734,12 +2744,261 @@ impl WorkspaceView {
                     ),
             )
             // Content
+            .child(content)
+    }
+
+    /// Render the sessions list content for the drawer panel.
+    fn render_drawer_sessions_content(&mut self, cx: &mut Context<Self>) -> impl IntoElement {
+        let theme = self.workspace().theme().clone();
+        let muted: gpui::Hsla = theme.muted.into();
+        let fg: gpui::Hsla = theme.foreground.into();
+        let border_color: gpui::Hsla = theme.border.into();
+        let header_bg: gpui::Hsla = theme.header_background.into();
+
+        let sessions: Vec<Session> = self.workspace().sessions().to_vec();
+        let focused_id = self.workspace().focused_session_id();
+        let session_count = sessions.len();
+
+        // Separate ungrouped and grouped sessions
+        let mut ungrouped: Vec<&Session> = Vec::new();
+        let mut groups: std::collections::BTreeMap<String, Vec<&Session>> = std::collections::BTreeMap::new();
+        for session in &sessions {
+            match &session.group {
+                Some(group) if !group.is_empty() => {
+                    groups.entry(group.clone()).or_default().push(session);
+                }
+                _ => ungrouped.push(session),
+            }
+        }
+
+        let mut content = div()
+            .flex_1()
+            .overflow_y_scroll()
+            .flex()
+            .flex_col();
+
+        // Render ungrouped sessions first
+        for session in &ungrouped {
+            content = content.child(self.render_session_row(session, focused_id, &theme, cx));
+        }
+
+        // Render grouped sessions with headers
+        let expanded_map = self.drawer_group_expanded.clone();
+        for (group_name, group_sessions) in &groups {
+            let color = group_sessions.first().and_then(|s| s.color.clone());
+            let expanded = expanded_map.get(group_name).copied().unwrap_or(true);
+
+            content = content.child(self.render_session_group_header(
+                group_name,
+                color.as_deref(),
+                group_sessions.len(),
+                expanded,
+                &theme,
+            ));
+
+            if expanded {
+                for session in group_sessions {
+                    content = content.child(self.render_session_row(session, focused_id, &theme, cx));
+                }
+            }
+        }
+
+        div()
+            .flex_1()
+            .flex()
+            .flex_col()
+            .overflow_hidden()
+            // Scrollable session list
+            .child(content)
+            // Footer
+            .child(
+                div()
+                    .p_3()
+                    .border_t_1()
+                    .border_color(border_color)
+                    .bg(header_bg)
+                    .flex()
+                    .justify_between()
+                    .items_center()
+                    .child(
+                        div().text_xs().text_color(muted)
+                            .child(format!("{} session{}", session_count, if session_count == 1 { "" } else { "s" })),
+                    )
+                    .child(
+                        div()
+                            .id("drawer-new-session")
+                            .px_2()
+                            .py(px(4.0))
+                            .rounded_md()
+                            .cursor_pointer()
+                            .hover(|style| style.bg(theme.active.into()))
+                            .on_mouse_down(MouseButton::Left, cx.listener(|this, _, _, cx| {
+                                this.create_session(cx);
+                            }))
+                            .child(
+                                div().flex().items_center().gap_1()
+                                    .child(div().text_xs().text_color(fg).font_family(icons::LUCIDE_FONT_FAMILY).child(icons::plus()))
+                                    .child(div().text_xs().font_weight(FontWeight::MEDIUM).text_color(fg).child("New Session")),
+                            ),
+                    ),
+            )
+    }
+
+    /// Render a single session row in the drawer session list.
+    fn render_session_row(
+        &mut self,
+        session: &Session,
+        focused_id: Option<SessionId>,
+        theme: &CodirigentTheme,
+        cx: &mut Context<Self>,
+    ) -> impl IntoElement {
+        let muted: gpui::Hsla = theme.muted.into();
+        let fg: gpui::Hsla = theme.foreground.into();
+        let status_color: gpui::Hsla = theme.status_color(session.status).into();
+        let is_focused = focused_id == Some(session.id);
+        let row_bg = if is_focused {
+            theme.active.into()
+        } else {
+            gpui::Hsla::transparent_black()
+        };
+        let hover_bg: gpui::Hsla = theme.active.into();
+
+        let session_id = session.id;
+        let session_name = session.name.clone();
+        let context_pct = session.context_usage;
+
+        div()
+            .id(SharedString::from(format!("session-row-{}", session_id.0)))
+            .h(px(36.0))
+            .w_full()
+            .px_3()
+            .flex()
+            .items_center()
+            .gap_2()
+            .bg(row_bg)
+            .cursor_pointer()
+            .hover(move |style| style.bg(hover_bg))
+            .on_mouse_down(MouseButton::Left, cx.listener(move |this, _, _, cx| {
+                this.select_session(session_id);
+                cx.notify();
+            }))
+            // Status dot
+            .child(
+                div()
+                    .w(px(8.0))
+                    .h(px(8.0))
+                    .rounded_full()
+                    .bg(status_color)
+                    .flex_shrink_0(),
+            )
+            // Session name (truncated)
             .child(
                 div()
                     .flex_1()
                     .overflow_hidden()
-                    .p_3()
-                    .child(div().text_xs().text_color(muted).child(session_label)),
+                    .text_xs()
+                    .text_color(if is_focused { fg } else { muted })
+                    .child(session_name),
+            )
+            // Context percentage (if available)
+            .when_some(context_pct, |el, pct| {
+                el.child(
+                    div()
+                        .text_xs()
+                        .text_color(muted.opacity(0.6))
+                        .flex_shrink_0()
+                        .child(format!("{}%", (pct * 100.0) as u32)),
+                )
+            })
+            // Menu button
+            .child(
+                div()
+                    .id(SharedString::from(format!("session-menu-{}", session_id.0)))
+                    .w(px(24.0))
+                    .h(px(24.0))
+                    .rounded_md()
+                    .flex()
+                    .items_center()
+                    .justify_center()
+                    .flex_shrink_0()
+                    .cursor_pointer()
+                    .hover(|style| style.bg(gpui::Hsla { h: 0.0, s: 0.0, l: 1.0, a: 0.1 }))
+                    .on_mouse_down(MouseButton::Left, cx.listener(move |this, _, _, cx| {
+                        this.open_session_menu(session_id, cx);
+                    }))
+                    .child(
+                        div().text_xs().text_color(muted).font_family(icons::LUCIDE_FONT_FAMILY)
+                            .child(icons::more_horizontal()),
+                    ),
+            )
+    }
+
+    /// Render a session group header in the drawer session list.
+    fn render_session_group_header(
+        &self,
+        group_name: &str,
+        color: Option<&str>,
+        count: usize,
+        expanded: bool,
+        theme: &CodirigentTheme,
+    ) -> impl IntoElement {
+        let muted: gpui::Hsla = theme.muted.into();
+
+        // Parse group color or use a default
+        let bar_color = color
+            .and_then(|c| {
+                if c.starts_with('#') && c.len() == 7 {
+                    let r = u8::from_str_radix(&c[1..3], 16).ok()?;
+                    let g = u8::from_str_radix(&c[3..5], 16).ok()?;
+                    let b = u8::from_str_radix(&c[5..7], 16).ok()?;
+                    Some(gpui::Hsla::from(gpui::Rgba {
+                        r: r as f32 / 255.0,
+                        g: g as f32 / 255.0,
+                        b: b as f32 / 255.0,
+                        a: 1.0,
+                    }))
+                } else {
+                    None
+                }
+            })
+            .unwrap_or(muted);
+
+        let chevron = if expanded {
+            icons::chevron_down()
+        } else {
+            icons::chevron_right()
+        };
+
+        let group_name_owned = group_name.to_string();
+        let group_label = format!("{} ({})", group_name, count);
+
+        div()
+            .id(SharedString::from(format!("group-header-{}", group_name_owned)))
+            .h(px(28.0))
+            .w_full()
+            .px_3()
+            .flex()
+            .items_center()
+            .gap(px(6.0))
+            .cursor_pointer()
+            // Color bar
+            .child(
+                div()
+                    .w(px(3.0))
+                    .h(px(16.0))
+                    .rounded_sm()
+                    .bg(bar_color)
+                    .flex_shrink_0(),
+            )
+            // Chevron
+            .child(
+                div().text_xs().text_color(muted).font_family(icons::LUCIDE_FONT_FAMILY)
+                    .child(chevron),
+            )
+            // Group name + count
+            .child(
+                div().text_xs().font_weight(FontWeight::BOLD).text_color(muted)
+                    .child(group_label),
             )
     }
 
@@ -2858,8 +3117,8 @@ impl WorkspaceView {
                     .px_4()
                     .child(
                         div().flex().items_center().gap_2()
-                            .child(div().text_xs().text_color(muted).font_family(icons::LUCIDE_FONT_FAMILY).child(icons::list_todo()))
-                            .child(div().text_xs().font_weight(FontWeight::BOLD).text_color(muted).child("TASKS")),
+                            .child(div().text_xs().line_height(px(16.0)).text_color(muted).font_family(icons::LUCIDE_FONT_FAMILY).child(icons::list_todo()))
+                            .child(div().text_xs().line_height(px(16.0)).font_weight(FontWeight::BOLD).text_color(muted).child("TASKS")),
                     )
                     .child(
                         div().flex().items_center().gap(px(6.0))
@@ -2870,8 +3129,7 @@ impl WorkspaceView {
                             .border_1()
                             .border_color(primary.opacity(0.2))
                             .child(div().w(px(6.0)).h(px(6.0)).rounded_full().bg(primary))
-                            .child(div().text_xs().text_color(primary.opacity(0.8)).font_family(icons::LUCIDE_FONT_FAMILY).child(icons::sparkles()))
-                            .child(div().text_color(primary.opacity(0.8)).text_xs().child("Auto")),
+                            .child(div().text_color(primary.opacity(0.8)).text_xs().line_height(px(16.0)).child("Auto")),
                     ),
             )
             // Scrollable content - Running + Queue sections
@@ -2889,8 +3147,8 @@ impl WorkspaceView {
                             .child(
                                 div().flex().justify_between().items_center().mb_2()
                                     .child(div().flex().items_center().gap_1()
-                                        .child(div().text_xs().text_color(muted).font_family(icons::LUCIDE_FONT_FAMILY).child(icons::play()))
-                                        .child(div().text_xs().font_weight(FontWeight::BOLD).text_color(muted).child("RUNNING")))
+                                        .child(div().text_xs().line_height(px(16.0)).text_color(muted).font_family(icons::LUCIDE_FONT_FAMILY).child(icons::play()))
+                                        .child(div().text_xs().line_height(px(16.0)).font_weight(FontWeight::BOLD).text_color(muted).child("RUNNING")))
                                     .child(div().px(px(6.0)).rounded_full().bg(active_bg)
                                         .child(div().text_xs().text_color(muted).child("0"))),
                             )
@@ -2904,8 +3162,8 @@ impl WorkspaceView {
                             .child(
                                 div().flex().justify_between().items_center().mb_2()
                                     .child(div().flex().items_center().gap_1()
-                                        .child(div().text_xs().text_color(muted).font_family(icons::LUCIDE_FONT_FAMILY).child(icons::clock()))
-                                        .child(div().text_xs().font_weight(FontWeight::BOLD).text_color(muted).child("QUEUE")))
+                                        .child(div().text_xs().line_height(px(16.0)).text_color(muted).font_family(icons::LUCIDE_FONT_FAMILY).child(icons::clock()))
+                                        .child(div().text_xs().line_height(px(16.0)).font_weight(FontWeight::BOLD).text_color(muted).child("QUEUE")))
                                     .child(div().px(px(6.0)).rounded_full().bg(active_bg)
                                         .child(div().text_xs().text_color(muted).child("0"))),
                             )

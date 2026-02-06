@@ -31,6 +31,7 @@ use crate::task_board::TaskBoardPanel;
 use crate::terminal_header::TerminalHeader;
 use crate::theme::CodirigentTheme;
 use crate::toolbar::CustomLayoutPicker;
+use crate::layout::LayoutProfile;
 // Core imports (combined)
 use codirigent_core::{
     CodirigentEvent, DefaultEventBus, EventBus, GridPosition, ProcessMonitor, Session, SessionId,
@@ -148,6 +149,8 @@ pub struct WorkspaceView {
     idle_poll_count: u32,
     /// Last PTY-resized dimensions per session, used to skip redundant resize calls.
     pty_sizes: HashMap<SessionId, (u16, u16)>,
+    /// Tracks which session groups are expanded in the drawer's Sessions panel.
+    pub(super) drawer_group_expanded: HashMap<String, bool>,
 }
 
 impl WorkspaceView {
@@ -273,6 +276,7 @@ impl WorkspaceView {
             last_poll_had_output: false,
             idle_poll_count: 0,
             pty_sizes: HashMap::new(),
+            drawer_group_expanded: HashMap::new(),
         };
 
         view.refresh_file_tree_panel();
@@ -702,7 +706,16 @@ impl WorkspaceView {
                     // Will be wired in plan 05 (right task board)
                 }
                 crate::top_bar::TopBarEvent::CustomLayoutRequested => {
-                    // Future: open custom layout modal
+                    if self.custom_picker.is_open {
+                        self.custom_picker.close();
+                    } else {
+                        let layout = self.workspace.layout_profile();
+                        if let LayoutProfile::Custom { rows, cols } = layout {
+                            self.custom_picker.open_with(rows, cols);
+                        } else {
+                            self.custom_picker.open();
+                        }
+                    }
                 }
                 crate::top_bar::TopBarEvent::NewSessionRequested => {
                     // Future: delegate to create_session logic
