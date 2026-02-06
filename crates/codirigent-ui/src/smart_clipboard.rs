@@ -74,6 +74,10 @@ use std::path::PathBuf;
 ///     fn has_image(&self) -> bool {
 ///         false
 ///     }
+///
+///     fn has_changed(&self) -> bool {
+///         false
+///     }
 /// }
 /// ```
 pub trait SmartClipboardProvider: Send + Sync {
@@ -124,6 +128,17 @@ pub trait SmartClipboardProvider: Send + Sync {
     ///
     /// `true` if the clipboard contains image data, `false` otherwise.
     fn has_image(&self) -> bool;
+
+    /// Check if clipboard content has changed since the last call.
+    ///
+    /// Uses platform-specific mechanisms (e.g., clipboard sequence numbers on Windows)
+    /// to detect changes. Each call updates the internal state, so consecutive calls
+    /// without external changes will return `false`.
+    ///
+    /// # Returns
+    ///
+    /// `true` if the clipboard was modified since the last call, `false` otherwise.
+    fn has_changed(&self) -> bool;
 }
 
 /// Thumbnail preview data for UI display.

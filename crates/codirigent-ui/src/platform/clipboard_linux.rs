@@ -210,6 +210,12 @@ impl SmartClipboardProvider for LinuxSmartClipboard {
             false
         }
     }
+
+    fn has_changed(&self) -> bool {
+        // Linux/arboard doesn't provide a clipboard sequence number.
+        // Always return true — the preview logic uses timers for dedup.
+        true
+    }
 }
 
 // Manual implementation of Send + Sync

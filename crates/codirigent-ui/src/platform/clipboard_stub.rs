@@ -101,6 +101,13 @@ impl SmartClipboardProvider for StubSmartClipboard {
     fn has_image(&self) -> bool {
         false
     }
+
+    /// Check if clipboard content has changed since last read.
+    ///
+    /// Always returns `false` for the stub implementation.
+    fn has_changed(&self) -> bool {
+        false
+    }
 }
 
 #[cfg(test)]

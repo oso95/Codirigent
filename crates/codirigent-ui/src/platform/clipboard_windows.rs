@@ -311,6 +311,10 @@ impl SmartClipboardProvider for WindowsSmartClipboard {
     fn has_image(&self) -> bool {
         is_format_avail(format_ids::CF_DIB) || is_format_avail(format_ids::CF_BITMAP)
     }
+
+    fn has_changed(&self) -> bool {
+        self.has_changed()
+    }
 }
 
 #[cfg(test)]

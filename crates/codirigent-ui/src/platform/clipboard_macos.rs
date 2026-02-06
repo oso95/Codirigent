@@ -465,6 +465,10 @@ impl SmartClipboardProvider for MacOSSmartClipboard {
     fn has_image(&self) -> bool {
         Self::has_type(&Self::png_type()) || Self::has_type(&Self::tiff_type())
     }
+
+    fn has_changed(&self) -> bool {
+        self.has_changed()
+    }
 }
 
 // SAFETY: MacOSSmartClipboard only contains an AtomicIsize which is Send + Sync.

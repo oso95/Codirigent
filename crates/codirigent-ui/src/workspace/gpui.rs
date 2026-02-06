@@ -43,9 +43,10 @@ use codirigent_detector::InputDetector;
 use codirigent_session::DefaultSessionManager;
 use crate::app::{
     CloseSession, Copy, FocusSession1, FocusSession2, FocusSession3, FocusSession4, FocusSession5,
-    FocusSession6, FocusSession7, FocusSession8, FocusSession9, NewSession, NextLayout, Paste,
-    ToggleSidebar,
+    FocusSession6, FocusSession7, FocusSession8, FocusSession9, NewSession, NextLayout,
+    OpenSettings, Paste, ToggleSidebar,
 };
+use crate::settings::SettingsPage;
 use crate::clipboard;
 use crate::clipboard_preview::ClipboardPreview;
 use crate::smart_clipboard::SmartClipboardProvider;
@@ -175,14 +176,14 @@ pub struct WorkspaceView {
     clipboard_service: DefaultClipboardService,
     /// Clipboard preview tooltip component.
     pub(super) clipboard_preview: ClipboardPreview,
-    /// Suppresses re-showing clipboard preview until clipboard content changes.
-    clipboard_preview_dismissed: bool,
     /// When the clipboard preview was shown (for auto-dismiss after timeout).
     clipboard_preview_shown_at: Option<std::time::Instant>,
     /// Whether the user is actively dragging a text selection in a terminal.
     pub(super) is_selecting: bool,
     /// Session ID that is currently being selected in (for mouse move events).
     pub(super) selecting_session_id: Option<SessionId>,
+    /// Settings page state (None = settings closed, Some = settings open).
+    pub(super) settings_page: Option<SettingsPage>,
 }
 
 impl WorkspaceView {
@@ -322,10 +323,10 @@ impl WorkspaceView {
                     .join(".codirigent"),
             ),
             clipboard_preview: ClipboardPreview::new(theme_for_clipboard),
-            clipboard_preview_dismissed: false,
             clipboard_preview_shown_at: None,
             is_selecting: false,
             selecting_session_id: None,
+            settings_page: None,
         };
 
         view.refresh_file_tree_panel();
@@ -546,13 +547,12 @@ impl WorkspaceView {
             any_dirty = true;
         }
 
-        // Check for image in clipboard (lightweight check, piggybacked on poll cycle)
-        // Only check every ~250ms (roughly 60 idle polls at 4ms) to avoid overhead
+        // Clipboard preview: show for 4 seconds whenever clipboard content changes and has an image.
+        // Uses platform clipboard sequence number (has_changed) to detect new content.
         if self.idle_poll_count % 60 == 0 {
-            let has_image = self.smart_clipboard.has_image();
-            tracing::debug!(has_image, visible = self.clipboard_preview.is_visible(), dismissed = self.clipboard_preview_dismissed, "clipboard preview check");
-            if has_image && !self.clipboard_preview.is_visible() && !self.clipboard_preview_dismissed {
-                // Image detected in clipboard - show a brief preview
+            let changed = self.smart_clipboard.has_changed();
+            if changed && self.smart_clipboard.has_image() {
+                // Clipboard changed and has an image — show preview
                 if let Ok(content) = self.smart_clipboard.read_content() {
                     if let ClipboardContent::Image(ref image_data) = content {
                         let path = self
@@ -567,22 +567,13 @@ impl WorkspaceView {
                         any_dirty = true;
                     }
                 }
-            } else if !has_image {
-                // Image no longer in clipboard - reset state for next image
-                if self.clipboard_preview.is_visible() {
-                    self.clipboard_preview.hide();
-                    any_dirty = true;
-                }
-                self.clipboard_preview_dismissed = false;
-                self.clipboard_preview_shown_at = None;
             }
 
-            // Auto-dismiss preview after 4 seconds
+            // Auto-dismiss after 4 seconds
             if self.clipboard_preview.is_visible() {
                 if let Some(shown_at) = self.clipboard_preview_shown_at {
                     if shown_at.elapsed() > std::time::Duration::from_secs(4) {
                         self.clipboard_preview.hide();
-                        self.clipboard_preview_dismissed = true;
                         self.clipboard_preview_shown_at = None;
                         any_dirty = true;
                     }
@@ -975,10 +966,36 @@ impl WorkspaceView {
                     self.drawer.set_active_panel(panel);
                 }
                 crate::icon_rail::IconRailEvent::SettingsRequested => {
-                    // Future: open settings modal
+                    self.open_settings();
                 }
             }
         }
+    }
+
+    /// Open the settings page overlay.
+    pub(super) fn open_settings(&mut self) {
+        if self.settings_page.is_none() {
+            let user_settings = codirigent_core::config::UserSettings::default();
+            let project_config = codirigent_core::config::ProjectConfig::default();
+            // TODO: Load actual settings from ConfigService once wired in
+            self.settings_page = Some(SettingsPage::new(user_settings, project_config));
+        }
+    }
+
+    /// Close the settings page overlay.
+    pub(super) fn close_settings(&mut self) {
+        self.settings_page = None;
+    }
+
+    /// Handle the OpenSettings action (Ctrl+,).
+    fn handle_open_settings(
+        &mut self,
+        _action: &OpenSettings,
+        _window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        self.open_settings();
+        cx.notify();
     }
 
     /// Handle task board events.
@@ -1649,9 +1666,9 @@ impl WorkspaceView {
                             warn!("Failed to paste image path to session {}: {}", session_id, e);
                         }
 
-                        // Hide clipboard preview and suppress re-showing until clipboard changes
+                        // Hide clipboard preview on paste
                         self.clipboard_preview.hide();
-                        self.clipboard_preview_dismissed = true;
+                        self.clipboard_preview_shown_at = None;
                     }
                     Err(e) => {
                         warn!("Failed to format image for CLI: {:?}", e);
@@ -1855,6 +1872,13 @@ impl WorkspaceView {
         window: &mut Window,
         cx: &mut Context<Self>,
     ) {
+        // Escape closes settings page if open
+        if self.settings_page.is_some() && event.keystroke.key == "escape" {
+            self.close_settings();
+            cx.notify();
+            return;
+        }
+
         // Allow modals to capture input before sending to the terminal.
         if self.handle_modal_key_down(event, cx) {
             return;
@@ -1901,6 +1925,11 @@ impl WorkspaceView {
                 }
                 "\\" => {
                     self.next_layout(cx);
+                    return;
+                }
+                "," => {
+                    self.open_settings();
+                    cx.notify();
                     return;
                 }
                 "1" | "2" | "3" | "4" | "5" | "6" | "7" | "8" | "9" => {
@@ -2329,6 +2358,7 @@ impl Render for WorkspaceView {
             .on_action(cx.listener(Self::handle_focus_session9))
             .on_action(cx.listener(Self::handle_paste))
             .on_action(cx.listener(Self::handle_copy))
+            .on_action(cx.listener(Self::handle_open_settings))
             // Handle keyboard input for PTY
             .on_key_down(cx.listener(|this, event: &KeyDownEvent, window, cx| {
                 this.handle_key_down(event, window, cx);
@@ -2339,6 +2369,24 @@ impl Render for WorkspaceView {
 
         // 0. Title bar with window controls (32px)
         container = container.child(self.render_title_bar(window, cx));
+
+        // Settings page overlay (replaces all content below title bar)
+        if let Some(ref settings_page) = self.settings_page {
+            let settings_content = crate::settings::render::render_settings_page(
+                settings_page,
+                self.workspace.theme(),
+            );
+            // Wrap with click handlers for interactivity
+            container = container.child(
+                div()
+                    .id("settings-overlay")
+                    .flex_1()
+                    .overflow_hidden()
+                    .on_mouse_down(gpui::MouseButton::Left, cx.listener(Self::handle_settings_click))
+                    .child(settings_content),
+            );
+            return container;
+        }
 
         // 1. TopBar at top (48px)
         container = container.child(self.render_top_bar(cx));
