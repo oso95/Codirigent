@@ -72,6 +72,9 @@ pub const TOP_BAR_HEIGHT: f32 = 48.0;
 /// Height of the status bar in pixels.
 pub const STATUS_BAR_HEIGHT: f32 = 24.0;
 
+/// Width of the right task board panel in pixels.
+pub const RIGHT_PANEL_WIDTH: f32 = 288.0;
+
 /// A point in 2D space with pixel coordinates.
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct Point {
