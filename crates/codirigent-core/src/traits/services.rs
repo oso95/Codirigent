@@ -164,6 +164,19 @@ pub trait SessionManager: Send + Sync {
         group: Option<String>,
         color: Option<String>,
     ) -> Result<()>;
+
+    /// Update context usage for a session.
+    ///
+    /// Sets the context window usage percentage for a session.
+    /// This is called when context tracking detects a usage change.
+    fn update_context_usage(&self, id: SessionId, usage: Option<f32>);
+
+    /// Get the context file path for a session.
+    ///
+    /// Returns the path to the session's context file used for
+    /// file-based IPC with CLI hooks, or `None` if the session
+    /// doesn't exist or has no context file.
+    fn get_context_file_path(&self, id: SessionId) -> Option<std::path::PathBuf>;
 }
 
 /// Process monitoring service.
@@ -559,6 +572,17 @@ mod tests {
             }
             Ok(())
         }
+
+        fn update_context_usage(&self, id: SessionId, usage: Option<f32>) {
+            let mut sessions = self.sessions.lock().unwrap();
+            if let Some(session) = sessions.iter_mut().find(|s| s.id == id) {
+                session.context_usage = usage;
+            }
+        }
+
+        fn get_context_file_path(&self, _id: SessionId) -> Option<std::path::PathBuf> {
+            None
+        }
     }
 
     #[test]
@@ -654,6 +678,28 @@ mod tests {
         let session = manager.get_session(id).unwrap();
         assert_eq!(session.group, Some("backend".to_string()));
         assert_eq!(session.color, Some("#FF0000".to_string()));
+    }
+
+    #[test]
+    fn test_mock_session_manager_update_context_usage() {
+        let manager = MockSessionManager {
+            sessions: std::sync::Mutex::new(Vec::new()),
+        };
+
+        let id = manager
+            .create_session("Test".to_string(), std::path::PathBuf::from("/tmp"))
+            .unwrap();
+
+        assert!(manager.get_session(id).unwrap().context_usage.is_none());
+
+        manager.update_context_usage(id, Some(0.75));
+        let session = manager.get_session(id).unwrap();
+        assert!((session.context_usage.unwrap() - 0.75).abs() < f32::EPSILON);
+
+        manager.update_context_usage(id, None);
+        assert!(manager.get_session(id).unwrap().context_usage.is_none());
+
+        manager.update_context_usage(SessionId(999), Some(0.5));
     }
 
     struct MockProcessMonitor {

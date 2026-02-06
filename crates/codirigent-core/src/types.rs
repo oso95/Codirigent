@@ -415,6 +415,16 @@ pub struct Task {
     pub completed_at: Option<chrono::DateTime<chrono::Utc>>,
     /// Error message if task failed.
     pub error_message: Option<String>,
+
+    /// Project root directory for hard session filtering.
+    /// When set, only sessions whose working_directory is under this path can be assigned.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub project_dir: Option<PathBuf>,
+
+    /// Plan file path relative to project_dir.
+    /// Included in assignment prompt so the CLI LLM can read it.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub plan_file: Option<String>,
 }
 
 impl Task {
@@ -457,6 +467,8 @@ impl Task {
             started_at: None,
             completed_at: None,
             error_message: None,
+            project_dir: None,
+            plan_file: None,
         }
     }
 
@@ -1402,6 +1414,8 @@ mod tests {
         assert!(task.can_retry());
         assert!(task.estimated_minutes.is_none());
         assert!(task.error_message.is_none());
+        assert!(task.project_dir.is_none());
+        assert!(task.plan_file.is_none());
     }
 
     #[test]
@@ -1483,6 +1497,62 @@ mod tests {
         task.increment_retry();
         assert_eq!(task.retry.retry_count, 3);
         assert!(!task.can_retry());
+    }
+
+    #[test]
+    fn test_task_project_dir_and_plan_file() {
+        let mut task = Task::new(
+            TaskId("task-001".to_string()),
+            "Project Task".to_string(),
+            "Description".to_string(),
+        );
+        task.project_dir = Some(PathBuf::from("/home/user/project"));
+        task.plan_file = Some("plans/phase-1.md".to_string());
+
+        let json = serde_json::to_string(&task).unwrap();
+        let parsed: Task = serde_json::from_str(&json).unwrap();
+
+        assert_eq!(parsed.project_dir, Some(PathBuf::from("/home/user/project")));
+        assert_eq!(parsed.plan_file, Some("plans/phase-1.md".to_string()));
+    }
+
+    #[test]
+    fn test_task_backwards_compat_without_project_fields() {
+        // Simulate old JSON without project_dir and plan_file fields
+        let json = r#"{
+            "id": "task-old",
+            "title": "Old Task",
+            "description": "No project fields",
+            "priority": "Medium",
+            "status": "Queued",
+            "dependencies": [],
+            "tags": [],
+            "estimated_minutes": null,
+            "assigned_session": null,
+            "assigned_at": null,
+            "verification": null,
+            "retry": {"max_retries": 3, "retry_count": 0, "retry_delay": "0s"},
+            "created_at": "2025-01-01T00:00:00Z",
+            "started_at": null,
+            "completed_at": null,
+            "error_message": null
+        }"#;
+
+        let parsed: Task = serde_json::from_str(json).unwrap();
+        assert!(parsed.project_dir.is_none());
+        assert!(parsed.plan_file.is_none());
+    }
+
+    #[test]
+    fn test_task_project_dir_skip_serializing_if_none() {
+        let task = Task::new(
+            TaskId("task-001".to_string()),
+            "Task".to_string(),
+            "Desc".to_string(),
+        );
+        let json = serde_json::to_string(&task).unwrap();
+        assert!(!json.contains("project_dir"));
+        assert!(!json.contains("plan_file"));
     }
 
     #[test]

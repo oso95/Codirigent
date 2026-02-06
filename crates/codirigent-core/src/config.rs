@@ -181,6 +181,9 @@ pub struct SessionsConfig {
     pub max_concurrent: u32,
     /// Default CLI tool to use.
     pub default_cli: String,
+    /// Automatically clean up idle sessions.
+    #[serde(default)]
+    pub auto_cleanup: bool,
 }
 
 impl Default for SessionsConfig {
@@ -188,6 +191,7 @@ impl Default for SessionsConfig {
         Self {
             max_concurrent: 9,
             default_cli: "claude".to_string(),
+            auto_cleanup: false,
         }
     }
 }
@@ -223,6 +227,65 @@ impl Default for GitConfig {
 }
 
 // ============================================================================
+// General Settings
+// ============================================================================
+
+/// General user preferences (editor, shell, startup).
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub struct GeneralSettings {
+    /// Default external editor command.
+    pub editor_command: String,
+    /// Default shell for new sessions.
+    pub default_shell: String,
+    /// Default working directory for new sessions.
+    pub default_working_dir: Option<String>,
+    /// Show splash screen on startup.
+    pub show_splash: bool,
+}
+
+impl Default for GeneralSettings {
+    fn default() -> Self {
+        Self {
+            editor_command: "code".to_string(),
+            default_shell: if cfg!(windows) { "powershell".to_string() } else { "bash".to_string() },
+            default_working_dir: None,
+            show_splash: true,
+        }
+    }
+}
+
+// ============================================================================
+// Terminal Settings
+// ============================================================================
+
+/// Terminal rendering preferences.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub struct TerminalSettings {
+    /// Font family for terminal rendering.
+    pub font_family: String,
+    /// Font size in points.
+    pub font_size: u32,
+    /// Cursor style (block, underline, bar).
+    pub cursor_style: String,
+    /// Line height multiplier.
+    pub line_height: f32,
+    /// Color scheme name.
+    pub color_scheme: String,
+}
+
+impl Default for TerminalSettings {
+    fn default() -> Self {
+        Self {
+            font_family: "JetBrains Mono".to_string(),
+            font_size: 13,
+            cursor_style: "block".to_string(),
+            line_height: 1.0,
+            color_scheme: "default".to_string(),
+        }
+    }
+}
+
+// ============================================================================
 // User Settings
 // ============================================================================
 
@@ -241,20 +304,29 @@ impl Default for GitConfig {
 /// ```
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub struct UserSettings {
+    /// General preferences.
+    #[serde(default)]
+    pub general: GeneralSettings,
     /// Appearance settings.
     pub appearance: AppearanceSettings,
+    /// Terminal settings.
+    #[serde(default)]
+    pub terminal: TerminalSettings,
     /// Notification settings.
     pub notifications: NotificationSettings,
     /// Module-specific settings.
     pub modules: ModuleSettings,
     /// Keyboard shortcuts.
+    #[serde(default = "UserSettings::default_keybindings")]
     pub keybindings: HashMap<String, String>,
 }
 
 impl Default for UserSettings {
     fn default() -> Self {
         Self {
+            general: GeneralSettings::default(),
             appearance: AppearanceSettings::default(),
+            terminal: TerminalSettings::default(),
             notifications: NotificationSettings::default(),
             modules: ModuleSettings::default(),
             keybindings: Self::default_keybindings(),
@@ -277,7 +349,6 @@ impl UserSettings {
         bindings.insert("quick_switch".to_string(), "Cmd+K".to_string());
         bindings.insert("toggle_layout".to_string(), "Cmd+\\".to_string());
         bindings.insert("toggle_task_board".to_string(), "Cmd+B".to_string());
-        bindings.insert("broadcast".to_string(), "Cmd+Shift+B".to_string());
         bindings
     }
 }
@@ -596,6 +667,7 @@ mod tests {
         let config = SessionsConfig::default();
         assert_eq!(config.max_concurrent, 9);
         assert_eq!(config.default_cli, "claude");
+        assert!(!config.auto_cleanup);
     }
 
     #[test]
@@ -603,11 +675,13 @@ mod tests {
         let config = SessionsConfig {
             max_concurrent: 12,
             default_cli: "codex".to_string(),
+            auto_cleanup: true,
         };
         let json = serde_json::to_string(&config).unwrap();
         let parsed: SessionsConfig = serde_json::from_str(&json).unwrap();
         assert_eq!(parsed.max_concurrent, 12);
         assert_eq!(parsed.default_cli, "codex");
+        assert!(parsed.auto_cleanup);
     }
 
     // GitConfig tests
@@ -656,7 +730,7 @@ mod tests {
         assert_eq!(bindings.get("new_session"), Some(&"Cmd+N".to_string()));
         assert_eq!(bindings.get("close_session"), Some(&"Cmd+W".to_string()));
         assert_eq!(bindings.get("quick_switch"), Some(&"Cmd+K".to_string()));
-        assert!(bindings.contains_key("broadcast"));
+        assert!(bindings.contains_key("toggle_task_board"));
     }
 
     #[test]

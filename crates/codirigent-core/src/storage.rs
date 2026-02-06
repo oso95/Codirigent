@@ -12,9 +12,12 @@
 //! ├── config.json    # Project configuration
 //! ├── state.json     # Runtime state (sessions, layout)
 //! ├── queue.json     # Task queue order
-//! └── tasks/         # Individual task files
-//!     ├── task-001.json
-//!     └── task-002.json
+//! ├── tasks/         # Individual task files
+//! │   ├── task-001.json
+//! │   └── task-002.json
+//! └── context/       # Per-session context files (written by CLI hooks)
+//!     ├── session-1.json
+//!     └── session-2.json
 //! ```
 //!
 //! ## Atomic Writes
@@ -23,11 +26,45 @@
 //! to prevent corruption in case of crashes or power failures.
 
 use crate::traits::StorageService;
-use crate::types::{AppState, Task, TaskId};
+use crate::types::{AppState, SessionId, Task, TaskId};
 use anyhow::{Context, Result};
+use serde::{Deserialize, Serialize};
 use std::fs;
 use std::path::{Path, PathBuf};
 use tracing::{debug, instrument};
+
+/// Context data written by CLI hooks to a session's context file.
+///
+/// Hook scripts (Claude Code, Gemini CLI) write this JSON to
+/// `.codirigent/context/session-{id}.json`. Codirigent polls these
+/// files to track context window usage.
+///
+/// # Example
+///
+/// ```
+/// use codirigent_core::storage::ContextFileData;
+///
+/// let data = ContextFileData {
+///     usage: 0.42,
+///     tokens_used: Some(84000),
+///     tokens_total: Some(200000),
+/// };
+/// let json = serde_json::to_string(&data).unwrap();
+/// assert!(json.contains("0.42"));
+/// ```
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ContextFileData {
+    /// Context usage ratio (0.0-1.0). Required.
+    pub usage: f32,
+
+    /// Raw token count used. Optional.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub tokens_used: Option<u64>,
+
+    /// Total token capacity. Optional.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub tokens_total: Option<u64>,
+}
 
 /// File-based implementation of [`StorageService`].
 ///
@@ -121,6 +158,8 @@ impl FileStorageService {
             .with_context(|| format!("Failed to create .codirigent directory at {:?}", self.codirigent_dir))?;
         fs::create_dir_all(self.tasks_dir())
             .with_context(|| format!("Failed to create tasks directory at {:?}", self.tasks_dir()))?;
+        fs::create_dir_all(self.context_dir())
+            .with_context(|| format!("Failed to create context directory at {:?}", self.context_dir()))?;
         debug!("Directories ensured at {}", self.codirigent_dir.display());
         Ok(())
     }
@@ -139,6 +178,24 @@ impl FileStorageService {
     /// Get the path to the `tasks` directory.
     fn tasks_dir(&self) -> PathBuf {
         self.codirigent_dir.join("tasks")
+    }
+
+    /// Get the path to the `context` directory.
+    ///
+    /// This directory holds per-session context files written by CLI hooks.
+    pub fn context_dir(&self) -> PathBuf {
+        self.codirigent_dir.join("context")
+    }
+
+    /// Get the path to a specific session's context file.
+    ///
+    /// Context files are named `session-{id}.json` in the context directory.
+    ///
+    /// # Arguments
+    ///
+    /// * `session_id` - The session ID
+    pub fn context_file(&self, session_id: SessionId) -> PathBuf {
+        self.context_dir().join(format!("session-{}.json", session_id.0))
     }
 
     /// Get the path to a specific task file.
@@ -358,6 +415,8 @@ mod tests {
             started_at: None,
             completed_at: None,
             error_message: None,
+            project_dir: None,
+            plan_file: None,
         }
     }
 
@@ -370,6 +429,7 @@ mod tests {
 
         assert!(storage.codirigent_dir.exists());
         assert!(storage.tasks_dir().exists());
+        assert!(storage.context_dir().exists());
     }
 
     #[test]
@@ -1041,5 +1101,87 @@ mod tests {
 
         assert_send::<FileStorageService>();
         assert_sync::<FileStorageService>();
+    }
+
+    // ========== Context Directory Tests ==========
+
+    #[test]
+    fn test_context_dir_path() {
+        let temp = TempDir::new().unwrap();
+        let storage = FileStorageService::new(temp.path()).unwrap();
+
+        let expected = temp.path().join(".codirigent").join("context");
+        assert_eq!(storage.context_dir(), expected);
+        assert!(storage.context_dir().exists());
+    }
+
+    #[test]
+    fn test_context_file_path() {
+        let temp = TempDir::new().unwrap();
+        let storage = FileStorageService::new(temp.path()).unwrap();
+
+        let path = storage.context_file(SessionId(42));
+        let expected = temp.path().join(".codirigent").join("context").join("session-42.json");
+        assert_eq!(path, expected);
+    }
+
+    #[test]
+    fn test_context_file_data_serialization() {
+        let data = super::ContextFileData {
+            usage: 0.42,
+            tokens_used: Some(84000),
+            tokens_total: Some(200000),
+        };
+        let json = serde_json::to_string(&data).unwrap();
+        let parsed: super::ContextFileData = serde_json::from_str(&json).unwrap();
+
+        assert!((parsed.usage - 0.42).abs() < f32::EPSILON);
+        assert_eq!(parsed.tokens_used, Some(84000));
+        assert_eq!(parsed.tokens_total, Some(200000));
+    }
+
+    #[test]
+    fn test_context_file_data_minimal() {
+        // Only usage field required
+        let json = r#"{"usage": 0.35}"#;
+        let parsed: super::ContextFileData = serde_json::from_str(json).unwrap();
+
+        assert!((parsed.usage - 0.35).abs() < f32::EPSILON);
+        assert!(parsed.tokens_used.is_none());
+        assert!(parsed.tokens_total.is_none());
+    }
+
+    #[test]
+    fn test_context_file_data_skips_none_fields() {
+        let data = super::ContextFileData {
+            usage: 0.5,
+            tokens_used: None,
+            tokens_total: None,
+        };
+        let json = serde_json::to_string(&data).unwrap();
+
+        // Optional fields should be omitted
+        assert!(!json.contains("tokens_used"));
+        assert!(!json.contains("tokens_total"));
+    }
+
+    #[test]
+    fn test_context_file_roundtrip() {
+        let temp = TempDir::new().unwrap();
+        let storage = FileStorageService::new(temp.path()).unwrap();
+
+        let data = super::ContextFileData {
+            usage: 0.73,
+            tokens_used: Some(146000),
+            tokens_total: Some(200000),
+        };
+
+        let path = storage.context_file(SessionId(1));
+        let content = serde_json::to_string(&data).unwrap();
+        fs::write(&path, &content).unwrap();
+
+        let read_content = fs::read_to_string(&path).unwrap();
+        let parsed: super::ContextFileData = serde_json::from_str(&read_content).unwrap();
+        assert!((parsed.usage - 0.73).abs() < f32::EPSILON);
     }
 }

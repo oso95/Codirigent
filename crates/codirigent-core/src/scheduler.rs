@@ -45,7 +45,29 @@ use crate::types::*;
 use anyhow::{anyhow, Result};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
+use std::path::Path;
 use std::sync::Arc;
+
+/// Check if a session's working_directory is within a task's project_dir.
+///
+/// Uses canonicalized prefix matching: the session directory must be equal to
+/// or a subdirectory of the project directory.
+///
+/// # Arguments
+///
+/// * `session_dir` - The session's working directory
+/// * `project_dir` - The task's required project directory
+///
+/// # Returns
+///
+/// `true` if the session directory is within the project directory.
+fn session_matches_project(session_dir: &Path, project_dir: &Path) -> bool {
+    let canon_session = std::fs::canonicalize(session_dir)
+        .unwrap_or_else(|_| session_dir.to_path_buf());
+    let canon_project = std::fs::canonicalize(project_dir)
+        .unwrap_or_else(|_| project_dir.to_path_buf());
+    canon_session.starts_with(&canon_project)
+}
 
 /// Scheduling mode for task assignment.
 ///
@@ -528,6 +550,9 @@ impl TaskQueue {
                 task.status == TaskStatus::Queued
                     && !self.is_blocked(&task.id)
                     && task.dependencies_satisfied(completed_tasks)
+                    && task.project_dir.as_ref().map_or(true, |pd| {
+                        session_matches_project(&session.working_directory, pd)
+                    })
             })
             .max_by(|a, b| {
                 let score_a = self.calculate_score_for_session(a, session, completed_tasks);
@@ -2058,5 +2083,136 @@ mod tests {
         // With external dependency marked complete
         let next = queue.next_task(&[TaskId("external".to_string())]);
         assert!(next.is_some());
+    }
+
+    // ========== Project Dir Filter Tests ==========
+
+    #[test]
+    fn test_session_matches_project_helper() {
+        // Exact match (non-existent paths, falls back to raw comparison)
+        assert!(session_matches_project(
+            std::path::Path::new("/project"),
+            std::path::Path::new("/project"),
+        ));
+
+        // Subdirectory
+        assert!(session_matches_project(
+            std::path::Path::new("/project/src"),
+            std::path::Path::new("/project"),
+        ));
+
+        // No match
+        assert!(!session_matches_project(
+            std::path::Path::new("/project-b"),
+            std::path::Path::new("/project-a"),
+        ));
+    }
+
+    #[test]
+    fn test_next_task_for_session_project_dir_filter() {
+        let mut queue = create_queue();
+
+        let mut task_a = Task::new(
+            TaskId("task-a".to_string()),
+            "Task A".to_string(),
+            "".to_string(),
+        );
+        task_a.project_dir = Some(PathBuf::from("/project-a"));
+
+        let mut task_b = Task::new(
+            TaskId("task-b".to_string()),
+            "Task B".to_string(),
+            "".to_string(),
+        );
+        task_b.project_dir = Some(PathBuf::from("/project-b"));
+
+        queue.enqueue(task_a).unwrap();
+        queue.enqueue(task_b).unwrap();
+
+        // Session in /project-a should only get task-a
+        let session_a = Session::new(
+            SessionId(1),
+            "Session A".to_string(),
+            PathBuf::from("/project-a"),
+        );
+        let next = queue.next_task_for_session(&session_a, &[]);
+        assert_eq!(next.unwrap().id, TaskId("task-a".to_string()));
+
+        // Session in /project-b should only get task-b
+        let session_b = Session::new(
+            SessionId(2),
+            "Session B".to_string(),
+            PathBuf::from("/project-b"),
+        );
+        let next = queue.next_task_for_session(&session_b, &[]);
+        assert_eq!(next.unwrap().id, TaskId("task-b".to_string()));
+    }
+
+    #[test]
+    fn test_next_task_for_session_subdirectory_match() {
+        let mut queue = create_queue();
+
+        let mut task = Task::new(
+            TaskId("task-1".to_string()),
+            "Task".to_string(),
+            "".to_string(),
+        );
+        task.project_dir = Some(PathBuf::from("/project"));
+
+        queue.enqueue(task).unwrap();
+
+        // Session in subdirectory of /project should match
+        let session = Session::new(
+            SessionId(1),
+            "Session".to_string(),
+            PathBuf::from("/project/src"),
+        );
+        let next = queue.next_task_for_session(&session, &[]);
+        assert!(next.is_some());
+    }
+
+    #[test]
+    fn test_next_task_for_session_no_project_dir_matches_any() {
+        let mut queue = create_queue();
+
+        let task = Task::new(
+            TaskId("task-1".to_string()),
+            "Task".to_string(),
+            "".to_string(),
+        );
+        // project_dir is None - should match any session
+
+        queue.enqueue(task).unwrap();
+
+        let session = Session::new(
+            SessionId(1),
+            "Session".to_string(),
+            PathBuf::from("/any/directory"),
+        );
+        let next = queue.next_task_for_session(&session, &[]);
+        assert!(next.is_some());
+    }
+
+    #[test]
+    fn test_next_task_for_session_project_dir_no_match_skips() {
+        let mut queue = create_queue();
+
+        let mut task = Task::new(
+            TaskId("task-1".to_string()),
+            "Task".to_string(),
+            "".to_string(),
+        );
+        task.project_dir = Some(PathBuf::from("/project-a"));
+
+        queue.enqueue(task).unwrap();
+
+        // Session in completely different directory should get nothing
+        let session = Session::new(
+            SessionId(1),
+            "Session".to_string(),
+            PathBuf::from("/project-b"),
+        );
+        let next = queue.next_task_for_session(&session, &[]);
+        assert!(next.is_none());
     }
 }

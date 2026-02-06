@@ -93,6 +93,10 @@ pub const DEFAULT_PROMPT_TEMPLATE: &str = r#"## Task: {title}
 
 {description}
 
+### Plan File
+
+{plan_file}
+
 ### Verification
 
 When complete, verification will run: `{verification_command}`
@@ -307,6 +311,29 @@ impl AssignmentManager {
         &self.config
     }
 
+    /// Set whether auto-assign is enabled.
+    ///
+    /// # Arguments
+    ///
+    /// * `enabled` - Whether to enable auto-assign
+    ///
+    /// # Example
+    ///
+    /// ```
+    /// use codirigent_core::{AssignmentManager, AssignmentConfig, DefaultEventBus};
+    /// use std::sync::Arc;
+    ///
+    /// let event_bus = Arc::new(DefaultEventBus::new(16));
+    /// let mut manager = AssignmentManager::new(AssignmentConfig::default(), event_bus);
+    /// assert!(manager.config().auto_assign);
+    ///
+    /// manager.set_auto_assign(false);
+    /// assert!(!manager.config().auto_assign);
+    /// ```
+    pub fn set_auto_assign(&mut self, enabled: bool) {
+        self.config.auto_assign = enabled;
+    }
+
     /// Generate prompt for a task.
     ///
     /// Replaces all placeholders in the prompt template with actual task values.
@@ -352,12 +379,22 @@ impl AssignmentManager {
             .map(|v| v.command.as_str())
             .unwrap_or("(auto-detect)");
 
+        let plan_file_text = match (&task.project_dir, &task.plan_file) {
+            (Some(dir), Some(file)) => {
+                let abs_path = dir.join(file);
+                format!("Read and execute the plan at: `{}`", abs_path.display())
+            }
+            (None, Some(file)) => format!("Read and execute the plan at: `{}`", file),
+            _ => "(no plan file)".to_string(),
+        };
+
         self.config
             .prompt_template
             .replace("{title}", &task.title)
             .replace("{id}", &task.id.to_string())
             .replace("{priority}", &format!("{:?}", task.priority))
             .replace("{description}", &task.description)
+            .replace("{plan_file}", &plan_file_text)
             .replace("{verification_command}", verification_cmd)
     }
 
@@ -786,6 +823,7 @@ mod tests {
         assert!(DEFAULT_PROMPT_TEMPLATE.contains("{id}"));
         assert!(DEFAULT_PROMPT_TEMPLATE.contains("{priority}"));
         assert!(DEFAULT_PROMPT_TEMPLATE.contains("{description}"));
+        assert!(DEFAULT_PROMPT_TEMPLATE.contains("{plan_file}"));
         assert!(DEFAULT_PROMPT_TEMPLATE.contains("{verification_command}"));
     }
 
@@ -793,6 +831,7 @@ mod tests {
     fn test_default_prompt_template_structure() {
         assert!(DEFAULT_PROMPT_TEMPLATE.contains("## Task:"));
         assert!(DEFAULT_PROMPT_TEMPLATE.contains("### Description"));
+        assert!(DEFAULT_PROMPT_TEMPLATE.contains("### Plan File"));
         assert!(DEFAULT_PROMPT_TEMPLATE.contains("### Verification"));
     }
 
@@ -819,6 +858,18 @@ mod tests {
         assert!(!manager.config().auto_assign);
         assert!(manager.config().confirm_before_assign);
         assert_eq!(manager.config().idle_threshold_seconds, 15);
+    }
+
+    #[test]
+    fn test_set_auto_assign() {
+        let mut manager = create_manager();
+        assert!(manager.config().auto_assign);
+
+        manager.set_auto_assign(false);
+        assert!(!manager.config().auto_assign);
+
+        manager.set_auto_assign(true);
+        assert!(manager.config().auto_assign);
     }
 
     #[test]
@@ -891,6 +942,54 @@ mod tests {
             let prompt = manager.generate_prompt(&task);
             assert!(prompt.contains(&format!("{:?}", priority)));
         }
+    }
+
+    #[test]
+    fn test_generate_prompt_with_plan_file_and_project_dir() {
+        let manager = create_manager();
+
+        let mut task = Task::new(
+            TaskId("task-001".to_string()),
+            "Task".to_string(),
+            "Desc".to_string(),
+        );
+        task.project_dir = Some(PathBuf::from("/home/user/project"));
+        task.plan_file = Some("plans/phase-1.md".to_string());
+
+        let prompt = manager.generate_prompt(&task);
+        // Should contain absolute path
+        assert!(prompt.contains("/home/user/project"));
+        assert!(prompt.contains("plans/phase-1.md"));
+        assert!(prompt.contains("Read and execute the plan at:"));
+    }
+
+    #[test]
+    fn test_generate_prompt_with_plan_file_no_project_dir() {
+        let manager = create_manager();
+
+        let mut task = Task::new(
+            TaskId("task-001".to_string()),
+            "Task".to_string(),
+            "Desc".to_string(),
+        );
+        task.plan_file = Some("plans/phase-1.md".to_string());
+
+        let prompt = manager.generate_prompt(&task);
+        assert!(prompt.contains("Read and execute the plan at: `plans/phase-1.md`"));
+    }
+
+    #[test]
+    fn test_generate_prompt_without_plan_file() {
+        let manager = create_manager();
+
+        let task = Task::new(
+            TaskId("task-001".to_string()),
+            "Task".to_string(),
+            "Desc".to_string(),
+        );
+
+        let prompt = manager.generate_prompt(&task);
+        assert!(prompt.contains("(no plan file)"));
     }
 
     #[test]

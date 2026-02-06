@@ -73,13 +73,13 @@ impl PtyHandle {
     /// use codirigent_session::PtyHandle;
     /// use std::path::Path;
     ///
-    /// let pty = PtyHandle::spawn(Path::new("/tmp"), 24, 80).unwrap();
+    /// let pty = PtyHandle::spawn(Path::new("/tmp"), 24, 80, &[]).unwrap();
     /// assert!(pty.child_pid() > 0);
     /// ```
-    pub fn spawn(working_dir: &Path, rows: u16, cols: u16) -> Result<Self> {
+    pub fn spawn(working_dir: &Path, rows: u16, cols: u16, env_vars: &[(&str, &str)]) -> Result<Self> {
         let shell = detect_shell_command();
         let args: Vec<&str> = shell.args.iter().map(|arg| arg.as_str()).collect();
-        Self::spawn_command(working_dir, &shell.program, &args, rows, cols)
+        Self::spawn_command(working_dir, &shell.program, &args, rows, cols, env_vars)
     }
 
     /// Spawn a PTY with a specific command.
@@ -92,6 +92,7 @@ impl PtyHandle {
     /// * `args` - Arguments to pass to the command
     /// * `rows` - Initial terminal height
     /// * `cols` - Initial terminal width
+    /// * `env_vars` - Additional environment variables to set
     ///
     /// # Errors
     /// Returns an error if the PTY cannot be created or the command cannot be spawned.
@@ -106,7 +107,8 @@ impl PtyHandle {
     ///     "echo",
     ///     &["hello"],
     ///     24,
-    ///     80
+    ///     80,
+    ///     &[("MY_VAR", "my_value")],
     /// ).unwrap();
     /// ```
     pub fn spawn_command(
@@ -115,6 +117,7 @@ impl PtyHandle {
         args: &[&str],
         rows: u16,
         cols: u16,
+        env_vars: &[(&str, &str)],
     ) -> Result<Self> {
         info!(command, ?working_dir, rows, cols, "Spawning PTY");
 
@@ -140,6 +143,11 @@ impl PtyHandle {
         // Set UTF-8 encoding for proper character display
         cmd.env("LANG", "en_US.UTF-8");
         cmd.env("LC_ALL", "en_US.UTF-8");
+
+        // Set caller-provided environment variables (e.g., CODIRIGENT_CONTEXT_FILE)
+        for (key, value) in env_vars {
+            cmd.env(key, value);
+        }
 
         // Enable OSC 7 (CWD reporting) for bash shells via PROMPT_COMMAND.
         // Zsh and PowerShell handle this differently (see shell-specific config).
@@ -201,7 +209,7 @@ impl PtyHandle {
     /// use codirigent_session::PtyHandle;
     /// use std::path::Path;
     ///
-    /// let mut pty = PtyHandle::spawn(Path::new("/tmp"), 24, 80).unwrap();
+    /// let mut pty = PtyHandle::spawn(Path::new("/tmp"), 24, 80, &[]).unwrap();
     /// pty.send_input(b"echo hello\n").unwrap();
     /// ```
     pub fn send_input(&mut self, data: &[u8]) -> Result<()> {
@@ -229,7 +237,7 @@ impl PtyHandle {
     /// use codirigent_session::PtyHandle;
     /// use std::path::Path;
     ///
-    /// let mut pty = PtyHandle::spawn(Path::new("/tmp"), 24, 80).unwrap();
+    /// let mut pty = PtyHandle::spawn(Path::new("/tmp"), 24, 80, &[]).unwrap();
     /// pty.resize(48, 120).unwrap();
     /// assert_eq!(pty.size().rows, 48);
     /// ```
@@ -438,7 +446,7 @@ impl OutputReader {
     /// use std::path::Path;
     ///
     /// # async fn example() {
-    /// let mut pty = PtyHandle::spawn(Path::new("/tmp"), 24, 80).unwrap();
+    /// let mut pty = PtyHandle::spawn(Path::new("/tmp"), 24, 80, &[]).unwrap();
     /// let reader = pty.take_reader().unwrap();
     /// let mut output_reader = OutputReader::new(reader);
     ///
@@ -588,7 +596,7 @@ impl Drop for OutputReader {
 /// use std::path::Path;
 ///
 /// # async fn example() {
-/// let mut pty = PtyHandle::spawn(Path::new("/tmp"), 24, 80).unwrap();
+/// let mut pty = PtyHandle::spawn(Path::new("/tmp"), 24, 80, &[]).unwrap();
 /// let reader = pty.take_reader().unwrap();
 /// let mut rx = spawn_output_reader(reader);
 ///
@@ -664,7 +672,7 @@ mod tests {
     #[test]
     fn test_spawn_pty() {
         let temp = TempDir::new().unwrap();
-        let pty = PtyHandle::spawn(temp.path(), 24, 80);
+        let pty = PtyHandle::spawn(temp.path(), 24, 80, &[]);
         assert!(pty.is_ok(), "Failed to spawn PTY: {:?}", pty.err());
 
         let pty = pty.unwrap();
@@ -677,7 +685,7 @@ mod tests {
     #[test]
     fn test_spawn_pty_with_custom_size() {
         let temp = TempDir::new().unwrap();
-        let pty = PtyHandle::spawn(temp.path(), 48, 120).unwrap();
+        let pty = PtyHandle::spawn(temp.path(), 48, 120, &[]).unwrap();
 
         assert_eq!(pty.size().rows, 48);
         assert_eq!(pty.size().cols, 120);
@@ -688,10 +696,10 @@ mod tests {
         let temp = TempDir::new().unwrap();
 
         #[cfg(unix)]
-        let pty = PtyHandle::spawn_command(temp.path(), "/bin/sh", &[], 24, 80);
+        let pty = PtyHandle::spawn_command(temp.path(), "/bin/sh", &[], 24, 80, &[]);
 
         #[cfg(windows)]
-        let pty = PtyHandle::spawn_command(temp.path(), "cmd.exe", &[], 24, 80);
+        let pty = PtyHandle::spawn_command(temp.path(), "cmd.exe", &[], 24, 80, &[]);
 
         assert!(pty.is_ok(), "Failed to spawn command: {:?}", pty.err());
         assert!(pty.unwrap().child_pid() > 0);
@@ -702,10 +710,10 @@ mod tests {
         let temp = TempDir::new().unwrap();
 
         #[cfg(unix)]
-        let pty = PtyHandle::spawn_command(temp.path(), "echo", &["hello", "world"], 24, 80);
+        let pty = PtyHandle::spawn_command(temp.path(), "echo", &["hello", "world"], 24, 80, &[]);
 
         #[cfg(windows)]
-        let pty = PtyHandle::spawn_command(temp.path(), "cmd.exe", &["/c", "echo", "hello"], 24, 80);
+        let pty = PtyHandle::spawn_command(temp.path(), "cmd.exe", &["/c", "echo", "hello"], 24, 80, &[]);
 
         assert!(pty.is_ok());
     }
@@ -713,7 +721,7 @@ mod tests {
     #[test]
     fn test_send_input() {
         let temp = TempDir::new().unwrap();
-        let mut pty = PtyHandle::spawn(temp.path(), 24, 80).unwrap();
+        let mut pty = PtyHandle::spawn(temp.path(), 24, 80, &[]).unwrap();
 
         // Send a simple command
         let result = pty.send_input(b"echo hello\n");
@@ -723,7 +731,7 @@ mod tests {
     #[test]
     fn test_send_input_multiple_times() {
         let temp = TempDir::new().unwrap();
-        let mut pty = PtyHandle::spawn(temp.path(), 24, 80).unwrap();
+        let mut pty = PtyHandle::spawn(temp.path(), 24, 80, &[]).unwrap();
 
         assert!(pty.send_input(b"echo 1\n").is_ok());
         assert!(pty.send_input(b"echo 2\n").is_ok());
@@ -733,7 +741,7 @@ mod tests {
     #[test]
     fn test_send_input_special_characters() {
         let temp = TempDir::new().unwrap();
-        let mut pty = PtyHandle::spawn(temp.path(), 24, 80).unwrap();
+        let mut pty = PtyHandle::spawn(temp.path(), 24, 80, &[]).unwrap();
 
         // Test control characters
         assert!(pty.send_input(&[0x03]).is_ok()); // Ctrl+C
@@ -744,7 +752,7 @@ mod tests {
     #[test]
     fn test_resize() {
         let temp = TempDir::new().unwrap();
-        let mut pty = PtyHandle::spawn(temp.path(), 24, 80).unwrap();
+        let mut pty = PtyHandle::spawn(temp.path(), 24, 80, &[]).unwrap();
 
         let result = pty.resize(48, 120);
         assert!(result.is_ok());
@@ -755,7 +763,7 @@ mod tests {
     #[test]
     fn test_resize_multiple_times() {
         let temp = TempDir::new().unwrap();
-        let mut pty = PtyHandle::spawn(temp.path(), 24, 80).unwrap();
+        let mut pty = PtyHandle::spawn(temp.path(), 24, 80, &[]).unwrap();
 
         pty.resize(30, 100).unwrap();
         assert_eq!(pty.size().rows, 30);
@@ -771,7 +779,7 @@ mod tests {
     #[test]
     fn test_take_reader() {
         let temp = TempDir::new().unwrap();
-        let mut pty = PtyHandle::spawn(temp.path(), 24, 80).unwrap();
+        let mut pty = PtyHandle::spawn(temp.path(), 24, 80, &[]).unwrap();
 
         assert!(pty.has_reader());
 
@@ -787,7 +795,7 @@ mod tests {
     #[test]
     fn test_child_pid() {
         let temp = TempDir::new().unwrap();
-        let pty = PtyHandle::spawn(temp.path(), 24, 80).unwrap();
+        let pty = PtyHandle::spawn(temp.path(), 24, 80, &[]).unwrap();
 
         let pid = pty.child_pid();
         assert!(pid > 0, "Child PID should be positive");
@@ -796,7 +804,7 @@ mod tests {
     #[tokio::test]
     async fn test_spawn_output_reader() {
         let temp = TempDir::new().unwrap();
-        let mut pty = PtyHandle::spawn(temp.path(), 24, 80).unwrap();
+        let mut pty = PtyHandle::spawn(temp.path(), 24, 80, &[]).unwrap();
 
         let reader = pty.take_reader().expect("Reader should exist");
         let mut rx = spawn_output_reader(reader);
@@ -830,7 +838,7 @@ mod tests {
     #[tokio::test]
     async fn test_spawn_output_reader_receives_multiple_chunks() {
         let temp = TempDir::new().unwrap();
-        let mut pty = PtyHandle::spawn(temp.path(), 24, 80).unwrap();
+        let mut pty = PtyHandle::spawn(temp.path(), 24, 80, &[]).unwrap();
 
         let reader = pty.take_reader().expect("Reader should exist");
         let mut rx = spawn_output_reader(reader);
@@ -878,7 +886,7 @@ mod tests {
     #[tokio::test]
     async fn test_output_reader_channel_closure() {
         let temp = TempDir::new().unwrap();
-        let mut pty = PtyHandle::spawn(temp.path(), 24, 80).unwrap();
+        let mut pty = PtyHandle::spawn(temp.path(), 24, 80, &[]).unwrap();
 
         let reader = pty.take_reader().expect("Reader should exist");
         let rx = spawn_output_reader(reader);
@@ -899,7 +907,7 @@ mod tests {
     fn test_spawn_invalid_command() {
         let temp = TempDir::new().unwrap();
         let result =
-            PtyHandle::spawn_command(temp.path(), "/nonexistent/command/path", &[], 24, 80);
+            PtyHandle::spawn_command(temp.path(), "/nonexistent/command/path", &[], 24, 80, &[]);
 
         // Should fail to spawn an invalid command
         assert!(result.is_err());
@@ -912,7 +920,7 @@ mod tests {
 
         // This may or may not fail depending on the platform
         // On some systems, cwd errors are deferred
-        let result = PtyHandle::spawn(&invalid_path, 24, 80);
+        let result = PtyHandle::spawn(&invalid_path, 24, 80, &[]);
         // We just check it doesn't panic
         let _ = result;
     }
@@ -931,7 +939,7 @@ mod tests {
     #[tokio::test]
     async fn test_output_reader_new() {
         let temp = TempDir::new().unwrap();
-        let mut pty = PtyHandle::spawn(temp.path(), 24, 80).unwrap();
+        let mut pty = PtyHandle::spawn(temp.path(), 24, 80, &[]).unwrap();
 
         let reader = pty.take_reader().expect("Reader should exist");
         let mut output_reader = OutputReader::new(reader);
@@ -969,7 +977,7 @@ mod tests {
     #[tokio::test]
     async fn test_output_reader_is_running() {
         let temp = TempDir::new().unwrap();
-        let mut pty = PtyHandle::spawn(temp.path(), 24, 80).unwrap();
+        let mut pty = PtyHandle::spawn(temp.path(), 24, 80, &[]).unwrap();
 
         let reader = pty.take_reader().expect("Reader should exist");
         let output_reader = OutputReader::new(reader);
@@ -983,7 +991,7 @@ mod tests {
     #[tokio::test]
     async fn test_output_reader_stop_cleans_up() {
         let temp = TempDir::new().unwrap();
-        let mut pty = PtyHandle::spawn(temp.path(), 24, 80).unwrap();
+        let mut pty = PtyHandle::spawn(temp.path(), 24, 80, &[]).unwrap();
 
         let reader = pty.take_reader().expect("Reader should exist");
         let output_reader = OutputReader::new(reader);
@@ -997,7 +1005,7 @@ mod tests {
     #[tokio::test]
     async fn test_output_reader_receiver_mut() {
         let temp = TempDir::new().unwrap();
-        let mut pty = PtyHandle::spawn(temp.path(), 24, 80).unwrap();
+        let mut pty = PtyHandle::spawn(temp.path(), 24, 80, &[]).unwrap();
 
         let reader = pty.take_reader().expect("Reader should exist");
         let mut output_reader = OutputReader::new(reader);
@@ -1016,7 +1024,7 @@ mod tests {
     #[tokio::test]
     async fn test_output_reader_drop() {
         let temp = TempDir::new().unwrap();
-        let mut pty = PtyHandle::spawn(temp.path(), 24, 80).unwrap();
+        let mut pty = PtyHandle::spawn(temp.path(), 24, 80, &[]).unwrap();
 
         let reader = pty.take_reader().expect("Reader should exist");
 
@@ -1034,7 +1042,7 @@ mod tests {
     #[tokio::test]
     async fn test_output_reader_multiple_recv() {
         let temp = TempDir::new().unwrap();
-        let mut pty = PtyHandle::spawn(temp.path(), 24, 80).unwrap();
+        let mut pty = PtyHandle::spawn(temp.path(), 24, 80, &[]).unwrap();
 
         let reader = pty.take_reader().expect("Reader should exist");
         let mut output_reader = OutputReader::new(reader);

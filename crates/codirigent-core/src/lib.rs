@@ -116,7 +116,7 @@ pub use event_bus::DefaultEventBus;
 pub use events::{ClipboardContentType, CodirigentEvent};
 pub use scheduler::{SchedulerConfig, SchedulerMode, TaskQueue, TaskQueueService};
 pub use skill::{Skill, SkillPreset, SkillType, TokenBudget};
-pub use storage::FileStorageService;
+pub use storage::{ContextFileData, FileStorageService};
 pub use traits::{EventBus, ProcessMonitor, RalphLoopController, SessionManager, SkillManager, StorageService};
 pub use traits::{FailureFormatter, ProjectType, VerificationDetector, Verifier};
 pub use types::*;

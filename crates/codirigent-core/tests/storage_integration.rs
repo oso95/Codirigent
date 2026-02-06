@@ -32,6 +32,8 @@ fn create_task(id: &str, title: &str) -> Task {
         started_at: None,
         completed_at: None,
         error_message: None,
+        project_dir: None,
+        plan_file: None,
     }
 }
 

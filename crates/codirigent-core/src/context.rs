@@ -40,6 +40,24 @@ use crate::types::{ContextThresholdState, SessionId};
 use regex::Regex;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
+use std::sync::OnceLock;
+
+/// Get the compiled ANSI stripping regex (compiled once, reused).
+///
+/// Covers CSI sequences (`\x1b[...X`), OSC sequences (`\x1b]...BEL`),
+/// character set sequences (`\x1b(X`), and simple escape codes (`\x1bX`).
+fn ansi_strip_regex() -> &'static Regex {
+    static RE: OnceLock<Regex> = OnceLock::new();
+    RE.get_or_init(|| {
+        Regex::new(r"\x1b\[[0-9;?]*[a-zA-Z~]|\x1b\][^\x07\x1b]*(?:\x07|\x1b\\)|\x1b[()#][A-Z0-9]|\x1b[a-zA-Z]")
+            .expect("ANSI strip regex must compile")
+    })
+}
+
+/// Strip ANSI escape sequences from terminal output, returning plain text.
+pub fn strip_ansi_codes(text: &str) -> String {
+    ansi_strip_regex().replace_all(text, "").to_string()
+}
 
 /// Context tracking configuration.
 ///
@@ -150,6 +168,7 @@ pub struct ContextUsage {
 ///     pattern: r"Context:\s*(\d+(?:\.\d+)?)\s*%".to_string(),
 ///     capture_group: 1,
 ///     cli_type: Some("claude".to_string()),
+///     inverted: false,
 /// };
 /// ```
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -162,6 +181,11 @@ pub struct ContextPattern {
 
     /// CLI type this pattern applies to (None = all CLIs).
     pub cli_type: Option<String>,
+
+    /// If true, the matched percentage means "remaining" and should be
+    /// inverted (usage = 1.0 - matched). E.g. "100% context left" → 0% used.
+    #[serde(default)]
+    pub inverted: bool,
 }
 
 /// Compiled pattern with cached regex.
@@ -240,24 +264,41 @@ impl ContextTracker {
     /// Default patterns for common CLIs.
     fn default_patterns() -> Vec<ContextPattern> {
         vec![
-            // Claude Code pattern: "Context: 65%" (case-insensitive)
+            // "X% context left" / "X% context remaining" (Codex, Claude Code)
+            // The percentage is how much remains, so invert to get usage.
             ContextPattern {
-                pattern: r"(?i)Context:\s*(\d+(?:\.\d+)?)\s*%".to_string(),
+                pattern: r"(?i)(\d+(?:\.\d+)?)\s*%\s*context\s*(?:left|remaining)".to_string(),
                 capture_group: 1,
-                cli_type: Some("claude".to_string()),
+                cli_type: None,
+                inverted: true,
             },
-            // Generic percentage pattern (case-insensitive)
+            // "X% context" without "left"/"remaining" — treat as remaining too
+            ContextPattern {
+                pattern: r"(?i)(\d+(?:\.\d+)?)\s*%\s*context".to_string(),
+                capture_group: 1,
+                cli_type: None,
+                inverted: true,
+            },
+            // "Context: 65%" or "Context 65%" (label before percentage = usage)
+            ContextPattern {
+                pattern: r"(?i)Context:?\s*(\d+(?:\.\d+)?)\s*%".to_string(),
+                capture_group: 1,
+                cli_type: None,
+                inverted: false,
+            },
+            // Generic: "context" anywhere before "X%" (e.g. "context window at 42%")
             ContextPattern {
                 pattern: r"(?i)context.*?(\d+(?:\.\d+)?)\s*%".to_string(),
                 capture_group: 1,
                 cli_type: None,
+                inverted: false,
             },
-            // Tokens pattern: "tokens used: X/Y" or "X/Y tokens"
-            // This requires additional processing, so we match "X/Y" and calculate
+            // Tokens ratio: "X/Y tokens" or "tokens: X/Y"
             ContextPattern {
                 pattern: r"(\d+)\s*/\s*(\d+)\s*tokens".to_string(),
                 capture_group: 0, // Special: use group 0 to signal ratio calculation
                 cli_type: None,
+                inverted: false,
             },
         ]
     }
@@ -410,8 +451,10 @@ impl ContextTracker {
         session_id: SessionId,
         output: &str,
     ) -> Option<CodirigentEvent> {
+        // Strip ANSI escape sequences so regex patterns can match plain text
+        let cleaned = strip_ansi_codes(output);
         for compiled in &self.compiled_patterns {
-            if let Some(captures) = compiled.regex.captures(output) {
+            if let Some(captures) = compiled.regex.captures(&cleaned) {
                 // Special case for ratio patterns (e.g., "1000/2000 tokens")
                 if compiled.pattern.capture_group == 0 && captures.len() >= 3 {
                     if let (Some(used), Some(total)) = (captures.get(1), captures.get(2)) {
@@ -432,11 +475,15 @@ impl ContextTracker {
                 if let Some(matched) = captures.get(compiled.pattern.capture_group) {
                     if let Ok(percentage) = matched.as_str().parse::<f32>() {
                         // Convert percentage (0-100) to ratio (0.0-1.0) if needed
-                        let ratio = if percentage > 1.0 {
+                        let mut ratio = if percentage > 1.0 {
                             percentage / 100.0
                         } else {
                             percentage
                         };
+                        // Invert if the pattern measures "remaining" not "used"
+                        if compiled.pattern.inverted {
+                            ratio = (1.0 - ratio).max(0.0);
+                        }
                         return self.update_usage(session_id, ratio);
                     }
                 }
@@ -461,6 +508,7 @@ impl ContextTracker {
     ///     pattern: r"usage:\s*(\d+)%".to_string(),
     ///     capture_group: 1,
     ///     cli_type: None,
+    ///     inverted: false,
     /// });
     /// ```
     pub fn add_pattern(&mut self, pattern: ContextPattern) {
@@ -684,9 +732,11 @@ mod tests {
             pattern: r"Context:\s*(\d+)%".to_string(),
             capture_group: 1,
             cli_type: Some("claude".to_string()),
+            inverted: false,
         };
         assert_eq!(pattern.capture_group, 1);
         assert_eq!(pattern.cli_type, Some("claude".to_string()));
+        assert!(!pattern.inverted);
     }
 
     #[test]
@@ -695,12 +745,14 @@ mod tests {
             pattern: r"test".to_string(),
             capture_group: 1,
             cli_type: None,
+            inverted: true,
         };
         let json = serde_json::to_string(&pattern).unwrap();
         let parsed: ContextPattern = serde_json::from_str(&json).unwrap();
         assert_eq!(pattern.pattern, parsed.pattern);
         assert_eq!(pattern.capture_group, parsed.capture_group);
         assert_eq!(pattern.cli_type, parsed.cli_type);
+        assert!(parsed.inverted);
     }
 
     #[test]
@@ -709,6 +761,7 @@ mod tests {
             pattern: r"test".to_string(),
             capture_group: 1,
             cli_type: Some("test".to_string()),
+            inverted: false,
         };
         let cloned = pattern.clone();
         assert_eq!(pattern.pattern, cloned.pattern);
@@ -964,6 +1017,7 @@ mod tests {
             pattern: r"usage:\s*(\d+)%".to_string(),
             capture_group: 1,
             cli_type: None,
+            inverted: false,
         });
 
         let output = "usage: 55%";
@@ -1050,6 +1104,7 @@ mod tests {
             pattern: r"[invalid".to_string(), // Unclosed bracket
             capture_group: 1,
             cli_type: None,
+            inverted: false,
         });
 
         // Pattern added to patterns list but not compiled
@@ -1165,5 +1220,79 @@ mod tests {
         // Detect output that crosses threshold
         let event = tracker.detect_from_output(SessionId(1), "Context: 85%");
         assert!(event.is_some());
+    }
+
+    // ANSI stripping tests
+
+    #[test]
+    fn test_strip_ansi_codes_plain_text() {
+        assert_eq!(strip_ansi_codes("hello world"), "hello world");
+    }
+
+    #[test]
+    fn test_strip_ansi_codes_sgr_colors() {
+        assert_eq!(
+            strip_ansi_codes("\x1b[38;5;33mContext: 65%\x1b[0m"),
+            "Context: 65%"
+        );
+    }
+
+    #[test]
+    fn test_strip_ansi_codes_24bit_colors() {
+        assert_eq!(
+            strip_ansi_codes("\x1b[38;2;100;200;50mContext: 72%\x1b[0m"),
+            "Context: 72%"
+        );
+    }
+
+    #[test]
+    fn test_strip_ansi_codes_cursor_movement() {
+        assert_eq!(
+            strip_ansi_codes("\x1b[2J\x1b[HContext: 80%"),
+            "Context: 80%"
+        );
+    }
+
+    #[test]
+    fn test_strip_ansi_codes_osc_sequences() {
+        assert_eq!(
+            strip_ansi_codes("\x1b]0;My Title\x07Context: 50%"),
+            "Context: 50%"
+        );
+    }
+
+    #[test]
+    fn test_detect_from_output_with_ansi_codes() {
+        let mut tracker = ContextTracker::new(ContextConfig::default());
+
+        // Simulate what Claude Code PTY output looks like
+        let output = "\x1b[38;5;33mContext: 65%\x1b[0m  \x1b[38;5;239m│\x1b[0m  2.1M tokens";
+        tracker.detect_from_output(SessionId(1), output);
+
+        let usage = tracker.get_usage(SessionId(1)).unwrap();
+        assert!((usage.raw_usage - 0.65).abs() < 0.01);
+    }
+
+    #[test]
+    fn test_detect_from_output_with_complex_ansi() {
+        let mut tracker = ContextTracker::new(ContextConfig::default());
+
+        // Heavy ANSI: cursor positioning + 24-bit color + reset
+        let output = "\x1b[2J\x1b[H\x1b[38;2;100;100;100mContext: 92%\x1b[0m\n\x1b[38;2;200;50;50m";
+        tracker.detect_from_output(SessionId(1), output);
+
+        let usage = tracker.get_usage(SessionId(1)).unwrap();
+        assert!((usage.raw_usage - 0.92).abs() < 0.01);
+    }
+
+    #[test]
+    fn test_detect_tokens_ratio_with_ansi() {
+        let mut tracker = ContextTracker::new(ContextConfig::default());
+
+        let output = "\x1b[33m150000\x1b[0m / \x1b[33m200000\x1b[0m tokens";
+        tracker.detect_from_output(SessionId(1), output);
+
+        let usage = tracker.get_usage(SessionId(1)).unwrap();
+        assert!((usage.raw_usage - 0.75).abs() < 0.01);
     }
 }
