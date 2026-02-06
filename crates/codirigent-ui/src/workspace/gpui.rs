@@ -106,6 +106,8 @@ pub struct WorkspaceView {
     pub(super) status_bar: StatusBar,
     /// Sessions toolbar component state.
     pub(super) toolbar: SessionsToolbar,
+    /// Unified top bar component state.
+    pub(super) top_bar: crate::top_bar::TopBar,
     /// Task board panel component state.
     pub(super) task_board: TaskBoardPanel,
     /// Empty session cells pool.
@@ -253,6 +255,7 @@ impl WorkspaceView {
             title_bar,
             status_bar: StatusBar::new(),
             toolbar,
+            top_bar: crate::top_bar::TopBar::new(),
             task_board: TaskBoardPanel::new(),
             empty_cells: EmptySessionPool::new(),
             terminal_headers: Vec::new(),
@@ -703,6 +706,30 @@ impl WorkspaceView {
         // Process empty session events
         for event in self.empty_cells.take_events() {
             self.handle_empty_session_event(event, cx);
+        }
+    }
+
+    /// Process pending top bar events and translate to workspace actions.
+    fn process_top_bar_events(&mut self) {
+        let events = self.top_bar.drain_events();
+        for event in events {
+            match event {
+                crate::top_bar::TopBarEvent::LayoutSelected(profile) => {
+                    self.workspace.set_layout(profile);
+                }
+                crate::top_bar::TopBarEvent::BroadcastToggled(enabled) => {
+                    self.broadcast_enabled = enabled;
+                }
+                crate::top_bar::TopBarEvent::RightPanelToggled => {
+                    // Will be wired in plan 05 (right task board)
+                }
+                crate::top_bar::TopBarEvent::CustomLayoutRequested => {
+                    // Future: open custom layout modal
+                }
+                crate::top_bar::TopBarEvent::NewSessionRequested => {
+                    // Future: delegate to create_session logic
+                }
+            }
         }
     }
 
