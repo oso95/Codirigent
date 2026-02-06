@@ -157,9 +157,10 @@ impl WorkspaceView {
                         .justify_center()
                         .child(
                             div()
-                                .text_xs()
+                                .text_base()
                                 .text_color(border_color)
-                                .child("[Empty]"),
+                                .font_family(icons::LUCIDE_FONT_FAMILY)
+                                .child(icons::plus()),
                         )
                 };
 
@@ -194,7 +195,7 @@ impl WorkspaceView {
                 .flex()
                 .items_center()
                 .justify_center()
-                .child(div().text_xs().text_color(terminal_fg).child("[No Terminal]"))
+                .child(div().text_base().text_color(terminal_fg).font_family(icons::LUCIDE_FONT_FAMILY).child(icons::terminal()))
                 .into_any_element();
         };
 
@@ -1223,7 +1224,8 @@ impl WorkspaceView {
                 div()
                     .text_xl()
                     .text_color(muted)
-                    .child("+"),
+                    .font_family(icons::LUCIDE_FONT_FAMILY)
+                    .child(icons::circle_plus()),
             )
             .child(
                 div()
@@ -1323,10 +1325,11 @@ impl WorkspaceView {
                                 .items_center()
                                 .child(
                                     div()
-                                        .text_base()
-                                        .font_weight(FontWeight::SEMIBOLD)
-                                        .text_color(fg)
-                                        .child("Custom Grid Layout"),
+                                        .flex()
+                                        .items_center()
+                                        .gap_2()
+                                        .child(div().text_base().text_color(fg).font_family(icons::LUCIDE_FONT_FAMILY).child(icons::layout_grid()))
+                                        .child(div().text_base().font_weight(FontWeight::SEMIBOLD).text_color(fg).child("Custom Grid Layout")),
                                 ),
                         )
                         // Content
@@ -1456,7 +1459,9 @@ impl WorkspaceView {
                                             this.custom_picker.close();
                                             cx.notify();
                                         }))
-                                        .child("Cancel"),
+                                        .child(div().flex().items_center().gap_1()
+                                            .child(div().text_xs().font_family(icons::LUCIDE_FONT_FAMILY).child(icons::x()))
+                                            .child("Cancel")),
                                 )
                                 // Apply button
                                 .child(
@@ -1475,13 +1480,14 @@ impl WorkspaceView {
                                                 this.custom_picker.close();
                                                 let profile = crate::layout::LayoutProfile::Custom { rows, cols };
                                                 this.workspace.set_layout(profile);
-                                                // Publish event through workspace method
                                                 cx.notify();
                                             } else {
                                                 cx.notify();
                                             }
                                         }))
-                                        .child("Apply"),
+                                        .child(div().flex().items_center().gap_1()
+                                            .child(div().text_xs().font_family(icons::LUCIDE_FONT_FAMILY).child(icons::check()))
+                                            .child("Apply")),
                                 ),
                         ),
                 ),
@@ -1600,10 +1606,11 @@ impl WorkspaceView {
                                 .items_center()
                                 .child(
                                     div()
-                                        .text_base()
-                                        .font_weight(FontWeight::SEMIBOLD)
-                                        .text_color(fg)
-                                        .child("Create Git Worktree"),
+                                        .flex()
+                                        .items_center()
+                                        .gap_2()
+                                        .child(div().text_base().text_color(fg).font_family(icons::LUCIDE_FONT_FAMILY).child(icons::git_branch()))
+                                        .child(div().text_base().font_weight(FontWeight::SEMIBOLD).text_color(fg).child("Create Git Worktree")),
                                 ),
                         )
                         // Content
@@ -1649,7 +1656,9 @@ impl WorkspaceView {
                                                                 cx.notify();
                                                             }
                                                         }))
-                                                        .child("New Branch"),
+                                                        .child(div().flex().items_center().gap_1()
+                                                            .child(div().text_xs().font_family(icons::LUCIDE_FONT_FAMILY).child(icons::git_branch()))
+                                                            .child("New Branch")),
                                                 )
                                                 // Existing branch button
                                                 .child(
@@ -1671,7 +1680,9 @@ impl WorkspaceView {
                                                                 cx.notify();
                                                             }
                                                         }))
-                                                        .child("Existing Branch"),
+                                                        .child(div().flex().items_center().gap_1()
+                                                            .child(div().text_xs().font_family(icons::LUCIDE_FONT_FAMILY).child(icons::git_fork()))
+                                                            .child("Existing Branch")),
                                                 ),
                                         ),
                                 )
@@ -1879,7 +1890,9 @@ impl WorkspaceView {
                                         .on_click(cx.listener(|this, _: &ClickEvent, _window, cx| {
                                             this.handle_worktree_event(crate::sidebar::WorktreeEvent::CancelCreate, cx);
                                         }))
-                                        .child("Cancel"),
+                                        .child(div().flex().items_center().gap_1()
+                                            .child(div().text_xs().font_family(icons::LUCIDE_FONT_FAMILY).child(icons::x()))
+                                            .child("Cancel")),
                                 )
                                 // Create button
                                 .child(
@@ -1908,7 +1921,9 @@ impl WorkspaceView {
                                                     );
                                                 }))
                                         })
-                                        .child("Create"),
+                                        .child(div().flex().items_center().gap_1()
+                                            .child(div().text_xs().font_family(icons::LUCIDE_FONT_FAMILY).child(icons::plus()))
+                                            .child("Create")),
                                 ),
                         ),
                 ),
@@ -2054,10 +2069,11 @@ impl WorkspaceView {
                                 .border_color(border_color)
                                 .child(
                                     div()
-                                        .text_sm()
-                                        .font_weight(FontWeight::SEMIBOLD)
-                                        .text_color(fg)
-                                        .child("Session Options"),
+                                        .flex()
+                                        .items_center()
+                                        .gap_2()
+                                        .child(div().text_sm().text_color(fg).font_family(icons::LUCIDE_FONT_FAMILY).child(icons::settings()))
+                                        .child(div().text_sm().font_weight(FontWeight::SEMIBOLD).text_color(fg).child("Session Options")),
                                 ),
                         )
                         // Menu items
@@ -2144,6 +2160,10 @@ impl WorkspaceView {
             super::gpui::SessionActionKind::Rename => "Rename Session",
             super::gpui::SessionActionKind::AssignGroup => "Assign Group",
         };
+        let title_icon = match modal.kind {
+            super::gpui::SessionActionKind::Rename => icons::pencil(),
+            super::gpui::SessionActionKind::AssignGroup => icons::users(),
+        };
         let label = match modal.kind {
             super::gpui::SessionActionKind::Rename => "Session Name:",
             super::gpui::SessionActionKind::AssignGroup => "Group Name:",
@@ -2194,10 +2214,11 @@ impl WorkspaceView {
                                 .items_center()
                                 .child(
                                     div()
-                                        .text_base()
-                                        .font_weight(FontWeight::SEMIBOLD)
-                                        .text_color(fg)
-                                        .child(title),
+                                        .flex()
+                                        .items_center()
+                                        .gap_2()
+                                        .child(div().text_base().text_color(fg).font_family(icons::LUCIDE_FONT_FAMILY).child(title_icon))
+                                        .child(div().text_base().font_weight(FontWeight::SEMIBOLD).text_color(fg).child(title)),
                                 ),
                         )
                         // Content
@@ -2259,7 +2280,9 @@ impl WorkspaceView {
                                             this.close_session_action_modal();
                                             cx.notify();
                                         }))
-                                        .child("Cancel"),
+                                        .child(div().flex().items_center().gap_1()
+                                            .child(div().text_xs().font_family(icons::LUCIDE_FONT_FAMILY).child(icons::x()))
+                                            .child("Cancel")),
                                 )
                                 .child(
                                     div()
@@ -2275,7 +2298,9 @@ impl WorkspaceView {
                                         .on_click(cx.listener(|this, _: &ClickEvent, _window, cx| {
                                             this.apply_session_action_modal(cx);
                                         }))
-                                        .child("Apply"),
+                                        .child(div().flex().items_center().gap_1()
+                                            .child(div().text_xs().font_family(icons::LUCIDE_FONT_FAMILY).child(icons::check()))
+                                            .child("Apply")),
                                 ),
                         ),
                 ),
@@ -2374,10 +2399,11 @@ impl WorkspaceView {
                                 .items_center()
                                 .child(
                                     div()
-                                        .text_base()
-                                        .font_weight(FontWeight::SEMIBOLD)
-                                        .text_color(fg)
-                                        .child("Create New Task"),
+                                        .flex()
+                                        .items_center()
+                                        .gap_2()
+                                        .child(div().text_base().text_color(fg).font_family(icons::LUCIDE_FONT_FAMILY).child(icons::clipboard_plus()))
+                                        .child(div().text_base().font_weight(FontWeight::SEMIBOLD).text_color(fg).child("Create New Task")),
                                 ),
                         )
                         // Content
@@ -2489,7 +2515,9 @@ impl WorkspaceView {
                                             this.close_task_creation_modal();
                                             cx.notify();
                                         }))
-                                        .child("Cancel"),
+                                        .child(div().flex().items_center().gap_1()
+                                            .child(div().text_xs().font_family(icons::LUCIDE_FONT_FAMILY).child(icons::x()))
+                                            .child("Cancel")),
                                 )
                                 .child(
                                     div()
@@ -2505,14 +2533,16 @@ impl WorkspaceView {
                                         .on_click(cx.listener(|this, _: &ClickEvent, _window, cx| {
                                             this.apply_task_creation_modal(cx);
                                         }))
-                                        .child("Create Task"),
+                                        .child(div().flex().items_center().gap_1()
+                                            .child(div().text_xs().font_family(icons::LUCIDE_FONT_FAMILY).child(icons::plus()))
+                                            .child("Create Task")),
                                 ),
                         ),
                 ),
         )
     }
 
-    /// Render a menu item.
+    /// Render a menu item with icon.
     fn render_menu_item(
         &self,
         label: &str,
@@ -2524,17 +2554,31 @@ impl WorkspaceView {
         cx: &mut Context<Self>,
     ) -> impl IntoElement {
         let label = label.to_string();
+        let icon = match action {
+            SessionMenuAction::Rename => icons::pencil(),
+            SessionMenuAction::AssignGroup => icons::users(),
+            SessionMenuAction::RemoveGroup => icons::user_minus(),
+            SessionMenuAction::Close => icons::x_circle(),
+        };
         div()
             .id(SharedString::from(format!("menu-{:?}-{}", action, session_id.0)))
             .h(px(36.0))
             .px_4()
             .flex()
             .items_center()
+            .gap_2()
             .cursor_pointer()
             .hover(|style| style.bg(hover_bg.opacity(0.1)))
             .on_click(cx.listener(move |this, _: &ClickEvent, _window, cx| {
                 this.handle_session_menu_action(session_id, action, cx);
             }))
+            .child(
+                div()
+                    .text_sm()
+                    .text_color(fg)
+                    .font_family(icons::LUCIDE_FONT_FAMILY)
+                    .child(icon),
+            )
             .child(
                 div()
                     .text_sm()
@@ -2730,11 +2774,12 @@ impl WorkspaceView {
                     // Label
                     .child(
                         div()
-                            .text_xs()
-                            .font_weight(FontWeight::BOLD)
-                            .text_color(accent)
+                            .flex()
+                            .items_center()
+                            .gap_1()
                             .flex_shrink_0()
-                            .child("BROADCAST TO ALL:"),
+                            .child(div().text_sm().text_color(accent).font_family(icons::LUCIDE_FONT_FAMILY).child(icons::radio()))
+                            .child(div().text_xs().font_weight(FontWeight::BOLD).text_color(accent).child("BROADCAST TO ALL:")),
                     )
                     // Input display
                     .child(
@@ -2825,6 +2870,7 @@ impl WorkspaceView {
                             .border_1()
                             .border_color(primary.opacity(0.2))
                             .child(div().w(px(6.0)).h(px(6.0)).rounded_full().bg(primary))
+                            .child(div().text_xs().text_color(primary.opacity(0.8)).font_family(icons::LUCIDE_FONT_FAMILY).child(icons::sparkles()))
                             .child(div().text_color(primary.opacity(0.8)).text_xs().child("Auto")),
                     ),
             )
@@ -2842,7 +2888,9 @@ impl WorkspaceView {
                         div().flex().flex_col()
                             .child(
                                 div().flex().justify_between().items_center().mb_2()
-                                    .child(div().text_xs().font_weight(FontWeight::BOLD).text_color(muted).child("RUNNING"))
+                                    .child(div().flex().items_center().gap_1()
+                                        .child(div().text_xs().text_color(muted).font_family(icons::LUCIDE_FONT_FAMILY).child(icons::play()))
+                                        .child(div().text_xs().font_weight(FontWeight::BOLD).text_color(muted).child("RUNNING")))
                                     .child(div().px(px(6.0)).rounded_full().bg(active_bg)
                                         .child(div().text_xs().text_color(muted).child("0"))),
                             )
@@ -2855,7 +2903,9 @@ impl WorkspaceView {
                         div().flex().flex_col()
                             .child(
                                 div().flex().justify_between().items_center().mb_2()
-                                    .child(div().text_xs().font_weight(FontWeight::BOLD).text_color(muted).child("QUEUE"))
+                                    .child(div().flex().items_center().gap_1()
+                                        .child(div().text_xs().text_color(muted).font_family(icons::LUCIDE_FONT_FAMILY).child(icons::clock()))
+                                        .child(div().text_xs().font_weight(FontWeight::BOLD).text_color(muted).child("QUEUE")))
                                     .child(div().px(px(6.0)).rounded_full().bg(active_bg)
                                         .child(div().text_xs().text_color(muted).child("0"))),
                             )

@@ -110,6 +110,24 @@ pub fn lock() -> String { icon_str(Icon::Lock) }
 pub fn arrow_right() -> String { icon_str(Icon::ArrowRight) }
 /// Command icon - keyboard shortcut.
 pub fn command() -> String { icon_str(Icon::Command) }
+/// Pencil icon - rename/edit.
+pub fn pencil() -> String { icon_str(Icon::Pencil) }
+/// Users icon - group/team.
+pub fn users() -> String { icon_str(Icon::Users) }
+/// UserMinus icon - remove from group.
+pub fn user_minus() -> String { icon_str(Icon::UserMinus) }
+/// XCircle icon - close/remove.
+pub fn x_circle() -> String { icon_str(Icon::CircleX) }
+/// Check icon - confirm/apply.
+pub fn check() -> String { icon_str(Icon::Check) }
+/// GitFork icon - existing branch.
+pub fn git_fork() -> String { icon_str(Icon::GitFork) }
+/// Radio icon - broadcast.
+pub fn radio() -> String { icon_str(Icon::Radio) }
+/// CirclePlus icon - add new (circle variant).
+pub fn circle_plus() -> String { icon_str(Icon::CirclePlus) }
+/// PlusCircle icon - create task.
+pub fn clipboard_plus() -> String { icon_str(Icon::ClipboardPlus) }
 
 #[cfg(test)]
 mod tests {
@@ -160,6 +178,15 @@ mod tests {
         assert!(!lock().is_empty());
         assert!(!arrow_right().is_empty());
         assert!(!command().is_empty());
+        assert!(!pencil().is_empty());
+        assert!(!users().is_empty());
+        assert!(!user_minus().is_empty());
+        assert!(!x_circle().is_empty());
+        assert!(!check().is_empty());
+        assert!(!git_fork().is_empty());
+        assert!(!radio().is_empty());
+        assert!(!circle_plus().is_empty());
+        assert!(!clipboard_plus().is_empty());
     }
 
     #[test]
