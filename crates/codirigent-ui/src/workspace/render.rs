@@ -3657,6 +3657,7 @@ impl WorkspaceView {
 
         let path_for_click = path.clone();
         let path_for_dbl = path.clone();
+        let path_for_ctx = path.clone();
 
         div()
             .id(SharedString::from(format!("file-tree-row-{}", idx)))
@@ -3672,7 +3673,7 @@ impl WorkspaceView {
             .hover(|style| style.bg(active_bg))
             .on_click(cx.listener(move |this, event: &ClickEvent, _window, cx| {
                 if event.click_count() >= 2 && !is_dir {
-                    // Double-click on file -> activate
+                    // Double-click on file -> activate (insert path)
                     let ev = crate::sidebar::FileTreeEvent::FileActivated(
                         path_for_dbl.clone(),
                     );
@@ -3692,6 +3693,14 @@ impl WorkspaceView {
                 }
                 cx.notify();
             }))
+            // Right-click -> context menu
+            .on_mouse_down(MouseButton::Right, cx.listener(move |this, event: &gpui::MouseDownEvent, _window, cx| {
+                this.open_file_tree_context_menu(
+                    path_for_ctx.clone(),
+                    event.position,
+                    cx,
+                );
+            }))
             // Chevron
             .child(chevron)
             // Icon
@@ -3705,6 +3714,105 @@ impl WorkspaceView {
                     .text_ellipsis()
                     .child(name),
             )
+    }
+
+    /// Render the file tree context menu (right-click menu).
+    pub(super) fn render_file_tree_context_menu(
+        &mut self,
+        cx: &mut Context<Self>,
+    ) -> Option<impl IntoElement> {
+        let menu = self.file_tree_context_menu.clone()?;
+
+        let theme = self.workspace().theme().clone();
+        let panel_bg: gpui::Hsla = theme.panel_background.into();
+        let border_color: gpui::Hsla = theme.border.into();
+        let fg: gpui::Hsla = theme.foreground.into();
+        let hover_bg: gpui::Hsla = theme.active.into();
+
+        let path_for_insert = menu.path.clone();
+        let path_for_copy = menu.path.clone();
+
+        // Click-away backdrop (transparent)
+        let backdrop = div()
+            .id("file-ctx-menu-backdrop")
+            .absolute()
+            .inset_0()
+            .on_click(cx.listener(|this, _: &ClickEvent, _window, cx| {
+                this.close_file_tree_context_menu(cx);
+            }));
+
+        // Menu items
+        let insert_item = div()
+            .id("ctx-insert-path")
+            .h(px(28.0))
+            .px_3()
+            .flex()
+            .items_center()
+            .gap_2()
+            .cursor_pointer()
+            .hover(move |style| style.bg(hover_bg))
+            .on_mouse_down(MouseButton::Left, cx.listener(move |this, _, _, cx| {
+                let path = path_for_insert.clone();
+                this.insert_path_to_terminal(&path);
+                this.close_file_tree_context_menu(cx);
+            }))
+            .child(
+                div()
+                    .text_xs()
+                    .text_color(fg)
+                    .child("Insert path"),
+            );
+
+        let copy_item = div()
+            .id("ctx-copy-path")
+            .h(px(28.0))
+            .px_3()
+            .flex()
+            .items_center()
+            .gap_2()
+            .cursor_pointer()
+            .hover(move |style| style.bg(hover_bg))
+            .on_mouse_down(MouseButton::Left, cx.listener(move |this, _, _, cx| {
+                let path = path_for_copy.clone();
+                this.copy_path_to_clipboard(&path);
+                this.close_file_tree_context_menu(cx);
+            }))
+            .child(
+                div()
+                    .text_xs()
+                    .text_color(fg)
+                    .child("Copy path"),
+            );
+
+        let dropdown = div()
+            .w(px(140.0))
+            .bg(panel_bg)
+            .border_1()
+            .border_color(border_color)
+            .rounded_md()
+            .overflow_hidden()
+            .shadow_lg()
+            .flex()
+            .flex_col()
+            .py_1()
+            .child(insert_item)
+            .child(copy_item);
+
+        // Position the menu at the click location
+        let menu_container = div()
+            .absolute()
+            .top(menu.position.y)
+            .left(menu.position.x)
+            .child(dropdown);
+
+        Some(
+            div()
+                .id("file-tree-context-menu-overlay")
+                .absolute()
+                .inset_0()
+                .child(backdrop)
+                .child(menu_container),
+        )
     }
 
     /// Render a single session row in the drawer session list.

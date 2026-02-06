@@ -42,10 +42,13 @@ use codirigent_filetree::FileTree;
 use codirigent_detector::InputDetector;
 use codirigent_session::DefaultSessionManager;
 use crate::app::{
-    CloseSession, FocusSession1, FocusSession2, FocusSession3, FocusSession4, FocusSession5,
-    FocusSession6, FocusSession7, FocusSession8, FocusSession9, NewSession, NextLayout,
+    CloseSession, Copy, FocusSession1, FocusSession2, FocusSession3, FocusSession4, FocusSession5,
+    FocusSession6, FocusSession7, FocusSession8, FocusSession9, NewSession, NextLayout, Paste,
     ToggleSidebar,
 };
+use crate::clipboard;
+use crate::smart_clipboard::SmartClipboardProvider;
+use codirigent_core::ClipboardContent;
 use gpui::{
     div, px, App, AppContext, Context, Entity, FocusHandle, Focusable, InteractiveElement,
     IntoElement, KeyDownEvent, ParentElement, Render, Styled, Window,
@@ -76,6 +79,15 @@ pub(super) struct TaskCreationModal {
     pub(super) description: String,
     pub(super) focused_field: usize, // 0=title, 1=description
     pub(super) error: Option<String>,
+}
+
+/// Context menu state for file tree right-click.
+#[derive(Debug, Clone)]
+pub(super) struct FileTreeContextMenu {
+    /// Path of the right-clicked file/directory.
+    pub(super) path: PathBuf,
+    /// Screen position where the menu should appear.
+    pub(super) position: gpui::Point<gpui::Pixels>,
 }
 
 /// GPUI View wrapper for Workspace.
@@ -153,6 +165,10 @@ pub struct WorkspaceView {
     pub(super) drawer_group_expanded: HashMap<String, bool>,
     /// Last time git status was refreshed for sessions.
     last_git_refresh: Instant,
+    /// Smart clipboard provider for paste/copy operations.
+    smart_clipboard: Box<dyn SmartClipboardProvider>,
+    /// File tree context menu state (path + screen position).
+    pub(super) file_tree_context_menu: Option<FileTreeContextMenu>,
 }
 
 impl WorkspaceView {
@@ -280,6 +296,8 @@ impl WorkspaceView {
             pty_sizes: HashMap::new(),
             drawer_group_expanded: HashMap::new(),
             last_git_refresh: Instant::now(),
+            smart_clipboard: Box::new(crate::platform::create_clipboard()),
+            file_tree_context_menu: None,
         };
 
         view.refresh_file_tree_panel();
@@ -411,25 +429,23 @@ impl WorkspaceView {
             }
         }
 
-        // Refresh git status every 3 seconds
+        // Poll CWD changes and refresh git status every 3 seconds
         if self.last_git_refresh.elapsed() >= Duration::from_secs(3) {
             self.last_git_refresh = Instant::now();
             let session_ids: Vec<SessionId> =
                 self.workspace.sessions().iter().map(|s| s.id).collect();
             let manager = self.session_manager.lock().unwrap();
             for id in session_ids {
-                if let Some(git_info) = manager.refresh_git_status(id) {
-                    // Update terminal header
-                    if let Some((_, header)) =
-                        self.terminal_headers.iter_mut().find(|(sid, _)| *sid == id)
-                    {
-                        header.git_branch = Some(git_info.branch.clone());
-                        header.git_dirty_count = Some(git_info.dirty_count);
-                    }
-                    // Update workspace session
-                    self.workspace
-                        .update_session_git_info(id, Some(git_info));
+                let (_cwd_changed, git_info) = manager.poll_cwd_and_refresh_git(id);
+                // Update terminal header
+                if let Some((_, header)) =
+                    self.terminal_headers.iter_mut().find(|(sid, _)| *sid == id)
+                {
+                    header.git_branch = git_info.as_ref().map(|g| g.branch.clone());
+                    header.git_dirty_count = git_info.as_ref().map(|g| g.dirty_count);
                 }
+                // Update workspace session
+                self.workspace.update_session_git_info(id, git_info);
             }
             any_dirty = true;
         }
@@ -917,7 +933,7 @@ impl WorkspaceView {
             FileTreeEvent::FileActivated(path) => {
                 info!(?path, "File activated");
 
-                // Send vim command to focused terminal session
+                // Open file in editor in the focused terminal session
                 if let Some(session_id) = self.workspace.focused_session_id() {
                     let path_str = if let Some(tree) = &self.file_tree_model {
                         let tree: &FileTree = tree;
@@ -929,7 +945,7 @@ impl WorkspaceView {
                     let command = format!("vim {}\n", path_str);
                     if let Ok(manager) = self.session_manager.lock() {
                         if let Err(e) = manager.send_input(session_id, command.as_bytes()) {
-                            warn!("Failed to send vim command to terminal: {}", e);
+                            warn!("Failed to open file in editor: {}", e);
                         }
                     }
                 }
@@ -1429,6 +1445,145 @@ impl WorkspaceView {
         self.focus_session_number(9, cx);
     }
 
+    /// Handle Paste action (Cmd+V / Ctrl+V).
+    fn handle_paste(
+        &mut self,
+        _action: &Paste,
+        _window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        let Some(session_id) = self.workspace.focused_session_id() else {
+            return;
+        };
+
+        // Read bracketed paste mode from terminal
+        let bracketed = self
+            .terminals
+            .get(&session_id)
+            .map(|tv| tv.terminal().bracketed_paste_mode())
+            .unwrap_or(false);
+
+        // Read clipboard content
+        let content = match self.smart_clipboard.read_content() {
+            Ok(c) => c,
+            Err(e) => {
+                warn!("Failed to read clipboard: {}", e);
+                return;
+            }
+        };
+
+        match content {
+            ClipboardContent::Text(text) => {
+                if text.is_empty() {
+                    return;
+                }
+                let sanitized = clipboard::sanitize_paste(&text);
+                let bytes = clipboard::prepare_paste(&sanitized, bracketed);
+
+                // Auto-scroll to bottom on paste
+                if let Some(tv) = self.terminals.get_mut(&session_id) {
+                    tv.scroll_to_bottom();
+                }
+
+                let manager = self.session_manager.lock().unwrap();
+                if let Err(e) = manager.send_input(session_id, &bytes) {
+                    warn!("Failed to paste to session {}: {}", session_id, e);
+                }
+            }
+            ClipboardContent::Image(_) => {
+                info!("Image paste not yet supported (Phase 2)");
+            }
+            ClipboardContent::Files(paths) => {
+                if paths.is_empty() {
+                    return;
+                }
+                let text: String = paths
+                    .iter()
+                    .map(|p| {
+                        if let Some(tree) = &self.file_tree_model {
+                            tree.path_for_terminal(p)
+                        } else {
+                            p.to_string_lossy().to_string()
+                        }
+                    })
+                    .collect::<Vec<_>>()
+                    .join(" ");
+                let bytes = clipboard::prepare_paste(&text, bracketed);
+
+                if let Some(tv) = self.terminals.get_mut(&session_id) {
+                    tv.scroll_to_bottom();
+                }
+
+                let manager = self.session_manager.lock().unwrap();
+                if let Err(e) = manager.send_input(session_id, &bytes) {
+                    warn!("Failed to paste files to session {}: {}", session_id, e);
+                }
+            }
+            ClipboardContent::Empty => {}
+        }
+
+        cx.notify();
+    }
+
+    /// Open file tree context menu at a given position.
+    pub(super) fn open_file_tree_context_menu(
+        &mut self,
+        path: PathBuf,
+        position: gpui::Point<gpui::Pixels>,
+        cx: &mut Context<Self>,
+    ) {
+        self.file_tree_context_menu = Some(FileTreeContextMenu { path, position });
+        cx.notify();
+    }
+
+    /// Close the file tree context menu.
+    pub(super) fn close_file_tree_context_menu(&mut self, cx: &mut Context<Self>) {
+        self.file_tree_context_menu = None;
+        cx.notify();
+    }
+
+    /// Insert a file path into the focused terminal session.
+    pub(super) fn insert_path_to_terminal(&mut self, path: &std::path::Path) {
+        if let Some(session_id) = self.workspace.focused_session_id() {
+            let path_str = if let Some(tree) = &self.file_tree_model {
+                tree.path_for_terminal(path)
+            } else {
+                path.to_string_lossy().to_string()
+            };
+            let input = format!("{} ", path_str);
+            if let Ok(manager) = self.session_manager.lock() {
+                if let Err(e) = manager.send_input(session_id, input.as_bytes()) {
+                    warn!("Failed to insert path into terminal: {}", e);
+                }
+            }
+        }
+    }
+
+    /// Copy a file path to the system clipboard.
+    pub(super) fn copy_path_to_clipboard(&self, path: &std::path::Path) {
+        let path_str = if let Some(tree) = &self.file_tree_model {
+            tree.path_for_terminal(path)
+        } else {
+            path.to_string_lossy().to_string()
+        };
+        if let Err(e) = self.smart_clipboard.write_text(path_str) {
+            warn!("Failed to copy path to clipboard: {}", e);
+        }
+    }
+
+    /// Handle Copy action (Cmd+C / Ctrl+C).
+    fn handle_copy(
+        &mut self,
+        _action: &Copy,
+        _window: &mut Window,
+        _cx: &mut Context<Self>,
+    ) {
+        // TODO: Implement terminal selection copy in Phase 2.
+        // For now, Cmd+C without selection sends Ctrl+C (interrupt) to PTY,
+        // which is already handled by key_to_bytes in handle_key_down.
+        info!("Copy action triggered (terminal selection copy is Phase 2)");
+    }
+
     /// Get a reference to the underlying workspace.
     ///
     /// Used by the render module to access workspace state.
@@ -1505,7 +1660,8 @@ impl WorkspaceView {
             return;
         }
 
-        // Don't send Cmd+ shortcuts to PTY
+        // Don't send Cmd+ shortcuts to PTY (they are handled as GPUI actions).
+        // Note: Cmd+V (Paste) and Cmd+C (Copy) are handled via .on_action() above.
         if event.keystroke.modifiers.platform {
             return;
         }
@@ -1925,6 +2081,8 @@ impl Render for WorkspaceView {
             .on_action(cx.listener(Self::handle_focus_session7))
             .on_action(cx.listener(Self::handle_focus_session8))
             .on_action(cx.listener(Self::handle_focus_session9))
+            .on_action(cx.listener(Self::handle_paste))
+            .on_action(cx.listener(Self::handle_copy))
             // Handle keyboard input for PTY
             .on_key_down(cx.listener(|this, event: &KeyDownEvent, _window, cx| {
                 this.handle_key_down(event, cx);
@@ -2012,6 +2170,11 @@ impl Render for WorkspaceView {
         // 9. Worktree create modal (if open)
         if let Some(modal) = self.render_worktree_modal(cx) {
             container = container.child(modal);
+        }
+
+        // 10. File tree context menu (if open)
+        if let Some(menu) = self.render_file_tree_context_menu(cx) {
+            container = container.child(menu);
         }
 
         container

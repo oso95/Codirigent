@@ -46,6 +46,8 @@ mod actions_impl {
             FocusSession9,
             NextLayout,
             ToggleSidebar,
+            Paste,
+            Copy,
             Quit,
         ]
     );
@@ -381,6 +383,8 @@ impl CodirigentApp {
                 KeyBinding::new("cmd-q", Quit, None),
                 KeyBinding::new("cmd-\\", NextLayout, None),
                 KeyBinding::new("cmd-b", ToggleSidebar, None),
+                KeyBinding::new("cmd-v", Paste, None),
+                KeyBinding::new("cmd-c", Copy, None),
                 KeyBinding::new("cmd-1", FocusSession1, None),
                 KeyBinding::new("cmd-2", FocusSession2, None),
                 KeyBinding::new("cmd-3", FocusSession3, None),
