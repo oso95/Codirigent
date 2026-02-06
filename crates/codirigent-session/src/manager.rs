@@ -185,6 +185,61 @@ impl DefaultSessionManager {
         self.lock_sessions().get(&id).map(|s| s.child_pid())
     }
 
+    /// Update the working directory for a session (detected via OSC 7).
+    ///
+    /// If the new directory differs from the current one, updates the session,
+    /// invalidates the git cache for the old repo root, and publishes a
+    /// `WorkingDirectoryChanged` event.
+    ///
+    /// Returns `true` if the directory actually changed.
+    pub fn update_working_directory(&self, id: SessionId, new_dir: PathBuf) -> bool {
+        // Canonicalize the new path so forward/backslash differences on Windows
+        // don't cause spurious "changed" detections.
+        let new_dir = std::fs::canonicalize(&new_dir).unwrap_or(new_dir);
+
+        let old_dir = {
+            let mut sessions = self.lock_sessions();
+            let state = match sessions.get_mut(&id) {
+                Some(s) => s,
+                None => return false,
+            };
+
+            // Also canonicalize the stored path for comparison
+            let current = std::fs::canonicalize(&state.session.working_directory)
+                .unwrap_or_else(|_| state.session.working_directory.clone());
+            if current == new_dir {
+                return false;
+            }
+
+            let old = state.session.working_directory.clone();
+            state.session.working_directory = new_dir.clone();
+
+            // Clear stale git info so the next refresh picks up the new repo
+            if let Some(ref info) = state.session.git_info {
+                let repo_root = info.repo_root.clone();
+                drop(sessions); // release session lock before git lock
+                self.git_status
+                    .lock()
+                    .unwrap_or_else(|p| p.into_inner())
+                    .invalidate(&repo_root);
+            } else {
+                drop(sessions);
+            }
+
+            old
+        };
+
+        info!(%id, old=?old_dir, new=?new_dir, "Session working directory changed (OSC 7)");
+
+        self.publish(CodirigentEvent::WorkingDirectoryChanged {
+            id,
+            old_dir,
+            new_dir,
+        });
+
+        true
+    }
+
     /// Refresh git status for a session.
     ///
     /// Detects or refreshes git repository information for the session's

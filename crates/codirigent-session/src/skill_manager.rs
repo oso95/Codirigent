@@ -1126,9 +1126,16 @@ mod tests {
 
         manager.refresh().unwrap();
 
-        // Check that event was emitted
-        let event = rx.try_recv().unwrap();
-        assert!(matches!(event, CodirigentEvent::SkillsRefreshed { count: 0 }));
+        // refresh() may emit budget events before SkillsRefreshed
+        // (when skills are found on the host), so drain until we find it.
+        let mut found = false;
+        while let Ok(event) = rx.try_recv() {
+            if matches!(event, CodirigentEvent::SkillsRefreshed { .. }) {
+                found = true;
+                break;
+            }
+        }
+        assert!(found, "Expected SkillsRefreshed event from refresh()");
     }
 
     #[test]

@@ -47,8 +47,10 @@ use crate::app::{
     ToggleSidebar,
 };
 use crate::clipboard;
+use crate::clipboard_preview::ClipboardPreview;
 use crate::smart_clipboard::SmartClipboardProvider;
 use codirigent_core::ClipboardContent;
+use codirigent_session::clipboard_service::{ClipboardService, DefaultClipboardService};
 use gpui::{
     div, px, App, AppContext, Context, Entity, FocusHandle, Focusable, InteractiveElement,
     IntoElement, KeyDownEvent, ParentElement, Render, Styled, Window,
@@ -169,6 +171,14 @@ pub struct WorkspaceView {
     smart_clipboard: Box<dyn SmartClipboardProvider>,
     /// File tree context menu state (path + screen position).
     pub(super) file_tree_context_menu: Option<FileTreeContextMenu>,
+    /// Clipboard service for image save/format operations.
+    clipboard_service: DefaultClipboardService,
+    /// Clipboard preview tooltip component.
+    pub(super) clipboard_preview: ClipboardPreview,
+    /// Whether the user is actively dragging a text selection in a terminal.
+    pub(super) is_selecting: bool,
+    /// Session ID that is currently being selected in (for mouse move events).
+    pub(super) selecting_session_id: Option<SessionId>,
 }
 
 impl WorkspaceView {
@@ -260,6 +270,9 @@ impl WorkspaceView {
             }
         }
 
+        // Capture theme before workspace is moved
+        let theme_for_clipboard = workspace.theme().clone();
+
         let mut view = Self {
             workspace,
             focus_handle: cx.focus_handle(),
@@ -284,7 +297,7 @@ impl WorkspaceView {
             task_creation_modal: None,
             file_tree,
             file_tree_model,
-            project_root,
+            project_root: project_root.clone(),
             worktree_panel: WorktreePanel::new(),
             worktree_manager: Self::init_worktree_manager(),
             last_click_position: None,
@@ -298,6 +311,15 @@ impl WorkspaceView {
             last_git_refresh: Instant::now(),
             smart_clipboard: Box::new(crate::platform::create_clipboard()),
             file_tree_context_menu: None,
+            clipboard_service: DefaultClipboardService::new(
+                project_root
+                    .as_deref()
+                    .unwrap_or_else(|| std::path::Path::new("."))
+                    .join(".codirigent"),
+            ),
+            clipboard_preview: ClipboardPreview::new(theme_for_clipboard),
+            is_selecting: false,
+            selecting_session_id: None,
         };
 
         view.refresh_file_tree_panel();
@@ -417,6 +439,42 @@ impl WorkspaceView {
                     let mut detector = self.detector.lock().unwrap();
                     detector.process_output(session_id, &data);
                 }
+
+                // Check for OSC 7 (working directory change) sequences
+                if let Some(new_cwd) = codirigent_session::extract_osc7_path(&data) {
+                    let changed = {
+                        let manager = self.session_manager.lock().unwrap();
+                        manager.update_working_directory(session_id, new_cwd)
+                    };
+                    if changed {
+                        // Force immediate git refresh for this session
+                        let manager = self.session_manager.lock().unwrap();
+                        if let Some(git_info) = manager.refresh_git_status(session_id) {
+                            if let Some((_, header)) = self
+                                .terminal_headers
+                                .iter_mut()
+                                .find(|(sid, _)| *sid == session_id)
+                            {
+                                header.git_branch = Some(git_info.branch.clone());
+                                header.git_dirty_count = Some(git_info.dirty_count);
+                            }
+                            self.workspace
+                                .update_session_git_info(session_id, Some(git_info));
+                        } else {
+                            // New dir is not a git repo - clear git info
+                            if let Some((_, header)) = self
+                                .terminal_headers
+                                .iter_mut()
+                                .find(|(sid, _)| *sid == session_id)
+                            {
+                                header.git_branch = None;
+                                header.git_dirty_count = None;
+                            }
+                            self.workspace
+                                .update_session_git_info(session_id, None);
+                        }
+                    }
+                }
             }
 
             // Update session status from detector
@@ -429,25 +487,53 @@ impl WorkspaceView {
             }
         }
 
-        // Poll CWD changes and refresh git status every 3 seconds
+        // Refresh git status every 3 seconds
         if self.last_git_refresh.elapsed() >= Duration::from_secs(3) {
             self.last_git_refresh = Instant::now();
             let session_ids: Vec<SessionId> =
                 self.workspace.sessions().iter().map(|s| s.id).collect();
             let manager = self.session_manager.lock().unwrap();
             for id in session_ids {
-                let (_cwd_changed, git_info) = manager.poll_cwd_and_refresh_git(id);
-                // Update terminal header
-                if let Some((_, header)) =
-                    self.terminal_headers.iter_mut().find(|(sid, _)| *sid == id)
-                {
-                    header.git_branch = git_info.as_ref().map(|g| g.branch.clone());
-                    header.git_dirty_count = git_info.as_ref().map(|g| g.dirty_count);
+                if let Some(git_info) = manager.refresh_git_status(id) {
+                    // Update terminal header
+                    if let Some((_, header)) =
+                        self.terminal_headers.iter_mut().find(|(sid, _)| *sid == id)
+                    {
+                        header.git_branch = Some(git_info.branch.clone());
+                        header.git_dirty_count = Some(git_info.dirty_count);
+                    }
+                    // Update workspace session
+                    self.workspace
+                        .update_session_git_info(id, Some(git_info));
                 }
-                // Update workspace session
-                self.workspace.update_session_git_info(id, git_info);
             }
             any_dirty = true;
+        }
+
+        // Check for image in clipboard (lightweight check, piggybacked on poll cycle)
+        // Only check every ~250ms (roughly 60 idle polls at 4ms) to avoid overhead
+        if self.idle_poll_count % 60 == 0 {
+            let has_image = self.smart_clipboard.has_image();
+            if has_image && !self.clipboard_preview.is_visible() {
+                // Image detected in clipboard - try to create a preview
+                if let Ok(content) = self.smart_clipboard.read_content() {
+                    if let ClipboardContent::Image(ref image_data) = content {
+                        let path = self
+                            .clipboard_service
+                            .save_image(image_data)
+                            .unwrap_or_default();
+                        let file_size = image_data.bytes.len() as u64;
+                        let preview =
+                            ClipboardPreview::create_preview(image_data, path, file_size);
+                        self.clipboard_preview.show(preview);
+                        any_dirty = true;
+                    }
+                }
+            } else if !has_image && self.clipboard_preview.is_visible() {
+                // Image no longer in clipboard - hide preview
+                self.clipboard_preview.hide();
+                any_dirty = true;
+            }
         }
 
         // Track output activity for adaptive polling
@@ -1453,8 +1539,10 @@ impl WorkspaceView {
         cx: &mut Context<Self>,
     ) {
         let Some(session_id) = self.workspace.focused_session_id() else {
+            info!("Paste: no focused session");
             return;
         };
+        info!("Paste: focused session {}", session_id);
 
         // Read bracketed paste mode from terminal
         let bracketed = self
@@ -1472,6 +1560,7 @@ impl WorkspaceView {
             }
         };
 
+        info!("Paste: content type = {:?}", std::mem::discriminant(&content));
         match content {
             ClipboardContent::Text(text) => {
                 if text.is_empty() {
@@ -1490,8 +1579,41 @@ impl WorkspaceView {
                     warn!("Failed to paste to session {}: {}", session_id, e);
                 }
             }
-            ClipboardContent::Image(_) => {
-                info!("Image paste not yet supported (Phase 2)");
+            ClipboardContent::Image(ref _image_data) => {
+                info!("Paste: image detected, size={} bytes", _image_data.bytes.len());
+                // Get the CLI type for the focused session (defaults to ClaudeCode)
+                let cli_type = self.clipboard_service.get_session_cli_type(session_id);
+                info!("Paste: cli_type={:?}", cli_type);
+
+                // Format for CLI: saves image to temp file and returns path string
+                match self.clipboard_service.format_for_cli(&content, cli_type) {
+                    Ok(formatted_path) => {
+                        info!("Paste: formatted_path={:?}", formatted_path);
+                        if formatted_path.is_empty() {
+                            info!("Paste: empty path, aborting");
+                            return;
+                        }
+                        let sanitized = clipboard::sanitize_paste(&formatted_path);
+                        let bytes = clipboard::prepare_paste(&sanitized, bracketed);
+                        info!("Paste: sending {} bytes to PTY (bracketed={})", bytes.len(), bracketed);
+
+                        // Auto-scroll to bottom on paste
+                        if let Some(tv) = self.terminals.get_mut(&session_id) {
+                            tv.scroll_to_bottom();
+                        }
+
+                        let manager = self.session_manager.lock().unwrap();
+                        if let Err(e) = manager.send_input(session_id, &bytes) {
+                            warn!("Failed to paste image path to session {}: {}", session_id, e);
+                        }
+
+                        // Hide clipboard preview after successful paste
+                        self.clipboard_preview.hide();
+                    }
+                    Err(e) => {
+                        warn!("Failed to format image for CLI: {}", e);
+                    }
+                }
             }
             ClipboardContent::Files(paths) => {
                 if paths.is_empty() {
@@ -1572,16 +1694,45 @@ impl WorkspaceView {
     }
 
     /// Handle Copy action (Cmd+C / Ctrl+C).
+    ///
+    /// Dual behavior:
+    /// - If a text selection is active in the focused terminal, copies the
+    ///   selected text to the system clipboard and clears the selection.
+    /// - If no selection is active, sends Ctrl+C (interrupt, `\x03`) to the PTY.
     fn handle_copy(
         &mut self,
         _action: &Copy,
         _window: &mut Window,
-        _cx: &mut Context<Self>,
+        cx: &mut Context<Self>,
     ) {
-        // TODO: Implement terminal selection copy in Phase 2.
-        // For now, Cmd+C without selection sends Ctrl+C (interrupt) to PTY,
-        // which is already handled by key_to_bytes in handle_key_down.
-        info!("Copy action triggered (terminal selection copy is Phase 2)");
+        let Some(session_id) = self.workspace.focused_session_id() else {
+            return;
+        };
+
+        // Check if there's an active selection in the focused terminal
+        let selected_text = self
+            .terminals
+            .get(&session_id)
+            .and_then(|tv| tv.get_selected_text());
+
+        if let Some(text) = selected_text {
+            // Copy selected text to system clipboard
+            if let Err(e) = self.smart_clipboard.write_text(text) {
+                warn!("Failed to copy selection to clipboard: {}", e);
+            }
+            // Clear the selection
+            if let Some(tv) = self.terminals.get_mut(&session_id) {
+                tv.clear_selection();
+            }
+        } else {
+            // No selection: send Ctrl+C (interrupt) to the PTY
+            let manager = self.session_manager.lock().unwrap();
+            if let Err(e) = manager.send_input(session_id, b"\x03") {
+                warn!("Failed to send interrupt to session {}: {}", session_id, e);
+            }
+        }
+
+        cx.notify();
     }
 
     /// Get a reference to the underlying workspace.
@@ -1660,10 +1811,36 @@ impl WorkspaceView {
             return;
         }
 
-        // Don't send Cmd+ shortcuts to PTY (they are handled as GPUI actions).
-        // Note: Cmd+V (Paste) and Cmd+C (Copy) are handled via .on_action() above.
+        info!(
+            "key_down: key={:?} platform={} control={} alt={} shift={}",
+            event.keystroke.key,
+            event.keystroke.modifiers.platform,
+            event.keystroke.modifiers.control,
+            event.keystroke.modifiers.alt,
+            event.keystroke.modifiers.shift
+        );
+
+        // Don't send platform-modifier shortcuts to PTY (handled as GPUI actions).
         if event.keystroke.modifiers.platform {
             return;
+        }
+
+        // On Windows/Linux, GPUI maps `cmd-<key>` bindings to Ctrl+<key>.
+        // Skip Ctrl+key combos that have registered GPUI actions so the action
+        // system can handle them (Paste, Copy, etc.). Other Ctrl combos (Ctrl+C
+        // without selection, Ctrl+D, Ctrl+L, Ctrl+Z) must still reach the PTY.
+        if event.keystroke.modifiers.control {
+            let key = event.keystroke.key.as_ref();
+            match key {
+                "v" | "n" | "w" | "q" | "b" | "\\" => return,
+                "1" | "2" | "3" | "4" | "5" | "6" | "7" | "8" | "9" => return,
+                "c" => {
+                    // Ctrl+C: let the action system handle it (Copy action).
+                    // handle_copy() will send \x03 if no selection is active.
+                    return;
+                }
+                _ => {} // Other Ctrl combos go to PTY (Ctrl+D, Ctrl+L, etc.)
+            }
         }
 
         // Get focused session
@@ -2175,6 +2352,65 @@ impl Render for WorkspaceView {
         // 10. File tree context menu (if open)
         if let Some(menu) = self.render_file_tree_context_menu(cx) {
             container = container.child(menu);
+        }
+
+        // 11. Clipboard preview tooltip (floating overlay, bottom-right)
+        if self.clipboard_preview.is_visible() {
+            if let Some(preview) = self.clipboard_preview.preview() {
+                let theme = self.workspace.theme();
+                let panel_bg: gpui::Hsla = theme.panel_background.into();
+                let border_color: gpui::Hsla = theme.border.into();
+                let fg: gpui::Hsla = theme.foreground.into();
+                let muted: gpui::Hsla = theme.muted.into();
+
+                let dims_text = ClipboardPreview::format_dimensions(
+                    preview.original_width,
+                    preview.original_height,
+                );
+                let size_text = preview.human_readable_size();
+                let path_text = preview.image_path.display().to_string();
+
+                container = container.child(
+                    div()
+                        .absolute()
+                        .bottom(px(16.0))
+                        .right(px(16.0))
+                        .bg(panel_bg)
+                        .border_1()
+                        .border_color(border_color)
+                        .rounded_md()
+                        .p_2()
+                        .flex()
+                        .flex_col()
+                        .gap_1()
+                        .max_w(px(200.0))
+                        .child(
+                            div()
+                                .text_xs()
+                                .text_color(fg)
+                                .child("Image in clipboard"),
+                        )
+                        .child(
+                            div()
+                                .text_xs()
+                                .text_color(muted)
+                                .child(format!("{} · {}", dims_text, size_text)),
+                        )
+                        .child(
+                            div()
+                                .text_xs()
+                                .text_color(muted)
+                                .truncate()
+                                .child(path_text),
+                        )
+                        .child(
+                            div()
+                                .text_xs()
+                                .text_color(muted)
+                                .child("Ctrl+V to paste"),
+                        ),
+                );
+            }
         }
 
         container

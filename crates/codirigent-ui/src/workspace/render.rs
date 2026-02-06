@@ -20,7 +20,10 @@ use gpui::{
     div, px, ClickEvent, Context, FontWeight, Image, ImageFormat, InteractiveElement, IntoElement,
     ObjectFit, ParentElement, Window, WindowControlArea, prelude::FluentBuilder, SharedString,
     StatefulInteractiveElement, Styled, StyledImage, MouseButton, ScrollWheelEvent,
+    MouseDownEvent, MouseMoveEvent, MouseUpEvent,
 };
+use std::cell::Cell;
+use std::rc::Rc;
 use std::sync::Arc;
 use tracing::info;
 
@@ -237,10 +240,12 @@ impl WorkspaceView {
                                         .child(info.name.clone()),
                                 ),
                         )
-                        .child(
+                        .child({
                             // Terminal content area
-                            self.render_terminal_content(info.session_id, &theme),
-                        )
+                            let (terminal_content, _canvas_origin) =
+                                self.render_terminal_content(info.session_id, &theme);
+                            terminal_content
+                        })
                 } else {
                     // Empty cell
                     div()
@@ -276,25 +281,35 @@ impl WorkspaceView {
     /// Uses GPUI's `canvas()` element to paint terminal cells directly with
     /// `paint_quad()` and `ShapedLine::paint()`, reducing element count from
     /// ~8,000 divs to a single canvas element per terminal.
+    ///
+    /// Returns `(element, canvas_origin)` where `canvas_origin` is an `Rc<Cell>`
+    /// that will contain the canvas origin (with padding) after prepaint, for use
+    /// in mouse coordinate translation.
     fn render_terminal_content(
         &mut self,
         session_id: SessionId,
         theme: &CodirigentTheme,
-    ) -> gpui::AnyElement {
+    ) -> (gpui::AnyElement, Rc<Cell<(f32, f32)>>) {
         let terminal_bg: gpui::Hsla = theme.terminal_background.into();
         let terminal_fg: gpui::Hsla = theme.terminal_foreground.into();
+
+        // Shared cell for canvas origin (updated during prepaint)
+        let canvas_origin: Rc<Cell<(f32, f32)>> = Rc::new(Cell::new((0.0, 0.0)));
 
         // Get the terminal view for this session
         let Some(terminal_view) = self.terminals_mut().get_mut(&session_id) else {
             // No terminal yet, show placeholder
-            return div()
-                .flex_1()
-                .bg(terminal_bg)
-                .flex()
-                .items_center()
-                .justify_center()
-                .child(div().text_base().text_color(terminal_fg).font_family(icons::LUCIDE_FONT_FAMILY).child(icons::terminal()))
-                .into_any_element();
+            return (
+                div()
+                    .flex_1()
+                    .bg(terminal_bg)
+                    .flex()
+                    .items_center()
+                    .justify_center()
+                    .child(div().text_base().text_color(terminal_fg).font_family(icons::LUCIDE_FONT_FAMILY).child(icons::terminal()))
+                    .into_any_element(),
+                canvas_origin,
+            );
         };
 
         // Capture fallback dimensions (will be overridden by font metrics in prepaint)
@@ -332,6 +347,9 @@ impl WorkspaceView {
 
         let font_family: gpui::SharedString = crate::terminal_view::default_terminal_font_family().into();
 
+        // Clone Rc for capture into the canvas prepaint closure
+        let canvas_origin_for_prepaint = Rc::clone(&canvas_origin);
+
         // Build canvas element that paints directly
         let terminal_canvas = gpui::canvas(
             // Prepaint: shape text lines for each row's text runs
@@ -343,6 +361,9 @@ impl WorkspaceView {
                 let padding = 4.0_f32;
                 let ox = origin_x + padding;
                 let oy = origin_y + padding;
+
+                // Store origin for mouse coordinate translation
+                canvas_origin_for_prepaint.set((ox, oy));
 
                 // Compute cell dimensions from font metrics (Zed pattern)
                 // This ensures proper character spacing by using the actual 'm' advance width
@@ -514,12 +535,14 @@ impl WorkspaceView {
 
         // Wrap canvas in a container with terminal background
         // Note: size_full() instead of flex_1() because parent has explicit dimensions
-        div()
+        let element = div()
             .size_full()
             .bg(terminal_bg)
             .overflow_hidden()
             .child(terminal_canvas)
-            .into_any_element()
+            .into_any_element();
+
+        (element, canvas_origin)
     }
 
     /// Render the title bar with window controls (minimize, maximize, close).
@@ -1313,7 +1336,11 @@ impl WorkspaceView {
 
         // Render terminal content before building the div tree so the
         // mutable borrow on `self` is released before `cx.listener()`.
-        let terminal_content = self.render_terminal_content(session_id, theme);
+        let (terminal_content, canvas_origin) = self.render_terminal_content(session_id, theme);
+
+        // Clone canvas_origin for each mouse handler closure
+        let origin_for_down = Rc::clone(&canvas_origin);
+        let origin_for_move = Rc::clone(&canvas_origin);
 
         let terminal_height = cell_height - HEADER_HEIGHT;
 
@@ -1336,6 +1363,7 @@ impl WorkspaceView {
             .child(header)
             .child(
                 div()
+                    .id(SharedString::from(format!("terminal-area-{}", session_id.0)))
                     .w_full()
                     .h(px(terminal_height))
                     .overflow_hidden()
@@ -1351,6 +1379,58 @@ impl WorkspaceView {
                                 let lines = (-delta_y / cell_h).ceil().max(1.0) as usize;
                                 tv.scroll_down(lines);
                             }
+                            cx.notify();
+                        }
+                    }))
+                    // Mouse down: start text selection
+                    .on_mouse_down(MouseButton::Left, cx.listener(move |this, event: &MouseDownEvent, _window, cx| {
+                        let (ox, oy) = origin_for_down.get();
+                        let mouse_x: f32 = event.position.x.into();
+                        let mouse_y: f32 = event.position.y.into();
+                        let rel_x = mouse_x - ox;
+                        let rel_y = mouse_y - oy;
+
+                        if let Some(tv) = this.terminals_mut().get_mut(&session_id) {
+                            let cell_pos: Option<(usize, usize)> = tv.pixel_to_cell(rel_x, rel_y);
+                            if let Some((row, col)) = cell_pos {
+                                tv.start_selection(row, col);
+                                this.is_selecting = true;
+                                this.selecting_session_id = Some(session_id);
+                                cx.notify();
+                            }
+                        }
+                    }))
+                    // Mouse move: update selection during drag
+                    .on_mouse_move(cx.listener(move |this, event: &MouseMoveEvent, _window, cx| {
+                        if !this.is_selecting {
+                            return;
+                        }
+                        if this.selecting_session_id != Some(session_id) {
+                            return;
+                        }
+
+                        let (ox, oy) = origin_for_move.get();
+                        let mouse_x: f32 = event.position.x.into();
+                        let mouse_y: f32 = event.position.y.into();
+                        let rel_x = mouse_x - ox;
+                        let rel_y = mouse_y - oy;
+
+                        if let Some(tv) = this.terminals_mut().get_mut(&session_id) {
+                            let cell_pos: Option<(usize, usize)> = tv.pixel_to_cell(rel_x, rel_y);
+                            if let Some((row, col)) = cell_pos {
+                                tv.update_selection(row, col);
+                                cx.notify();
+                            }
+                        }
+                    }))
+                    // Mouse up: end selection
+                    .on_mouse_up(MouseButton::Left, cx.listener(move |this, _event: &MouseUpEvent, _window, cx| {
+                        if this.is_selecting && this.selecting_session_id == Some(session_id) {
+                            if let Some(tv) = this.terminals_mut().get_mut(&session_id) {
+                                tv.end_selection();
+                            }
+                            this.is_selecting = false;
+                            this.selecting_session_id = None;
                             cx.notify();
                         }
                     }))
@@ -3335,6 +3415,40 @@ impl WorkspaceView {
                 );
             }
         };
+
+        // Project directory name + session label
+        let dir_name = session
+            .working_directory
+            .file_name()
+            .and_then(|n| n.to_str())
+            .unwrap_or("unknown")
+            .to_string();
+        content = content.child(
+            div()
+                .flex()
+                .items_center()
+                .gap_1()
+                .child(
+                    div()
+                        .text_xs()
+                        .text_color(muted)
+                        .font_family(icons::LUCIDE_FONT_FAMILY)
+                        .child(icons::folder()),
+                )
+                .child(
+                    div()
+                        .text_xs()
+                        .font_weight(FontWeight::BOLD)
+                        .text_color(fg)
+                        .child(dir_name),
+                )
+                .child(
+                    div()
+                        .text_xs()
+                        .text_color(muted.opacity(0.5))
+                        .child(format!("({})", session.name)),
+                ),
+        );
 
         let gi = match session.git_info.as_ref() {
             Some(gi) => gi,

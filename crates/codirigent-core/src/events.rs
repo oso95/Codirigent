@@ -466,6 +466,17 @@ pub enum CodirigentEvent {
         task_number: Option<u32>,
     },
 
+    // === Working Directory Events ===
+    /// Session working directory changed (detected via OSC 7).
+    WorkingDirectoryChanged {
+        /// The session ID.
+        id: SessionId,
+        /// The previous working directory.
+        old_dir: PathBuf,
+        /// The new working directory.
+        new_dir: PathBuf,
+    },
+
     // === Git Status Events ===
     /// Git status was updated for a session.
     GitStatusUpdated {
@@ -1242,6 +1253,12 @@ mod tests {
                 id: crate::broadcast::BroadcastId(1),
                 success_count: 2,
                 failure_count: 1,
+            },
+            // Working directory events
+            CodirigentEvent::WorkingDirectoryChanged {
+                id: SessionId(1),
+                old_dir: PathBuf::from("/old/dir"),
+                new_dir: PathBuf::from("/new/dir"),
             },
             // Git status events
             CodirigentEvent::GitStatusUpdated {

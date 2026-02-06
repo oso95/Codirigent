@@ -141,6 +141,23 @@ impl PtyHandle {
         cmd.env("LANG", "en_US.UTF-8");
         cmd.env("LC_ALL", "en_US.UTF-8");
 
+        // Enable OSC 7 (CWD reporting) for bash shells via PROMPT_COMMAND.
+        // Zsh and PowerShell handle this differently (see shell-specific config).
+        #[cfg(unix)]
+        cmd.env(
+            "CODIRIGENT_OSC7",
+            r#"printf '\e]7;file://%s%s\e\\' "$(hostname)" "$PWD""#,
+        );
+        #[cfg(unix)]
+        {
+            // Append OSC 7 to PROMPT_COMMAND for bash.
+            // Bash executes PROMPT_COMMAND before displaying each prompt.
+            cmd.env(
+                "PROMPT_COMMAND",
+                r#"printf '\e]7;file://%s%s\e\\' "$(hostname)" "$PWD""#,
+            );
+        }
+
         let child = pair
             .slave
             .spawn_command(cmd)
@@ -307,18 +324,30 @@ fn detect_shell_command() -> ShellCommand {
     {
         use std::process::Command;
 
+        // PowerShell init command: UTF-8 encoding + OSC 7 prompt for CWD reporting.
+        // URI format: file://hostname/C:/Users/... (two slashes, then hostname, then path)
+        let ps_init = concat!(
+            "[Console]::OutputEncoding=[System.Text.Encoding]::UTF8; ",
+            "$OutputEncoding=[System.Text.Encoding]::UTF8; ",
+            "function prompt { ",
+                "$p = $executionContext.SessionState.Path.CurrentLocation.ProviderPath; ",
+                "$h = [System.Net.Dns]::GetHostName(); ",
+                "$u = $p.Replace('\\','/'); ",
+                "\"$([char]27)]7;file://$h/$u$([char]27)\\\" + ",
+                "\"PS $($executionContext.SessionState.Path.CurrentLocation)> \" ",
+            "}",
+        );
+
         // Try PowerShell 7 first
         if Command::new("pwsh.exe").arg("--version").output().is_ok() {
             return ShellCommand {
                 program: "pwsh.exe".to_string(),
-                // Ensure UTF-8 output and keep the shell open.
                 args: vec![
                     "-NoLogo".to_string(),
                     "-NoProfile".to_string(),
                     "-NoExit".to_string(),
                     "-Command".to_string(),
-                    "[Console]::OutputEncoding=[System.Text.Encoding]::UTF8; $OutputEncoding=[System.Text.Encoding]::UTF8"
-                        .to_string(),
+                    ps_init.to_string(),
                 ],
             };
         }
@@ -326,14 +355,12 @@ fn detect_shell_command() -> ShellCommand {
         if Command::new("powershell.exe").arg("-Command").arg("exit").output().is_ok() {
             return ShellCommand {
                 program: "powershell.exe".to_string(),
-                // Ensure UTF-8 output and keep the shell open.
                 args: vec![
                     "-NoLogo".to_string(),
                     "-NoProfile".to_string(),
                     "-NoExit".to_string(),
                     "-Command".to_string(),
-                    "[Console]::OutputEncoding=[System.Text.Encoding]::UTF8; $OutputEncoding=[System.Text.Encoding]::UTF8"
-                        .to_string(),
+                    ps_init.to_string(),
                 ],
             };
         }
