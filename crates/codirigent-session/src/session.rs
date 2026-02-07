@@ -5,7 +5,6 @@
 
 use crate::pty::PtyHandle;
 use codirigent_core::{Session, SessionId, SessionStatus};
-use std::path::PathBuf;
 use tokio::sync::mpsc;
 
 /// Internal session state combining metadata with runtime handles.
@@ -20,8 +19,6 @@ pub struct SessionState {
     pub pty: PtyHandle,
     /// Channel receiving PTY output.
     pub output_rx: mpsc::Receiver<Vec<u8>>,
-    /// Path to the context file for file-based IPC with CLI hooks.
-    pub context_file_path: Option<PathBuf>,
 }
 
 impl SessionState {
@@ -37,14 +34,7 @@ impl SessionState {
             session,
             pty,
             output_rx,
-            context_file_path: None,
         }
-    }
-
-    /// Create a new session state with a context file path.
-    pub fn with_context_file(mut self, path: PathBuf) -> Self {
-        self.context_file_path = Some(path);
-        self
     }
 
     /// Get session ID.

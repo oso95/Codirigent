@@ -11,7 +11,7 @@ use codirigent_core::{
     CodirigentEvent, EventBus, GitRepoInfo, Session, SessionId, SessionManager, SessionStatus,
 };
 use std::collections::HashMap;
-use std::path::{Path, PathBuf};
+use std::path::PathBuf;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Arc, Mutex, MutexGuard};
 use std::time::Duration;
@@ -301,23 +301,8 @@ impl SessionManager for DefaultSessionManager {
             ));
         }
 
-        // Auto-configure CLI hooks (Claude Code, Gemini) in the working directory
-        setup_cli_hooks(&working_dir);
-
-        // Compute context file path in Codirigent's CWD (centralized, not per-session dir)
-        let context_dir = std::env::current_dir()
-            .unwrap_or_else(|_| working_dir.clone())
-            .join(".codirigent")
-            .join("context");
-        if let Err(e) = std::fs::create_dir_all(&context_dir) {
-            warn!(?context_dir, %e, "Failed to create context directory");
-        }
-        let context_file = context_dir.join(format!("session-{}.json", id.0));
-        let context_file_str = context_file.to_string_lossy().to_string();
-        let env_vars = [("CODIRIGENT_CONTEXT_FILE", context_file_str.as_str())];
-
         // Spawn PTY with default terminal size
-        let mut pty = PtyHandle::spawn(&working_dir, DEFAULT_PTY_ROWS, DEFAULT_PTY_COLS, &env_vars)
+        let mut pty = PtyHandle::spawn(&working_dir, DEFAULT_PTY_ROWS, DEFAULT_PTY_COLS, &[])
             .context("Failed to spawn PTY")?;
 
         // Take reader and spawn output task
@@ -336,9 +321,8 @@ impl SessionManager for DefaultSessionManager {
             .unwrap_or_else(|p| p.into_inner())
             .detect(&working_dir);
 
-        // Create session state with context file path
-        let state = SessionState::new(session, pty, output_rx)
-            .with_context_file(context_file);
+        // Create session state
+        let state = SessionState::new(session, pty, output_rx);
         self.lock_sessions().insert(id, state);
 
         // Publish event
@@ -350,21 +334,10 @@ impl SessionManager for DefaultSessionManager {
     fn close_session(&self, id: SessionId) -> Result<()> {
         info!(%id, "Closing session");
 
-        let state = self
+        let _state = self
             .lock_sessions()
             .remove(&id)
             .ok_or_else(|| anyhow!("Session not found: {}", id))?;
-
-        // Clean up context file if it exists
-        if let Some(ref path) = state.context_file_path {
-            if path.exists() {
-                if let Err(e) = std::fs::remove_file(path) {
-                    warn!(%id, ?path, %e, "Failed to remove context file");
-                } else {
-                    debug!(%id, ?path, "Removed context file");
-                }
-            }
-        }
 
         // PTY and output_rx will be dropped, cleaning up resources
 
@@ -476,224 +449,9 @@ impl SessionManager for DefaultSessionManager {
         }
     }
 
-    fn get_context_file_path(&self, id: SessionId) -> Option<PathBuf> {
-        self.lock_sessions()
-            .get(&id)
-            .and_then(|s| s.context_file_path.clone())
+    fn get_context_file_path(&self, _id: SessionId) -> Option<PathBuf> {
+        None
     }
-}
-
-// ---------------------------------------------------------------------------
-// CLI hook auto-configuration
-// ---------------------------------------------------------------------------
-
-/// Embedded PowerShell hook script for Claude Code (Windows).
-#[cfg(windows)]
-const CLAUDE_HOOK_PS1: &str = r#"$ErrorActionPreference = "SilentlyContinue"
-$contextFile = $env:CODIRIGENT_CONTEXT_FILE
-if (-not $contextFile) { exit 0 }
-$payload = [Console]::In.ReadToEnd()
-if ($env:CLAUDE_CONTEXT_USAGE) {
-    "{`"usage`": $($env:CLAUDE_CONTEXT_USAGE)}" | Set-Content -Path $contextFile -NoNewline
-    exit 0
-}
-try {
-    $json = $payload | ConvertFrom-Json
-    $used = $json.context_window.used
-    $total = $json.context_window.total
-    if ($used -and $total -and $total -gt 0) {
-        $usage = [math]::Round($used / $total, 4)
-        "{`"usage`": $usage, `"tokens_used`": $used, `"tokens_total`": $total}" | Set-Content -Path $contextFile -NoNewline
-        exit 0
-    }
-    $output = if ($json.output) { $json.output } elseif ($json.message) { $json.message } else { "" }
-    if ($output -match '(?i)context:?\s*(\d+)') {
-        $pct = [int]$Matches[1]
-        $usage = [math]::Round($pct / 100, 4)
-        "{`"usage`": $usage}" | Set-Content -Path $contextFile -NoNewline
-    }
-} catch {}
-"#;
-
-/// Embedded PowerShell hook script for Gemini CLI (Windows).
-#[cfg(windows)]
-const GEMINI_HOOK_PS1: &str = r#"$ErrorActionPreference = "SilentlyContinue"
-$contextFile = $env:CODIRIGENT_CONTEXT_FILE
-if (-not $contextFile) { exit 0 }
-$contextWindow = if ($env:GEMINI_CONTEXT_WINDOW) { [int]$env:GEMINI_CONTEXT_WINDOW } else { 1000000 }
-$payload = [Console]::In.ReadToEnd()
-try {
-    $json = $payload | ConvertFrom-Json
-    $totalTokens = $json.usageMetadata.totalTokenCount
-    if ($totalTokens -and $totalTokens -gt 0) {
-        $usage = [math]::Round($totalTokens / $contextWindow, 4)
-        "{`"usage`": $usage, `"tokens_used`": $totalTokens, `"tokens_total`": $contextWindow}" | Set-Content -Path $contextFile -NoNewline
-        exit 0
-    }
-    $promptTokens = if ($json.usageMetadata.promptTokenCount) { $json.usageMetadata.promptTokenCount } else { 0 }
-    $candidatesTokens = if ($json.usageMetadata.candidatesTokenCount) { $json.usageMetadata.candidatesTokenCount } else { 0 }
-    $sum = $promptTokens + $candidatesTokens
-    if ($sum -gt 0) {
-        $usage = [math]::Round($sum / $contextWindow, 4)
-        "{`"usage`": $usage, `"tokens_used`": $sum, `"tokens_total`": $contextWindow}" | Set-Content -Path $contextFile -NoNewline
-    }
-} catch {}
-"#;
-
-/// Set up CLI hook configs in the working directory so Claude Code and Gemini
-/// automatically report context usage via `CODIRIGENT_CONTEXT_FILE`.
-///
-/// On Windows: writes embedded `.ps1` scripts to `.codirigent/hooks/` and
-/// configures hooks to call `powershell.exe -File <path>`.
-/// On Unix: uses the `.sh` scripts from the `hooks/` directory.
-///
-/// Writes hook configs to:
-/// - `.claude/settings.local.json` (gitignored by convention)
-/// - `.gemini/settings.json`
-fn setup_cli_hooks(working_dir: &Path) {
-    // Determine hook commands (platform-specific)
-    #[cfg(windows)]
-    let (claude_cmd, gemini_cmd) = {
-        // Write embedded PS1 scripts to .codirigent/hooks/ in Codirigent's CWD
-        let hooks_dir = std::env::current_dir()
-            .unwrap_or_else(|_| working_dir.to_path_buf())
-            .join(".codirigent")
-            .join("hooks");
-        if std::fs::create_dir_all(&hooks_dir).is_err() {
-            warn!(?hooks_dir, "Failed to create hooks directory");
-            return;
-        }
-
-        let claude_ps1 = hooks_dir.join("claude-context.ps1");
-        let gemini_ps1 = hooks_dir.join("gemini-context.ps1");
-
-        if let Err(e) = std::fs::write(&claude_ps1, CLAUDE_HOOK_PS1) {
-            warn!(%e, "Failed to write Claude hook script");
-        }
-        if let Err(e) = std::fs::write(&gemini_ps1, GEMINI_HOOK_PS1) {
-            warn!(%e, "Failed to write Gemini hook script");
-        }
-
-        // Use forward slashes — works in both cmd.exe and PowerShell
-        let claude_path = claude_ps1.to_string_lossy().replace('\\', "/");
-        let gemini_path = gemini_ps1.to_string_lossy().replace('\\', "/");
-
-        (
-            format!(
-                "powershell.exe -NoProfile -ExecutionPolicy Bypass -File \"{}\"",
-                claude_path
-            ),
-            format!(
-                "powershell.exe -NoProfile -ExecutionPolicy Bypass -File \"{}\"",
-                gemini_path
-            ),
-        )
-    };
-
-    #[cfg(not(windows))]
-    let (claude_cmd, gemini_cmd) = {
-        let cwd = std::env::current_dir().unwrap_or_else(|_| working_dir.to_path_buf());
-        let claude_sh = cwd.join("hooks").join("claude-context.sh");
-        let gemini_sh = cwd.join("hooks").join("gemini-context.sh");
-        (
-            claude_sh.to_string_lossy().to_string(),
-            gemini_sh.to_string_lossy().to_string(),
-        )
-    };
-
-    if let Err(e) = setup_claude_hook(working_dir, &claude_cmd) {
-        warn!(?working_dir, %e, "Failed to setup Claude Code hook");
-    }
-    if let Err(e) = setup_gemini_hook(working_dir, &gemini_cmd) {
-        warn!(?working_dir, %e, "Failed to setup Gemini CLI hook");
-    }
-}
-
-/// Write a Claude Code Stop hook into `.claude/settings.local.json`.
-///
-/// If our hook already exists with the correct command, this is a no-op.
-/// If it exists with a stale command, it gets replaced.
-fn setup_claude_hook(working_dir: &Path, command: &str) -> Result<()> {
-    let settings_dir = working_dir.join(".claude");
-    std::fs::create_dir_all(&settings_dir)?;
-
-    let settings_path = settings_dir.join("settings.local.json");
-
-    let mut settings: serde_json::Value = if settings_path.exists() {
-        let content = std::fs::read_to_string(&settings_path)?;
-        serde_json::from_str(&content).unwrap_or(serde_json::json!({}))
-    } else {
-        serde_json::json!({})
-    };
-
-    let hook_entry = serde_json::json!({
-        "matcher": "",
-        "hooks": [{ "type": "command", "command": command }]
-    });
-
-    let hooks = settings
-        .as_object_mut()
-        .ok_or_else(|| anyhow!("settings is not an object"))?
-        .entry("hooks")
-        .or_insert_with(|| serde_json::json!({}));
-
-    let stop = hooks
-        .as_object_mut()
-        .ok_or_else(|| anyhow!("hooks is not an object"))?
-        .entry("Stop")
-        .or_insert_with(|| serde_json::json!([]));
-
-    if let Some(arr) = stop.as_array_mut() {
-        // Remove any existing codirigent hook entries (stale commands)
-        arr.retain(|entry| !entry.to_string().contains("claude-context"));
-        arr.push(hook_entry);
-    }
-
-    std::fs::write(&settings_path, serde_json::to_string_pretty(&settings)?)?;
-    debug!(?settings_path, "Configured Claude Code context hook");
-    Ok(())
-}
-
-/// Write a Gemini CLI AfterModel hook into `.gemini/settings.json`.
-///
-/// If our hook already exists with the correct command, this is a no-op.
-/// If it exists with a stale command, it gets replaced.
-fn setup_gemini_hook(working_dir: &Path, command: &str) -> Result<()> {
-    let settings_dir = working_dir.join(".gemini");
-    std::fs::create_dir_all(&settings_dir)?;
-
-    let settings_path = settings_dir.join("settings.json");
-
-    let mut settings: serde_json::Value = if settings_path.exists() {
-        let content = std::fs::read_to_string(&settings_path)?;
-        serde_json::from_str(&content).unwrap_or(serde_json::json!({}))
-    } else {
-        serde_json::json!({})
-    };
-
-    let hook_entry = serde_json::json!({ "command": command });
-
-    let hooks = settings
-        .as_object_mut()
-        .ok_or_else(|| anyhow!("settings is not an object"))?
-        .entry("hooks")
-        .or_insert_with(|| serde_json::json!({}));
-
-    let after_model = hooks
-        .as_object_mut()
-        .ok_or_else(|| anyhow!("hooks is not an object"))?
-        .entry("AfterModel")
-        .or_insert_with(|| serde_json::json!([]));
-
-    if let Some(arr) = after_model.as_array_mut() {
-        // Remove any existing codirigent hook entries (stale commands)
-        arr.retain(|entry| !entry.to_string().contains("gemini-context"));
-        arr.push(hook_entry);
-    }
-
-    std::fs::write(&settings_path, serde_json::to_string_pretty(&settings)?)?;
-    debug!(?settings_path, "Configured Gemini CLI context hook");
-    Ok(())
 }
 
 #[cfg(test)]

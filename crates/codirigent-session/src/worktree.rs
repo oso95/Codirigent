@@ -36,6 +36,22 @@ use git2::Repository;
 use std::path::{Path, PathBuf};
 use tracing::{debug, info};
 
+/// Normalize a path by canonicalizing and stripping the `\\?\` prefix on Windows.
+///
+/// On Windows, `std::fs::canonicalize` returns UNC-style paths like `\\?\C:\...`
+/// which break string comparisons with regular paths. This helper strips that prefix.
+fn normalize_path(path: &Path) -> PathBuf {
+    let canonical = path.canonicalize().unwrap_or_else(|_| path.to_path_buf());
+    #[cfg(windows)]
+    {
+        let s = canonical.to_string_lossy();
+        if let Some(stripped) = s.strip_prefix(r"\\?\") {
+            return PathBuf::from(stripped);
+        }
+    }
+    canonical
+}
+
 /// Git worktree manager.
 ///
 /// Manages git worktrees for isolated parallel development across sessions.
@@ -84,9 +100,7 @@ impl WorktreeManager {
     /// let manager = WorktreeManager::new(Path::new("/path/to/repo")).unwrap();
     /// ```
     pub fn new(repo_path: &Path) -> Result<Self> {
-        let repo_path = repo_path
-            .canonicalize()
-            .context("Failed to canonicalize repo path")?;
+        let repo_path = normalize_path(repo_path);
 
         // Verify it's a git repository
         Repository::open(&repo_path).context("Not a git repository")?;
@@ -161,7 +175,7 @@ impl WorktreeManager {
             .and_then(|h| h.target())
             .map(|oid| oid.to_string()[..8].to_string());
 
-        let mut main_wt = Worktree::new(self.repo_path.clone(), main_branch, true);
+        let mut main_wt = Worktree::new(normalize_path(&self.repo_path), main_branch, true);
         if let Some(sha) = head_sha {
             main_wt = main_wt.with_head_sha(sha);
         }
@@ -171,7 +185,7 @@ impl WorktreeManager {
         if let Ok(wt_names) = repo.worktrees() {
             for name in wt_names.iter().flatten() {
                 if let Ok(wt) = repo.find_worktree(name) {
-                    let path = wt.path().to_path_buf();
+                    let path = normalize_path(wt.path());
                     // Try to get branch info from the worktree
                     if let Ok(wt_repo) = Repository::open(&path) {
                         let branch = wt_repo
@@ -277,14 +291,11 @@ impl WorktreeManager {
         self.refresh()?;
 
         // Find and return the new worktree
-        // The path might have been canonicalized, so compare canonical forms
-        let canonical_path = worktree_path
-            .canonicalize()
-            .unwrap_or_else(|_| worktree_path.clone());
+        let normalized = normalize_path(&worktree_path);
 
         self.worktrees
             .iter()
-            .find(|wt| wt.path == canonical_path || wt.path == worktree_path)
+            .find(|wt| wt.path == normalized || wt.path == worktree_path)
             .cloned()
             .context("Failed to find created worktree")
     }
@@ -317,12 +328,13 @@ impl WorktreeManager {
     /// ```
     pub fn remove(&mut self, path: &Path, force: bool) -> Result<()> {
         let repo = Repository::open(&self.repo_path)?;
+        let normalized = normalize_path(path);
 
         // Find worktree in our list
         let wt = self
             .worktrees
             .iter()
-            .find(|w| w.path == path)
+            .find(|w| w.path == normalized || w.path == path)
             .context("Worktree not found")?;
 
         if wt.is_main {
@@ -335,7 +347,8 @@ impl WorktreeManager {
         if let Ok(wt_names) = repo.worktrees() {
             for name in wt_names.iter().flatten() {
                 if let Ok(git_wt) = repo.find_worktree(name) {
-                    if git_wt.path() == path {
+                    let git_wt_path = normalize_path(git_wt.path());
+                    if git_wt_path == normalized {
                         if force {
                             // Remove directory first
                             std::fs::remove_dir_all(path).ok();
@@ -388,10 +401,11 @@ impl WorktreeManager {
         // Unbind from any existing worktree first
         self.unbind_session(session_id)?;
 
+        let normalized = normalize_path(worktree_path);
         let wt = self
             .worktrees
             .iter_mut()
-            .find(|w| w.path == worktree_path)
+            .find(|w| w.path == normalized || w.path == worktree_path)
             .context("Worktree not found")?;
 
         if wt.bound_session.is_some() {
@@ -595,9 +609,7 @@ mod tests {
     fn test_worktree_manager_repo_path() {
         let (_temp, path) = setup_test_repo();
         let manager = WorktreeManager::new(&path).unwrap();
-        // On macOS, paths may be canonicalized through /private, so we compare
-        // canonical forms
-        let expected = path.canonicalize().unwrap();
+        let expected = normalize_path(&path);
         assert_eq!(manager.repo_path(), expected);
     }
 
@@ -630,8 +642,7 @@ mod tests {
         assert!(main_wt.is_some());
 
         let main_wt = main_wt.unwrap();
-        // On macOS, paths may be canonicalized through /private
-        let expected = path.canonicalize().unwrap();
+        let expected = normalize_path(&path);
         assert_eq!(main_wt.path, expected);
     }
 
@@ -736,8 +747,8 @@ mod tests {
             .with_path(custom_path.clone());
 
         let wt = manager.create(options).unwrap();
-        // Path might be canonicalized
-        let expected = custom_path.canonicalize().unwrap();
+        // Path might be canonicalized — use normalize_path for consistent comparison
+        let expected = normalize_path(&custom_path);
         assert_eq!(wt.path, expected);
     }
 
@@ -750,9 +761,8 @@ mod tests {
         let wt = manager.create(options).unwrap();
 
         // Default path should be in worktrees/<branch>
-        // Path might be canonicalized on macOS
         let expected_path = path.join("worktrees").join("feature-default");
-        let expected = expected_path.canonicalize().unwrap();
+        let expected = normalize_path(&expected_path);
         assert_eq!(wt.path, expected);
     }
 

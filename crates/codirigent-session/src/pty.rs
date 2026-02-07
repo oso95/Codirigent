@@ -149,8 +149,9 @@ impl PtyHandle {
             cmd.env(key, value);
         }
 
-        // Enable OSC 7 (CWD reporting) for bash shells via PROMPT_COMMAND.
-        // Zsh and PowerShell handle this differently (see shell-specific config).
+        // Enable OSC 7 (CWD) + OSC 133 (shell integration) for bash via PROMPT_COMMAND.
+        // OSC 133 D;$? → finish previous command, 133 A → prompt start, then OSC 7 for CWD.
+        // PROMPT_COMMAND runs before each prompt, so D+A reliably mark idle state.
         #[cfg(unix)]
         cmd.env(
             "CODIRIGENT_OSC7",
@@ -158,11 +159,12 @@ impl PtyHandle {
         );
         #[cfg(unix)]
         {
-            // Append OSC 7 to PROMPT_COMMAND for bash.
-            // Bash executes PROMPT_COMMAND before displaying each prompt.
             cmd.env(
                 "PROMPT_COMMAND",
-                r#"printf '\e]7;file://%s%s\e\\' "$(hostname)" "$PWD""#,
+                concat!(
+                    r#"printf "\e]133;D;$?\a\e]133;A\a"; "#,
+                    r#"printf "\e]7;file://%s%s\e\\" "$(hostname)" "$PWD""#,
+                ),
             );
         }
 
@@ -332,17 +334,25 @@ fn detect_shell_command() -> ShellCommand {
     {
         use std::process::Command;
 
-        // PowerShell init command: UTF-8 encoding + OSC 7 prompt for CWD reporting.
-        // URI format: file://hostname/C:/Users/... (two slashes, then hostname, then path)
+        // PowerShell init command: UTF-8 encoding + OSC 7 (CWD) + OSC 133 (shell integration).
+        // OSC 133 markers: D (finish previous cmd), A (prompt start), B (command input start).
+        // We skip 133;C (command executed) — inferred when output appears after B.
         let ps_init = concat!(
             "[Console]::OutputEncoding=[System.Text.Encoding]::UTF8; ",
             "$OutputEncoding=[System.Text.Encoding]::UTF8; ",
             "function prompt { ",
+                // All assignments first (before the return expression)
+                "$gle = $global:LASTEXITCODE; ",
+                "if ($null -eq $gle) { $gle = 0 }; ",
                 "$p = $executionContext.SessionState.Path.CurrentLocation.ProviderPath; ",
                 "$h = [System.Net.Dns]::GetHostName(); ",
                 "$u = $p.Replace('\\','/'); ",
+                // Single return expression: 133;D + 133;A + OSC7 + prompt + 133;B
+                "\"$([char]27)]133;D;$gle$([char]7)\" + ",
+                "\"$([char]27)]133;A$([char]7)\" + ",
                 "\"$([char]27)]7;file://$h/$u$([char]27)\\\" + ",
-                "\"PS $($executionContext.SessionState.Path.CurrentLocation)> \" ",
+                "\"PS $($executionContext.SessionState.Path.CurrentLocation)> \" + ",
+                "\"$([char]27)]133;B$([char]7)\" ",
             "}",
         );
 

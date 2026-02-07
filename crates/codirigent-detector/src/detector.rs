@@ -37,7 +37,7 @@
 use crate::patterns::{compile_patterns, find_matching_pattern_with_limit, get_default_patterns};
 use crate::platform::{NativeMonitor, PlatformMonitor, ProcessState};
 use anyhow::Result;
-use codirigent_core::{CodirigentEvent, EventBus, ProcessMonitor, SessionId, SessionStatus};
+use codirigent_core::{CodirigentEvent, EventBus, ProcessMonitor, SessionId, SessionStatus, ShellState};
 use regex::Regex;
 use std::collections::HashMap;
 use std::sync::Arc;
@@ -151,6 +151,8 @@ struct MonitoredSession {
     current_status: SessionStatus,
     /// Pattern that matched, if any.
     pattern_matched: Option<String>,
+    /// Last known shell state from OSC 133 markers.
+    shell_state: Option<ShellState>,
 }
 
 impl MonitoredSession {
@@ -163,6 +165,7 @@ impl MonitoredSession {
             output_buffer: String::new(),
             current_status: SessionStatus::Idle,
             pattern_matched: None,
+            shell_state: None,
         }
     }
 
@@ -320,33 +323,56 @@ impl InputDetector {
         }
     }
 
-    /// Determine status based on process state and patterns.
+    /// Determine status based on pattern matching, OSC 133, and process state.
+    ///
+    /// Priority order:
+    /// 1. Pattern match (y/n prompts from CLIs) — highest priority
+    /// 2. OSC 133 shell state — reliable, from the shell itself
+    /// 3. Process state heuristic — fallback for shells without OSC 133
     fn determine_status(&self, session: &MonitoredSession) -> SessionStatus {
-        // Pattern match takes highest priority
+        // 1. Pattern match takes highest priority
         if session.pattern_matched.is_some() {
             return SessionStatus::WaitingForInput;
         }
 
-        // Check process state
+        // 2. OSC 133 shell state — reliable, if available
+        if let Some(ref shell_state) = session.shell_state {
+            return match shell_state {
+                ShellState::PromptStart | ShellState::CommandInputStart => SessionStatus::Idle,
+                ShellState::CommandExecuted => SessionStatus::Working,
+                ShellState::CommandFinished { .. } => SessionStatus::Idle,
+            };
+        }
+
+        // 3. Fallback: process state heuristic (legacy/unsupported shells)
         let process_state = self
             .platform_monitor
             .get_process_state(session.pty_pid)
             .unwrap_or(ProcessState::Unknown);
 
+        let idle_time = session.last_output_time.elapsed();
+
         match process_state {
             ProcessState::Terminated => SessionStatus::Done,
-            ProcessState::Running => SessionStatus::Working,
-            ProcessState::Sleeping => {
-                // If sleeping and no recent output, might be waiting
-                let idle_time = session.last_output_time.elapsed();
+            ProcessState::Running | ProcessState::Sleeping => {
                 if idle_time > self.config.idle_threshold {
-                    SessionStatus::WaitingForInput
+                    SessionStatus::Idle
                 } else {
                     SessionStatus::Working
                 }
             }
-            ProcessState::Stopped => SessionStatus::Idle,
-            ProcessState::Unknown => SessionStatus::Idle,
+            ProcessState::Stopped | ProcessState::Unknown => SessionStatus::Idle,
+        }
+    }
+
+    /// Update shell state from an OSC 133 marker.
+    ///
+    /// OSC 133 provides reliable idle detection directly from the shell,
+    /// bypassing platform-specific process state heuristics.
+    pub fn set_shell_state(&mut self, session_id: SessionId, state: ShellState) {
+        if let Some(session) = self.sessions.get_mut(&session_id) {
+            session.shell_state = Some(state);
+            self.update_session_status(session_id);
         }
     }
 
@@ -940,5 +966,101 @@ mod tests {
         let mut detector = create_test_detector();
         detector.start_monitoring(SessionId(1), 1234).unwrap();
         assert!(detector.is_monitoring(SessionId(1)));
+    }
+
+    // OSC 133 shell state tests
+    #[test]
+    fn test_shell_state_prompt_start_sets_idle() {
+        let mut detector = create_test_detector();
+        detector.start_monitoring(SessionId(1), 1234).unwrap();
+
+        detector.set_shell_state(SessionId(1), ShellState::PromptStart);
+        assert_eq!(detector.get_status(SessionId(1)), Some(SessionStatus::Idle));
+    }
+
+    #[test]
+    fn test_shell_state_command_input_start_sets_idle() {
+        let mut detector = create_test_detector();
+        detector.start_monitoring(SessionId(1), 1234).unwrap();
+
+        detector.set_shell_state(SessionId(1), ShellState::CommandInputStart);
+        assert_eq!(detector.get_status(SessionId(1)), Some(SessionStatus::Idle));
+    }
+
+    #[test]
+    fn test_shell_state_command_executed_sets_working() {
+        let mut detector = create_test_detector();
+        detector.start_monitoring(SessionId(1), 1234).unwrap();
+
+        detector.set_shell_state(SessionId(1), ShellState::CommandExecuted);
+        assert_eq!(
+            detector.get_status(SessionId(1)),
+            Some(SessionStatus::Working)
+        );
+    }
+
+    #[test]
+    fn test_shell_state_command_finished_sets_idle() {
+        let mut detector = create_test_detector();
+        detector.start_monitoring(SessionId(1), 1234).unwrap();
+
+        detector.set_shell_state(
+            SessionId(1),
+            ShellState::CommandFinished { exit_code: Some(0) },
+        );
+        assert_eq!(detector.get_status(SessionId(1)), Some(SessionStatus::Idle));
+    }
+
+    #[test]
+    fn test_shell_state_cycle() {
+        let mut detector = create_test_detector();
+        detector.start_monitoring(SessionId(1), 1234).unwrap();
+
+        // Shell shows prompt → idle
+        detector.set_shell_state(SessionId(1), ShellState::PromptStart);
+        detector.set_shell_state(SessionId(1), ShellState::CommandInputStart);
+        assert_eq!(detector.get_status(SessionId(1)), Some(SessionStatus::Idle));
+
+        // User runs command → working
+        detector.set_shell_state(SessionId(1), ShellState::CommandExecuted);
+        assert_eq!(
+            detector.get_status(SessionId(1)),
+            Some(SessionStatus::Working)
+        );
+
+        // Command finishes, new prompt → idle
+        detector.set_shell_state(
+            SessionId(1),
+            ShellState::CommandFinished { exit_code: Some(0) },
+        );
+        assert_eq!(detector.get_status(SessionId(1)), Some(SessionStatus::Idle));
+
+        detector.set_shell_state(SessionId(1), ShellState::PromptStart);
+        assert_eq!(detector.get_status(SessionId(1)), Some(SessionStatus::Idle));
+    }
+
+    #[test]
+    fn test_pattern_match_overrides_shell_state() {
+        let mut detector = create_test_detector();
+        detector
+            .start_monitoring(SessionId(1), std::process::id())
+            .unwrap();
+
+        // Shell says idle via OSC 133
+        detector.set_shell_state(SessionId(1), ShellState::CommandInputStart);
+
+        // But pattern match detects y/n prompt — takes priority
+        detector.process_output(SessionId(1), b"Continue? [y/n] ");
+        assert_eq!(
+            detector.get_status(SessionId(1)),
+            Some(SessionStatus::WaitingForInput)
+        );
+    }
+
+    #[test]
+    fn test_set_shell_state_nonexistent_session() {
+        let mut detector = create_test_detector();
+        // Should not panic
+        detector.set_shell_state(SessionId(999), ShellState::PromptStart);
     }
 }
