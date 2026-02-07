@@ -85,8 +85,8 @@ pub use clipboard_stub::StubSmartClipboard;
 /// let content = clipboard.read_content().unwrap();
 /// ```
 #[cfg(target_os = "macos")]
-pub fn create_clipboard() -> MacOSSmartClipboard {
-    MacOSSmartClipboard::new()
+pub fn create_clipboard() -> Box<dyn crate::smart_clipboard::SmartClipboardProvider> {
+    Box::new(MacOSSmartClipboard::new())
 }
 
 /// Create a platform-appropriate smart clipboard provider.
@@ -107,8 +107,8 @@ pub fn create_clipboard() -> MacOSSmartClipboard {
 /// let content = clipboard.read_content().unwrap();
 /// ```
 #[cfg(target_os = "windows")]
-pub fn create_clipboard() -> WindowsSmartClipboard {
-    WindowsSmartClipboard::new()
+pub fn create_clipboard() -> Box<dyn crate::smart_clipboard::SmartClipboardProvider> {
+    Box::new(WindowsSmartClipboard::new())
 }
 
 /// Create a platform-appropriate smart clipboard provider.
@@ -157,8 +157,8 @@ pub fn create_clipboard() -> Box<dyn crate::smart_clipboard::SmartClipboardProvi
 /// let content = clipboard.read_content().unwrap();
 /// ```
 #[cfg(not(any(target_os = "macos", target_os = "windows", target_os = "linux")))]
-pub fn create_clipboard() -> StubSmartClipboard {
-    StubSmartClipboard::new()
+pub fn create_clipboard() -> Box<dyn crate::smart_clipboard::SmartClipboardProvider> {
+    Box::new(StubSmartClipboard::new())
 }
 
 /// Try to create a Linux smart clipboard provider.

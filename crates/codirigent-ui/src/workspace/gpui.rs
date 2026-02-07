@@ -341,7 +341,7 @@ impl WorkspaceView {
             pty_sizes: HashMap::new(),
             drawer_group_expanded: HashMap::new(),
             last_git_refresh: Instant::now(),
-            smart_clipboard: Box::new(crate::platform::create_clipboard()),
+            smart_clipboard: crate::platform::create_clipboard(),
             file_tree_context_menu: None,
             clipboard_service: DefaultClipboardService::new(
                 project_root

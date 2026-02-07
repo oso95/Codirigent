@@ -56,10 +56,17 @@ use std::sync::Mutex;
 /// // Read clipboard content
 /// let content = clipboard.read_content().unwrap();
 /// ```
-#[derive(Debug)]
 pub struct LinuxSmartClipboard {
     /// Inner clipboard protected by a Mutex for thread safety.
     clipboard: Mutex<Clipboard>,
+}
+
+impl std::fmt::Debug for LinuxSmartClipboard {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("LinuxSmartClipboard")
+            .field("clipboard", &"Mutex<Clipboard>")
+            .finish()
+    }
 }
 
 impl LinuxSmartClipboard {
