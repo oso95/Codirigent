@@ -1,0 +1,126 @@
+<?xml version='1.0' encoding='windows-1252'?>
+<!--
+    Codirigent Windows Installer (MSI)
+    Built with WiX Toolset v3
+    Variables passed from CI:
+      - BinaryPath: path to directory containing codirigent.exe
+      - Version: semver in x.y.z.0 format
+      - LicensePath: path to License.rtf
+-->
+<Wix xmlns='http://schemas.microsoft.com/wix/2006/wi'>
+    <Product
+        Id='*'
+        Name='Codirigent'
+        UpgradeCode='F7A5E3D2-8B1C-4E6F-9A0D-3C2B1E4F5A6D'
+        Manufacturer='Codirigent Contributors'
+        Language='1033'
+        Codepage='1252'
+        Version='$(var.Version)'>
+
+        <Package
+            Id='*'
+            Keywords='Installer'
+            Description='AI Coding Agent Orchestration IDE'
+            Manufacturer='Codirigent Contributors'
+            InstallerVersion='450'
+            Languages='1033'
+            Compressed='yes'
+            InstallScope='perMachine'
+            SummaryCodepage='1252'
+            Platform='x64'/>
+
+        <MajorUpgrade
+            Schedule='afterInstallInitialize'
+            DowngradeErrorMessage='A newer version of [ProductName] is already installed.'/>
+
+        <Media Id='1' Cabinet='media1.cab' EmbedCab='yes'/>
+
+        <!-- App icon in Add/Remove Programs -->
+        <Icon Id='ProductICO' SourceFile='assets\icons\app-icon.ico'/>
+        <Property Id='ARPPRODUCTICON' Value='ProductICO'/>
+        <Property Id='WIXUI_INSTALLDIR' Value='APPLICATIONFOLDER'/>
+
+        <!-- Directory structure -->
+        <Directory Id='TARGETDIR' Name='SourceDir'>
+            <Directory Id='ProgramFiles64Folder'>
+                <Directory Id='APPLICATIONFOLDER' Name='Codirigent'>
+
+                    <Component Id='binary' Guid='*' Win64='yes'>
+                        <File
+                            Id='exe'
+                            Name='codirigent.exe'
+                            Source='$(var.BinaryPath)\codirigent.exe'
+                            KeyPath='yes'/>
+                    </Component>
+
+                    <Component Id='path_env' Guid='B2C3D4E5-6F7A-489C-AD1E-2F3A4B5C6D7E' Win64='yes' KeyPath='yes'>
+                        <Environment
+                            Id='PATH'
+                            Name='PATH'
+                            Value='[APPLICATIONFOLDER]'
+                            Permanent='no'
+                            Part='last'
+                            Action='set'
+                            System='yes'/>
+                    </Component>
+
+                </Directory>
+            </Directory>
+
+            <Directory Id='ProgramMenuFolder'>
+                <Directory Id='ApplicationProgramsFolder' Name='Codirigent'/>
+            </Directory>
+        </Directory>
+
+        <!-- Start Menu shortcut -->
+        <DirectoryRef Id='ApplicationProgramsFolder'>
+            <Component Id='StartMenuShortcut' Guid='*' Win64='yes'>
+                <Shortcut
+                    Id='AppStartMenuShortcut'
+                    Name='Codirigent'
+                    Description='AI Coding Agent Orchestration IDE'
+                    Target='[APPLICATIONFOLDER]codirigent.exe'
+                    WorkingDirectory='APPLICATIONFOLDER'
+                    Icon='ProductICO'/>
+                <RemoveFolder Id='CleanUpShortCut' On='uninstall'/>
+                <RegistryValue
+                    Root='HKCU'
+                    Key='Software\Codirigent'
+                    Name='installed'
+                    Type='integer'
+                    Value='1'
+                    KeyPath='yes'/>
+            </Component>
+        </DirectoryRef>
+
+        <!-- Features -->
+        <Feature
+            Id='MainFeature'
+            Title='Codirigent'
+            Description='Install Codirigent application'
+            Level='1'
+            ConfigurableDirectory='APPLICATIONFOLDER'
+            AllowAdvertise='no'
+            Absent='disallow'>
+
+            <ComponentRef Id='binary'/>
+            <ComponentRef Id='StartMenuShortcut'/>
+
+            <Feature
+                Id='PathFeature'
+                Title='Add to PATH'
+                Description='Add installation directory to system PATH'
+                Level='1'
+                Absent='allow'>
+                <ComponentRef Id='path_env'/>
+            </Feature>
+        </Feature>
+
+        <!-- Installer UI -->
+        <UI>
+            <UIRef Id='WixUI_InstallDir'/>
+        </UI>
+
+        <WixVariable Id='WixUILicenseRtf' Value='$(var.LicensePath)'/>
+    </Product>
+</Wix>

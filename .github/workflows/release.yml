@@ -74,40 +74,123 @@ jobs:
       - name: Build
         run: cargo build --profile dist --features gpui-full --target ${{ matrix.target }}
 
-      - name: Determine archive name
-        id: archive
+      - name: Determine version
+        id: meta
         shell: bash
         run: |
-          VERSION="${GITHUB_REF_NAME}"
-          ARCHIVE_NAME="codirigent-${VERSION}-${{ matrix.target }}"
-          echo "name=${ARCHIVE_NAME}" >> "$GITHUB_OUTPUT"
+          VERSION="${GITHUB_REF_NAME#v}"
           echo "version=${VERSION}" >> "$GITHUB_OUTPUT"
+          echo "archive_name=codirigent-v${GITHUB_REF_NAME#v}-${{ matrix.target }}" >> "$GITHUB_OUTPUT"
 
-      # Package: zip on Windows, tar.gz on Unix
-      - name: Package (Windows)
+      # ── Archives (all platforms) ──────────────────────────────────────
+
+      - name: Package (Windows zip)
         if: matrix.archive == 'zip'
         shell: bash
         run: |
-          mkdir -p staging
+          mkdir -p dist staging
           cp "target/${{ matrix.target }}/dist/codirigent${{ matrix.ext }}" staging/
-          cd staging
-          7z a "../${{ steps.archive.outputs.name }}.zip" .
+          cd staging && 7z a "../dist/${{ steps.meta.outputs.archive_name }}.zip" .
 
-      - name: Package (Unix)
+      - name: Package (Unix tar.gz)
         if: matrix.archive == 'tar.gz'
         run: |
-          mkdir -p staging
+          mkdir -p dist staging
           cp "target/${{ matrix.target }}/dist/codirigent${{ matrix.ext }}" staging/
-          cd staging
-          tar czf "../${{ steps.archive.outputs.name }}.tar.gz" .
+          cd staging && tar czf "../dist/${{ steps.meta.outputs.archive_name }}.tar.gz" .
 
-      - name: Upload artifact
+      # ── Windows MSI installer ─────────────────────────────────────────
+
+      - name: Generate License.rtf
+        if: runner.os == 'Windows'
+        shell: powershell
+        run: |
+          $text = Get-Content LICENSE -Raw
+          $escaped = $text -replace '\\','\\' -replace '\{','\{' -replace '\}','\}'
+          $lines = $escaped -split "`r?`n"
+          $body = ($lines | ForEach-Object { $_ + '\par' }) -join "`r`n"
+          $rtf = "{\rtf1\ansi\deff0{\fonttbl{\f0\fmodern Consolas;}}`r`n\f0\fs16`r`n" + $body + "`r`n}"
+          [System.IO.File]::WriteAllText("wix\License.rtf", $rtf, [System.Text.Encoding]::ASCII)
+
+      - name: Add WiX to PATH
+        if: runner.os == 'Windows'
+        shell: powershell
+        run: |
+          echo "${env:WIX}bin" | Out-File -FilePath $env:GITHUB_PATH -Append
+
+      - name: Build MSI installer
+        if: runner.os == 'Windows'
+        shell: cmd
+        run: |
+          set VERSION=${{ steps.meta.outputs.version }}.0
+          set BINARY_PATH=target\${{ matrix.target }}\dist
+          candle.exe -dBinaryPath=%BINARY_PATH% -dVersion=%VERSION% -dLicensePath=wix\License.rtf -arch x64 wix\main.wxs -o wix\main.wixobj
+          light.exe -ext WixUIExtension wix\main.wixobj -o dist\${{ steps.meta.outputs.archive_name }}.msi
+
+      # ── macOS DMG installer ───────────────────────────────────────────
+
+      - name: Create macOS app bundle and DMG
+        if: runner.os == 'macOS'
+        run: |
+          VERSION="${{ steps.meta.outputs.version }}"
+          BUNDLE="Codirigent.app"
+
+          # Create .app bundle structure
+          mkdir -p "${BUNDLE}/Contents/MacOS"
+          mkdir -p "${BUNDLE}/Contents/Resources"
+          cp "target/${{ matrix.target }}/dist/codirigent" "${BUNDLE}/Contents/MacOS/"
+
+          # Info.plist
+          cat > "${BUNDLE}/Contents/Info.plist" << PLIST
+          <?xml version="1.0" encoding="UTF-8"?>
+          <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+          <plist version="1.0">
+          <dict>
+              <key>CFBundleDevelopmentRegion</key><string>en</string>
+              <key>CFBundleExecutable</key><string>codirigent</string>
+              <key>CFBundleIconFile</key><string>AppIcon</string>
+              <key>CFBundleIdentifier</key><string>com.codirigent.app</string>
+              <key>CFBundleInfoDictionaryVersion</key><string>6.0</string>
+              <key>CFBundleName</key><string>Codirigent</string>
+              <key>CFBundlePackageType</key><string>APPL</string>
+              <key>CFBundleShortVersionString</key><string>${VERSION}</string>
+              <key>CFBundleVersion</key><string>${VERSION}</string>
+              <key>LSMinimumSystemVersion</key><string>13.0</string>
+              <key>NSHighResolutionCapable</key><true/>
+          </dict>
+          </plist>
+          PLIST
+
+          # Generate .icns from PNG
+          ICON_SRC="assets/icons/app-icon-preview.png"
+          ICONSET="AppIcon.iconset"
+          mkdir -p "${ICONSET}"
+          sips -z 16 16     "${ICON_SRC}" --out "${ICONSET}/icon_16x16.png"
+          sips -z 32 32     "${ICON_SRC}" --out "${ICONSET}/icon_16x16@2x.png"
+          sips -z 32 32     "${ICON_SRC}" --out "${ICONSET}/icon_32x32.png"
+          sips -z 64 64     "${ICON_SRC}" --out "${ICONSET}/icon_32x32@2x.png"
+          sips -z 128 128   "${ICON_SRC}" --out "${ICONSET}/icon_128x128.png"
+          sips -z 256 256   "${ICON_SRC}" --out "${ICONSET}/icon_128x128@2x.png"
+          sips -z 256 256   "${ICON_SRC}" --out "${ICONSET}/icon_256x256.png"
+          sips -z 512 512   "${ICON_SRC}" --out "${ICONSET}/icon_256x256@2x.png"
+          sips -z 512 512   "${ICON_SRC}" --out "${ICONSET}/icon_512x512.png"
+          sips -z 1024 1024 "${ICON_SRC}" --out "${ICONSET}/icon_512x512@2x.png"
+          iconutil -c icns "${ICONSET}" -o "${BUNDLE}/Contents/Resources/AppIcon.icns"
+
+          # Create DMG with Applications symlink (drag-to-install)
+          mkdir -p dmg-staging
+          cp -r "${BUNDLE}" dmg-staging/
+          ln -s /Applications dmg-staging/Applications
+          hdiutil create -volname "Codirigent" -srcfolder dmg-staging -ov -format UDZO \
+            "dist/${{ steps.meta.outputs.archive_name }}.dmg"
+
+      # ── Upload all artifacts ──────────────────────────────────────────
+
+      - name: Upload artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: ${{ steps.archive.outputs.name }}
-          path: |
-            ${{ steps.archive.outputs.name }}.zip
-            ${{ steps.archive.outputs.name }}.tar.gz
+          name: release-${{ matrix.target }}
+          path: dist/
           if-no-files-found: error
 
   release:
@@ -126,7 +209,7 @@ jobs:
       - name: Generate checksums
         run: |
           cd artifacts
-          sha256sum *.tar.gz *.zip > checksums-sha256.txt
+          sha256sum * > checksums-sha256.txt
           cat checksums-sha256.txt
 
       - name: Create GitHub Release
