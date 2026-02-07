@@ -108,3 +108,9 @@ winresource = "0.1"
 [dev-dependencies]
 tempfile.workspace = true
 
+# Optimized profile for distribution builds
+[profile.dist]
+inherits = "release"
+lto = "thin"
+strip = true
+

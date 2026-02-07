@@ -1,0 +1,139 @@
+name: Release
+
+permissions:
+  contents: write
+
+on:
+  push:
+    tags:
+      - "v*"
+
+env:
+  CARGO_TERM_COLOR: always
+  RUST_BACKTRACE: 1
+
+jobs:
+  build:
+    name: Build (${{ matrix.name }})
+    runs-on: ${{ matrix.runner }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: Windows x64
+            runner: windows-latest
+            target: x86_64-pc-windows-msvc
+            archive: zip
+            ext: .exe
+
+          - name: macOS Intel
+            runner: macos-13
+            target: x86_64-apple-darwin
+            archive: tar.gz
+            ext: ""
+
+          - name: macOS Apple Silicon
+            runner: macos-14
+            target: aarch64-apple-darwin
+            archive: tar.gz
+            ext: ""
+
+          - name: Linux x64
+            runner: ubuntu-22.04
+            target: x86_64-unknown-linux-gnu
+            archive: tar.gz
+            ext: ""
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.target }}
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          key: ${{ matrix.target }}
+
+      # Linux: install system dependencies for GPUI (Vulkan, X11, Wayland, fonts)
+      - name: Install Linux dependencies
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            cmake pkg-config clang \
+            libssl-dev libfontconfig-dev libfreetype6-dev \
+            libvulkan-dev \
+            libx11-dev libx11-xcb-dev libxcb-render0-dev libxcb-xfixes0-dev \
+            libxkbcommon-dev libxkbcommon-x11-dev \
+            libwayland-dev wayland-protocols \
+            libasound2-dev libzstd-dev libgit2-dev libsqlite3-dev \
+            libstdc++-12-dev
+
+      - name: Build
+        run: cargo build --profile dist --features gpui-full --target ${{ matrix.target }}
+
+      - name: Determine archive name
+        id: archive
+        shell: bash
+        run: |
+          VERSION="${GITHUB_REF_NAME}"
+          ARCHIVE_NAME="codirigent-${VERSION}-${{ matrix.target }}"
+          echo "name=${ARCHIVE_NAME}" >> "$GITHUB_OUTPUT"
+          echo "version=${VERSION}" >> "$GITHUB_OUTPUT"
+
+      # Package: zip on Windows, tar.gz on Unix
+      - name: Package (Windows)
+        if: matrix.archive == 'zip'
+        shell: bash
+        run: |
+          mkdir -p staging
+          cp "target/${{ matrix.target }}/dist/codirigent${{ matrix.ext }}" staging/
+          cd staging
+          7z a "../${{ steps.archive.outputs.name }}.zip" .
+
+      - name: Package (Unix)
+        if: matrix.archive == 'tar.gz'
+        run: |
+          mkdir -p staging
+          cp "target/${{ matrix.target }}/dist/codirigent${{ matrix.ext }}" staging/
+          cd staging
+          tar czf "../${{ steps.archive.outputs.name }}.tar.gz" .
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ steps.archive.outputs.name }}
+          path: |
+            ${{ steps.archive.outputs.name }}.zip
+            ${{ steps.archive.outputs.name }}.tar.gz
+          if-no-files-found: error
+
+  release:
+    name: Create Release
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Download all artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+          merge-multiple: true
+
+      - name: Generate checksums
+        run: |
+          cd artifacts
+          sha256sum *.tar.gz *.zip > checksums-sha256.txt
+          cat checksums-sha256.txt
+
+      - name: Create GitHub Release
+        uses: ncipollo/release-action@v1
+        with:
+          artifacts: "artifacts/*"
+          token: ${{ secrets.GITHUB_TOKEN }}
+          draft: false
+          generateReleaseNotes: true
+          prerelease: ${{ contains(github.ref, 'alpha') || contains(github.ref, 'beta') || contains(github.ref, 'rc') }}
