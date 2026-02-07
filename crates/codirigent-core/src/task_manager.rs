@@ -289,6 +289,42 @@ impl TaskManager {
         Ok(())
     }
 
+    /// Update an existing task's editable fields (title, description, priority, plan_file).
+    ///
+    /// Preserves the task's status, assignment, and other runtime state.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the task doesn't exist or saving fails.
+    pub fn update_task(
+        &mut self,
+        id: &TaskId,
+        title: String,
+        description: String,
+        priority: TaskPriority,
+        plan_file: Option<String>,
+        project_dir: Option<std::path::PathBuf>,
+    ) -> Result<()> {
+        let task = self
+            .queue
+            .get_task_mut(id)
+            .ok_or_else(|| anyhow!("Task {} not found", id))?;
+
+        task.title = title;
+        task.description = description;
+        task.priority = priority;
+        task.plan_file = plan_file;
+        task.project_dir = project_dir;
+
+        // Persist
+        let task_ref = self
+            .queue
+            .get_task(id)
+            .ok_or_else(|| anyhow!("Task {} not found after update", id))?;
+        self.storage.save_task(task_ref)?;
+        Ok(())
+    }
+
     /// Get queued tasks.
     ///
     /// Returns tasks with `Queued` status.
@@ -368,6 +404,28 @@ impl TaskManager {
         self.queue.assign_task(task_id, session_id)?;
 
         Ok(pending.prompt)
+    }
+
+    /// Directly assign a task to a session (manual assignment).
+    ///
+    /// Bypasses the pending assignment mechanism — generates the prompt
+    /// and assigns immediately. Use this when the user explicitly clicks
+    /// "Assign" on a task card.
+    pub fn direct_assign(
+        &mut self,
+        task_id: &TaskId,
+        session_id: SessionId,
+    ) -> Result<String> {
+        let task = self
+            .queue
+            .get_task(task_id)
+            .ok_or_else(|| anyhow::anyhow!("Task {} not found", task_id))?;
+
+        let prompt = self.assignment.generate_prompt(task);
+
+        self.queue.assign_task(task_id, session_id)?;
+
+        Ok(prompt)
     }
 
     /// Reject a pending assignment.
@@ -507,6 +565,34 @@ impl TaskManager {
 
         let prompt = self.assignment.generate_prompt(task);
         Ok(prompt)
+    }
+
+    /// Move a task to review status.
+    ///
+    /// Transitions a task from InProgress/Working to Review, indicating
+    /// it needs human review before completion.
+    ///
+    /// # Arguments
+    ///
+    /// * `task_id` - The task to move to review
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the task doesn't exist.
+    pub fn move_to_review(&mut self, task_id: &TaskId) -> Result<()> {
+        let task = self
+            .queue
+            .get_task_mut(task_id)
+            .ok_or_else(|| anyhow!("Task {} not found", task_id))?;
+        task.status = TaskStatus::Review;
+
+        // Persist the updated task
+        let task_ref = self
+            .queue
+            .get_task(task_id)
+            .ok_or_else(|| anyhow!("Task {} not found after update", task_id))?;
+        self.storage.save_task(task_ref)?;
+        Ok(())
     }
 
     /// Mark a task as reviewed and done.

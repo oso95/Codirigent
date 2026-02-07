@@ -600,14 +600,14 @@ mod tests {
     }
 
     #[test]
-    fn test_session_cli_type_default_is_claude() {
+    fn test_session_cli_type_default_is_generic_shell() {
         let (service, _temp_dir) = create_test_service();
 
         let cli_type = service.get_session_cli_type(SessionId(1));
-        assert_eq!(cli_type, CliType::ClaudeCode);
+        assert_eq!(cli_type, CliType::GenericShell);
 
         let cli_type = service.get_session_cli_type(SessionId(999));
-        assert_eq!(cli_type, CliType::ClaudeCode);
+        assert_eq!(cli_type, CliType::GenericShell);
     }
 
     #[test]

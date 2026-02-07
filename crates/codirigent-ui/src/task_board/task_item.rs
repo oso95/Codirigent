@@ -325,7 +325,7 @@ pub struct TaskItemRenderHints {
 
 impl TaskItem {
     /// Default item height.
-    pub const DEFAULT_HEIGHT: f32 = 48.0;
+    pub const DEFAULT_HEIGHT: f32 = 72.0;
 
     /// Generate rendering hints.
     pub fn render_hints(&self) -> TaskItemRenderHints {

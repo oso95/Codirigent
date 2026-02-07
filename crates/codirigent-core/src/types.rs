@@ -52,6 +52,31 @@ pub enum SessionStatus {
     Error,
 }
 
+/// Shell command lifecycle state from OSC 133 (FinalTerm protocol) markers.
+///
+/// Modern shells emit these markers to signal prompt/command lifecycle,
+/// enabling reliable idle detection without process-state heuristics.
+///
+/// # State Mapping
+///
+/// - `PromptStart` / `CommandInputStart` → shell is idle
+/// - `CommandExecuted` → command is running
+/// - `CommandFinished` → command done (brief transition before next prompt)
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum ShellState {
+    /// Prompt is being displayed (133;A) — shell is idle.
+    PromptStart,
+    /// User can type a command (133;B) — still idle.
+    CommandInputStart,
+    /// Command is executing (133;C) — working.
+    CommandExecuted,
+    /// Command finished (133;D) with optional exit code.
+    CommandFinished {
+        /// The exit code of the finished command, if reported.
+        exit_code: Option<i32>,
+    },
+}
+
 /// Context threshold state for context window tracking.
 ///
 /// Represents the current state relative to configured thresholds.

@@ -79,18 +79,18 @@ use std::path::PathBuf;
 /// use codirigent_core::clipboard_types::CliType;
 ///
 /// let cli = CliType::default();
-/// assert_eq!(cli, CliType::ClaudeCode);
+/// assert_eq!(cli, CliType::GenericShell);
 /// ```
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
 pub enum CliType {
-    /// Claude Code CLI (default).
-    #[default]
+    /// Claude Code CLI.
     ClaudeCode,
     /// Gemini CLI - uses @ prefix for file references.
     GeminiCli,
     /// Codex CLI.
     CodexCli,
-    /// Generic shell or unknown CLI.
+    /// Generic shell or unknown CLI (default for new sessions).
+    #[default]
     GenericShell,
 }
 
@@ -442,8 +442,8 @@ mod tests {
     }
 
     #[test]
-    fn test_cli_type_default_is_claude() {
-        assert_eq!(CliType::default(), CliType::ClaudeCode);
+    fn test_cli_type_default_is_generic_shell() {
+        assert_eq!(CliType::default(), CliType::GenericShell);
     }
 
     #[test]

@@ -352,6 +352,13 @@ impl TaskQueue {
         self.tasks.get(id)
     }
 
+    /// Get a mutable reference to a task by ID.
+    ///
+    /// Used for in-place status updates (e.g., moving to review).
+    pub fn get_task_mut(&mut self, id: &TaskId) -> Option<&mut Task> {
+        self.tasks.get_mut(id)
+    }
+
     /// Add a task to the queue.
     ///
     /// The task is inserted into the queue order based on the current

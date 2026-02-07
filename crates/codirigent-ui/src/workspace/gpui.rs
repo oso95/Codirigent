@@ -171,7 +171,7 @@ pub struct WorkspaceView {
     /// Click deduplication: track last click position and time to prevent double-creation.
     last_click_position: Option<(GridPosition, Instant)>,
     /// Current git branch name (if in a git repository).
-    pub(super) current_branch: Option<String>,
+    pub(super) _current_branch: Option<String>,
     /// Last time terminals were resized to grid (for throttling during drag).
     last_resize_time: Instant,
     /// Whether a deferred resize is pending.
@@ -333,7 +333,7 @@ impl WorkspaceView {
             worktree_panel: WorktreePanel::new(),
             worktree_manager: Self::init_worktree_manager(),
             last_click_position: None,
-            current_branch: Self::detect_git_branch(),
+            _current_branch: Self::detect_git_branch(),
             last_resize_time: Instant::now(),
             pending_resize: false,
             last_poll_had_output: false,

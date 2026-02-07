@@ -12,7 +12,7 @@ use crate::components::text_input::{text_input, TextInputStyle};
 use crate::empty_session::EmptySessionRenderHints;
 use crate::terminal_header::TerminalHeaderRenderHints;
 use crate::theme::CodirigentTheme;
-use codirigent_core::{Session, SessionId, SessionStatus};
+use codirigent_core::{Session, SessionId};
 use crate::icons;
 use crate::layout::LayoutProfile;
 use crate::title_bar::TitleBar;
@@ -722,7 +722,7 @@ impl WorkspaceView {
         let fg: gpui::Hsla = theme.foreground.into();
         let muted: gpui::Hsla = theme.muted.into();
         let active: gpui::Hsla = theme.active.into();
-        let primary: gpui::Hsla = theme.primary.into();
+        let _primary: gpui::Hsla = theme.primary.into();
 
         // Clone tab data and state before building the element tree
         let tabs: Vec<(usize, String, bool)> = self
@@ -3598,7 +3598,7 @@ impl WorkspaceView {
             .and_then(|id| sessions.iter().find(|s| s.id == id))
             .or_else(|| sessions.first());
 
-        let (dir_name, has_git_info) = match session {
+        let (dir_name, _has_git_info) = match session {
             Some(s) => {
                 let dir_name = s
                     .working_directory
