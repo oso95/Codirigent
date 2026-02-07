@@ -35,6 +35,8 @@ pub struct TerminalHeader {
     pub git_branch: Option<String>,
     /// Git dirty file count (if in a git repo).
     pub git_dirty_count: Option<usize>,
+    /// Group name (if session is in a group).
+    pub group_name: Option<String>,
 }
 
 impl Default for TerminalHeader {
@@ -52,6 +54,7 @@ impl Default for TerminalHeader {
             ai_summary: None,
             git_branch: None,
             git_dirty_count: None,
+            group_name: None,
         }
     }
 }
@@ -112,6 +115,12 @@ impl TerminalHeader {
     pub fn with_git_info(mut self, branch: String, dirty: usize) -> Self {
         self.git_branch = Some(branch);
         self.git_dirty_count = Some(dirty);
+        self
+    }
+
+    /// Set the group name.
+    pub fn with_group_name(mut self, name: impl Into<String>) -> Self {
+        self.group_name = Some(name.into());
         self
     }
 
@@ -326,6 +335,8 @@ pub struct TerminalHeaderRenderHints {
     pub git_branch: Option<String>,
     /// Git dirty file count.
     pub git_dirty_count: Option<usize>,
+    /// Group name (if session is in a group).
+    pub group_name: Option<String>,
 }
 
 impl TerminalHeader {
@@ -348,6 +359,7 @@ impl TerminalHeader {
             ai_summary: self.ai_summary.clone(),
             git_branch: self.git_branch.clone(),
             git_dirty_count: self.git_dirty_count,
+            group_name: self.group_name.clone(),
         }
     }
 }

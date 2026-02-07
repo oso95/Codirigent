@@ -102,6 +102,9 @@ default = []
 gpui-full = ["codirigent-ui/gpui-full"]
 terminal = ["codirigent-ui/terminal"]
 
+[build-dependencies]
+winresource = "0.1"
+
 [dev-dependencies]
 tempfile.workspace = true
 

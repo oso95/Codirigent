@@ -34,13 +34,11 @@ use crate::toolbar::CustomLayoutPicker;
 use crate::layout::LayoutProfile;
 // Core imports (combined)
 use codirigent_core::{
-    CodirigentEvent, DefaultEventBus, EventBus, GridPosition, ProcessMonitor, Session, SessionId,
-    SessionManager, SessionStatus, TaskManager, TaskManagerConfig, Task, TaskId,
+    AssignmentAction, CodirigentEvent, DefaultEventBus, EventBus, GridPosition, ProcessMonitor,
+    Session, SessionId, SessionManager, SessionStatus, TaskManager, TaskManagerConfig, Task, TaskId,
     FileStorageService, WorktreeCreateOptions,
 };
 use codirigent_core::config_service::{ConfigService, DefaultConfigService};
-use codirigent_core::context::{ContextConfig, ContextTracker};
-use codirigent_core::storage::ContextFileData;
 use codirigent_filetree::FileTree;
 use codirigent_detector::InputDetector;
 use codirigent_session::DefaultSessionManager;
@@ -65,6 +63,20 @@ use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 use tracing::{info, warn};
 
+/// Predefined group color palette for visual distinction.
+const GROUP_COLOR_PALETTE: &[&str] = &[
+    "#f43f5e", // Rose
+    "#8b5cf6", // Violet
+    "#06b6d4", // Cyan
+    "#f59e0b", // Amber
+    "#10b981", // Emerald
+    "#ec4899", // Pink
+    "#3b82f6", // Blue
+    "#84cc16", // Lime
+    "#ef4444", // Red
+    "#14b8a6", // Teal
+];
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(super) enum SessionActionKind {
     Rename,
@@ -88,6 +100,8 @@ pub(super) struct TaskCreationModal {
     pub(super) error: Option<String>,
     pub(super) project_dir: Option<PathBuf>,
     pub(super) plan_file: String,
+    /// When editing an existing task, holds the task ID. None for new tasks.
+    pub(super) editing_task_id: Option<TaskId>,
 }
 
 /// Context menu state for file tree right-click.
@@ -178,6 +192,10 @@ pub struct WorkspaceView {
     pub(super) file_tree_context_menu: Option<FileTreeContextMenu>,
     /// Clipboard service for image save/format operations.
     clipboard_service: DefaultClipboardService,
+    /// Sessions that have received at least one manual task assignment.
+    /// Auto-assign is blocked until the user manually assigns a task once,
+    /// since a freshly-started CLI may need auth, config, or other user input first.
+    manually_assigned_sessions: std::collections::HashSet<SessionId>,
     /// Clipboard preview tooltip component.
     pub(super) clipboard_preview: ClipboardPreview,
     /// When the clipboard preview was shown (for auto-dismiss after timeout).
@@ -192,10 +210,8 @@ pub struct WorkspaceView {
     pub(super) settings_open: bool,
     /// Config service for loading/saving settings to disk.
     config_service: Option<DefaultConfigService>,
-    /// Context tracker for detecting context usage from CLI output (regex fallback).
-    context_tracker: ContextTracker,
-    /// Last time context files were polled.
-    last_context_poll: Instant,
+    /// Storage service for persisting sessions across restarts.
+    storage: Arc<dyn codirigent_core::StorageService>,
 }
 
 impl WorkspaceView {
@@ -266,7 +282,7 @@ impl WorkspaceView {
 
         let task_manager = Arc::new(Mutex::new(TaskManager::new(
             TaskManagerConfig::default(),
-            storage,
+            storage.clone(),
             event_bus.clone() as Arc<dyn codirigent_core::EventBus>,
         )));
 
@@ -333,6 +349,7 @@ impl WorkspaceView {
                     .unwrap_or_else(|| std::path::Path::new("."))
                     .join(".codirigent"),
             ),
+            manually_assigned_sessions: std::collections::HashSet::new(),
             clipboard_preview: ClipboardPreview::new(theme_for_clipboard),
             clipboard_preview_shown_at: None,
             is_selecting: false,
@@ -340,9 +357,11 @@ impl WorkspaceView {
             settings_page: None,
             settings_open: false,
             config_service: DefaultConfigService::new().ok(),
-            context_tracker: ContextTracker::new(ContextConfig::default()),
-            last_context_poll: Instant::now(),
+            storage: storage.clone(),
         };
+
+        // Restore sessions from previous run
+        view.restore_sessions_from_disk(cx);
 
         view.refresh_file_tree_panel();
         view.refresh_worktree_panel();
@@ -473,22 +492,24 @@ impl WorkspaceView {
                     any_dirty = true;
                 }
 
+                // Detect CLI type from output banners
+                if let Some(cli_type) = Self::detect_cli_from_output(&data) {
+                    let current = self.clipboard_service.get_session_cli_type(session_id);
+                    if current == codirigent_core::CliType::GenericShell {
+                        self.clipboard_service.set_session_cli_type(session_id, cli_type);
+                        info!(?session_id, ?cli_type, "Detected CLI type from output");
+                    }
+                }
+
                 // Feed output to detector for status detection
                 {
                     let mut detector = self.detector.lock().unwrap();
                     detector.process_output(session_id, &data);
-                }
 
-                // Regex fallback: detect context usage from PTY output
-                // (used for CLIs without hook support, e.g. Codex)
-                {
-                    let output_str = String::from_utf8_lossy(&data);
-                    if let Some(event) = self.context_tracker.detect_from_output(session_id, &output_str) {
-                        self.event_bus.publish(event);
-                    }
-                    if let Some(usage) = self.context_tracker.get_usage(session_id) {
-                        let manager = self.session_manager.lock().unwrap();
-                        manager.update_context_usage(session_id, Some(usage.effective_usage));
+                    // Parse OSC 133 shell state markers for reliable idle detection
+                    let shell_events = codirigent_session::extract_osc133_events(&data);
+                    for event in shell_events {
+                        detector.set_shell_state(session_id, event);
                     }
                 }
 
@@ -538,12 +559,21 @@ impl WorkspaceView {
             }
 
             // Update session status from detector
-            let status = {
+            let (status, idle_time) = {
                 let detector = self.detector.lock().unwrap();
-                detector.get_status(session_id)
+                (detector.get_status(session_id), detector.get_idle_time(session_id))
             };
             if let Some(status) = status {
+                // DEBUG: log status + idle time every ~2 seconds
+                if self.idle_poll_count % 120 == 0 {
+                    info!(?session_id, ?status, ?idle_time, "Session status poll");
+                }
                 self.workspace.update_session_status(session_id, status);
+
+                // Trigger auto-assignment when session becomes Idle or WaitingForInput
+                if matches!(status, SessionStatus::Idle | SessionStatus::WaitingForInput) {
+                    self.try_auto_assign(session_id);
+                }
             }
         }
 
@@ -573,62 +603,6 @@ impl WorkspaceView {
             };
             self.workspace.sync_sessions_from_manager(&manager_sessions);
             any_dirty = true;
-        }
-
-        // Poll context files every ~1 second (file-based IPC from CLI hooks).
-        // This is the primary context tracking mechanism; regex fallback above
-        // handles CLIs without hook support.
-        if self.last_context_poll.elapsed() >= Duration::from_secs(1) {
-            self.last_context_poll = Instant::now();
-
-            // Collect (session_id, context_file_path) pairs while holding lock briefly
-            let context_paths: Vec<(SessionId, std::path::PathBuf)> = {
-                let manager = self.session_manager.lock().unwrap();
-                self.workspace
-                    .sessions()
-                    .iter()
-                    .filter_map(|s| {
-                        manager
-                            .get_context_file_path(s.id)
-                            .map(|path| (s.id, path))
-                    })
-                    .collect()
-            };
-
-            // Read files without holding the manager lock (non-blocking I/O)
-            let mut updates: Vec<(SessionId, f32)> = Vec::new();
-            for (id, path) in &context_paths {
-                if let Ok(content) = std::fs::read_to_string(path) {
-                    if let Ok(data) = serde_json::from_str::<ContextFileData>(&content) {
-                        updates.push((*id, data.usage.clamp(0.0, 1.0)));
-                    }
-                }
-            }
-
-            // Apply updates
-            if !updates.is_empty() {
-                {
-                    let manager = self.session_manager.lock().unwrap();
-                    for (id, usage) in &updates {
-                        manager.update_context_usage(*id, Some(*usage));
-                    }
-                }
-
-                // Sync workspace sessions so UI picks up new context_usage values
-                let manager_sessions = {
-                    let manager = self.session_manager.lock().unwrap();
-                    manager.list_sessions()
-                };
-                self.workspace.sync_sessions_from_manager(&manager_sessions);
-
-                // Update context tracker for threshold events
-                for (id, usage) in &updates {
-                    if let Some(event) = self.context_tracker.update_usage(*id, *usage) {
-                        self.event_bus.publish(event);
-                    }
-                }
-                any_dirty = true;
-            }
         }
 
         // Clipboard preview: show for 4 seconds whenever clipboard content changes and has an image.
@@ -670,6 +644,94 @@ impl WorkspaceView {
 
         if any_dirty {
             cx.notify();
+        }
+    }
+
+    /// Try to auto-assign a queued task to a session that just became idle.
+    ///
+    /// Checks whether auto-assign is enabled and a task is available, then
+    /// confirms the assignment, updates the session's `current_task`, and
+    /// sends the generated prompt to the session's PTY.
+    fn try_auto_assign(&mut self, session_id: SessionId) {
+        let session = match self.workspace.session(session_id) {
+            Some(s) => s.clone(),
+            None => return,
+        };
+
+        // Skip if session already has a task assigned
+        if session.current_task.is_some() {
+            return;
+        }
+
+        // Never auto-assign to bare shell sessions — CLI must be detected first
+        let cli_type = self.clipboard_service.get_session_cli_type(session_id);
+        if cli_type == codirigent_core::CliType::GenericShell {
+            return;
+        }
+
+        // Block auto-assign until the user has manually assigned at least once.
+        // A freshly-started CLI may need auth, config, or other user input first.
+        if !self.manually_assigned_sessions.contains(&session_id) {
+            return;
+        }
+
+        let action = {
+            let mut manager = match self.task_manager.lock() {
+                Ok(m) => m,
+                Err(_) => return,
+            };
+            manager.on_session_idle(&session)
+        };
+
+        match action {
+            Some(AssignmentAction::AssignNow {
+                task_id,
+                session_id: target_id,
+                prompt,
+            }) => {
+                // AssignNow already has the prompt — directly assign via queue
+                {
+                    let mut manager = match self.task_manager.lock() {
+                        Ok(m) => m,
+                        Err(_) => return,
+                    };
+                    if let Err(e) = manager.queue_mut().assign_task(&task_id, target_id) {
+                        warn!("Failed to assign task in queue: {}", e);
+                        return;
+                    }
+                }
+
+                // Update session's current_task in the session manager
+                if let Ok(mgr) = self.session_manager.lock() {
+                    mgr.with_session_state_mut(target_id, |state| {
+                        state.session.current_task = Some(task_id.clone());
+                    });
+                }
+
+                // Update workspace's cached copy
+                if let Some(ws_session) = self.workspace.session_mut(target_id) {
+                    ws_session.current_task = Some(task_id.clone());
+                }
+
+                // Send prompt to PTY (format based on CLI type)
+                let cli_type = self.clipboard_service.get_session_cli_type(target_id);
+                let input = Self::format_task_input(&prompt, cli_type);
+                if let Ok(mgr) = self.session_manager.lock() {
+                    if let Err(e) = mgr.send_input(target_id, input.as_bytes()) {
+                        warn!("Failed to send task prompt to session {}: {}", target_id, e);
+                    }
+                }
+
+                info!(?task_id, ?target_id, "Auto-assigned task to session");
+            }
+            Some(AssignmentAction::AwaitConfirmation {
+                task_id,
+                session_id: target_id,
+            }) => {
+                // TODO: Show confirmation UI (Phase 2)
+                info!(?task_id, ?target_id, "Task awaiting confirmation");
+            }
+            Some(AssignmentAction::NoTask) | None => {}
         }
     }
 
@@ -771,8 +833,12 @@ impl WorkspaceView {
             // so the shell knows the correct dimensions from the start
             self.resize_terminals_to_grid();
 
+            // Auto-select the newly created session for natural UX
+            self.select_session(session_id);
+
             // Event is already published by session manager
             info!(%name, "Created new session with PTY");
+            self.save_state_to_disk();
             cx.notify();
         }
     }
@@ -782,6 +848,122 @@ impl WorkspaceView {
         // For now, just create a regular session
         // In the future, this could assign the session to a specific grid slot
         self.create_session(cx);
+    }
+
+    /// Restore sessions from disk on startup.
+    fn restore_sessions_from_disk(&mut self, cx: &mut Context<Self>) {
+        let state = match self.storage.load_state() {
+            Ok(state) => state,
+            Err(e) => {
+                info!("No saved state to restore: {}", e);
+                return;
+            }
+        };
+
+        if state.sessions.is_empty() {
+            return;
+        }
+
+        info!(count = state.sessions.len(), "Restoring sessions from disk");
+
+        for saved in &state.sessions {
+            let working_dir = if saved.working_directory.exists() {
+                saved.working_directory.clone()
+            } else {
+                self.project_root
+                    .clone()
+                    .or_else(|| std::env::current_dir().ok())
+                    .unwrap_or_else(|| PathBuf::from("."))
+            };
+
+            let session_id = {
+                let manager = self.session_manager.lock().unwrap();
+                match manager.create_session(saved.name.clone(), working_dir.clone()) {
+                    Ok(id) => id,
+                    Err(e) => {
+                        warn!(name = %saved.name, "Failed to restore session: {}", e);
+                        continue;
+                    }
+                }
+            };
+
+            // Restore group/color
+            if saved.group.is_some() || saved.color.is_some() {
+                let manager = self.session_manager.lock().unwrap();
+                let _ = manager.set_session_group(
+                    session_id,
+                    saved.group.clone(),
+                    saved.color.clone(),
+                );
+            }
+
+            // Start monitoring
+            let child_pid = {
+                let manager = self.session_manager.lock().unwrap();
+                manager.get_child_pid(session_id)
+            };
+            if let Some(pid) = child_pid {
+                let mut detector = self.detector.lock().unwrap();
+                let _ = detector.start_monitoring(session_id, pid);
+            }
+
+            // Create terminal view
+            let terminal = Terminal::new(24, 80, session_id);
+            let theme = self.workspace.theme();
+            let terminal_view = TerminalView::new(terminal, theme.clone());
+            self.terminals.insert(session_id, terminal_view);
+
+            // Get session from manager (has git_info)
+            let session = {
+                let manager = self.session_manager.lock().unwrap();
+                manager.get_session(session_id).unwrap_or_else(|| {
+                    Session::new(session_id, saved.name.clone(), working_dir)
+                })
+            };
+
+            if self.workspace.add_session(session.clone()) {
+                let mut header = TerminalHeader::new(&saved.name, SessionStatus::Idle);
+                if let Some(ref gi) = session.git_info {
+                    header = header.with_git_info(gi.branch.clone(), gi.dirty_count);
+                }
+                if let Some(ref group) = saved.group {
+                    header.group_name = Some(group.clone());
+                }
+                if let Some(ref color) = saved.color {
+                    header.session_color = crate::sidebar::Color::from_hex(color);
+                }
+                self.terminal_headers.push((session_id, header));
+            }
+        }
+
+        self.resize_terminals_to_grid();
+
+        // Select the first restored session
+        if let Some(first_id) = self.workspace.sessions().first().map(|s| s.id) {
+            self.select_session(first_id);
+        }
+
+        info!("Session restoration complete");
+        cx.notify();
+    }
+
+    /// Save current session state to disk.
+    fn save_state_to_disk(&self) {
+        let sessions = {
+            let manager = self.session_manager.lock().unwrap();
+            manager.list_sessions()
+        };
+        let state = codirigent_core::AppState {
+            sessions,
+            layout: codirigent_core::LayoutMode::Grid {
+                rows: self.workspace.layout_profile().dimensions().0,
+                cols: self.workspace.layout_profile().dimensions().1,
+            },
+            updated_at: Some(chrono::Utc::now()),
+        };
+        if let Err(e) = self.storage.save_state(&state) {
+            warn!("Failed to save state: {}", e);
+        }
     }
 
     /// Close the focused session.
@@ -810,6 +992,7 @@ impl WorkspaceView {
             // Remove from workspace UI
             self.workspace.remove_session(id);
             info!(?id, "Closed session");
+            self.save_state_to_disk();
             cx.notify();
         }
     }
@@ -840,6 +1023,7 @@ impl WorkspaceView {
         self.workspace.remove_session(id);
         self.event_bus.publish(CodirigentEvent::SessionClosed { id });
         info!(?id, "Closed session");
+        self.save_state_to_disk();
         cx.notify();
     }
 
@@ -883,8 +1067,17 @@ impl WorkspaceView {
                 header.status = session.status;
                 header.context_usage = session.context_usage;
                 header.is_focused = focused_id == Some(session.id);
-                if let Some(task) = &session.current_task {
-                    header.task = Some(task.0.clone());
+                header.group_name = session.group.clone();
+                if let Some(color_hex) = &session.color {
+                    header.session_color = crate::sidebar::Color::from_hex(color_hex);
+                }
+                if let Some(task_id) = &session.current_task {
+                    // Show task title instead of raw ID
+                    let title = self.task_manager.lock().ok()
+                        .and_then(|mgr| mgr.get_task(task_id).map(|t| t.title.clone()));
+                    header.task = Some(title.unwrap_or_else(|| task_id.0.clone()));
+                } else {
+                    header.task = None;
                 }
             }
         }
@@ -1151,36 +1344,163 @@ impl WorkspaceView {
 
                 let task_id = TaskId(task_id);
 
+                // Handle Edit outside the lock — it only needs to open a modal
+                if matches!(action, TaskAction::Edit) {
+                    info!("Edit action triggered for task {}", task_id);
+                    self.open_task_edit_modal(&task_id);
+                    cx.notify();
+                    return;
+                }
+
                 if let Ok(mut manager) = self.task_manager.lock() {
                     let result = match action {
                         TaskAction::Start => {
                             info!("Starting task {}", task_id);
                             manager.start_task(&task_id)
                         }
+                        TaskAction::Review => {
+                            // Move to Review status and release from session
+                            info!("Moving task {} to review", task_id);
+                            let r = manager.move_to_review(&task_id);
+                            if r.is_ok() {
+                                let assigned_session_id = self
+                                    .workspace
+                                    .sessions()
+                                    .iter()
+                                    .find(|s| s.current_task.as_ref() == Some(&task_id))
+                                    .map(|s| s.id);
+                                if let Some(sid) = assigned_session_id {
+                                    drop(manager);
+                                    if let Ok(mgr) = self.session_manager.lock() {
+                                        mgr.with_session_state_mut(sid, |state| {
+                                            state.session.current_task = None;
+                                        });
+                                    }
+                                    if let Some(session) = self.workspace.session_mut(sid) {
+                                        session.current_task = None;
+                                    }
+                                    cx.notify();
+                                    return;
+                                }
+                            }
+                            r
+                        }
                         TaskAction::Complete => {
-                            info!("Completing task {}", task_id);
-                            // Approve task directly (marks as done)
-                            manager.approve_task(&task_id)
+                            // Actually approve and complete the task
+                            info!("Approving task {}", task_id);
+                            let r = manager.approve_task(&task_id);
+                            if r.is_ok() {
+                                // Find session that had this task and clear current_task
+                                let assigned_session_id = self
+                                    .workspace
+                                    .sessions()
+                                    .iter()
+                                    .find(|s| s.current_task.as_ref() == Some(&task_id))
+                                    .map(|s| s.id);
+
+                                if let Some(sid) = assigned_session_id {
+                                    // Release task_manager before session_manager
+                                    drop(manager);
+                                    if let Ok(mgr) = self.session_manager.lock() {
+                                        mgr.with_session_state_mut(sid, |state| {
+                                            state.session.current_task = None;
+                                        });
+                                    }
+                                    if let Some(session) = self.workspace.session_mut(sid) {
+                                        session.current_task = None;
+                                    }
+                                    cx.notify();
+                                    return;
+                                }
+                            }
+                            r
                         }
                         TaskAction::Delete => {
                             info!("Deleting task {}", task_id);
-                            manager.delete_task(&task_id)
+                            let r = manager.delete_task(&task_id);
+                            if r.is_ok() {
+                                // Clear current_task from any session that had this task
+                                let assigned_session_id = self
+                                    .workspace
+                                    .sessions()
+                                    .iter()
+                                    .find(|s| s.current_task.as_ref() == Some(&task_id))
+                                    .map(|s| s.id);
+                                if let Some(sid) = assigned_session_id {
+                                    drop(manager);
+                                    if let Ok(mgr) = self.session_manager.lock() {
+                                        mgr.with_session_state_mut(sid, |state| {
+                                            state.session.current_task = None;
+                                        });
+                                    }
+                                    if let Some(session) = self.workspace.session_mut(sid) {
+                                        session.current_task = None;
+                                    }
+                                    cx.notify();
+                                    return;
+                                }
+                            }
+                            r
                         }
                         TaskAction::Assign => {
                             info!("Assign action triggered for task {}", task_id);
-                            // TODO: Show session picker dialog
-                            // For now, just log
-                            Ok(())
-                        }
-                        TaskAction::Review => {
-                            info!("Review action triggered for task {}", task_id);
-                            // Approve task (marks as reviewed and done)
-                            manager.approve_task(&task_id)
+                            // Only assign to sessions with a detected CLI running
+                            let target = self.find_assignable_session();
+
+                            if let Some(session) = target {
+                                match manager.direct_assign(&task_id, session.id) {
+                                    Ok(prompt) => {
+                                        // Check CLI type to decide how to send the prompt
+                                        let cli_type = self.clipboard_service
+                                            .get_session_cli_type(session.id);
+
+                                        // Release task_manager before session_manager
+                                        drop(manager);
+
+                                        // Build the command to send to the PTY
+                                        let input = Self::format_task_input(
+                                            &prompt, cli_type,
+                                        );
+
+                                        if let Ok(mgr) = self.session_manager.lock() {
+                                            mgr.with_session_state_mut(session.id, |state| {
+                                                state.session.current_task =
+                                                    Some(task_id.clone());
+                                            });
+                                            if let Err(e) =
+                                                mgr.send_input(session.id, input.as_bytes())
+                                            {
+                                                warn!("Failed to send task prompt: {}", e);
+                                            }
+                                        }
+                                        if let Some(ws_session) =
+                                            self.workspace.session_mut(session.id)
+                                        {
+                                            ws_session.current_task = Some(task_id.clone());
+                                        }
+                                        // Mark session as having received a manual assignment,
+                                        // which unlocks auto-assign for future tasks.
+                                        self.manually_assigned_sessions.insert(session.id);
+                                        info!(
+                                            "Manually assigned task {} to session {}",
+                                            task_id, session.id
+                                        );
+                                        cx.notify();
+                                        return;
+                                    }
+                                    Err(e) => {
+                                        warn!("Failed to assign task: {}", e);
+                                        Err(e)
+                                    }
+                                }
+                            } else {
+                                warn!("No session with an active CLI available for assignment");
+                                Ok(())
+                            }
                         }
                         TaskAction::Edit => {
-                            info!("Edit action triggered for task {}", task_id);
-                            // TODO: Open task edit dialog
-                            Ok(())
+                            // Handled above, before the lock
+                            unreachable!()
                         }
                     };
 
@@ -1429,6 +1749,21 @@ impl WorkspaceView {
         self.session_action_modal = None;
     }
 
+    /// Pick the next unused group color from the palette.
+    fn next_group_color(&self) -> String {
+        let used_colors: std::collections::HashSet<&str> = self
+            .workspace
+            .sessions()
+            .iter()
+            .filter_map(|s| s.color.as_deref())
+            .collect();
+        GROUP_COLOR_PALETTE
+            .iter()
+            .find(|c| !used_colors.contains(**c))
+            .unwrap_or(&GROUP_COLOR_PALETTE[0])
+            .to_string()
+    }
+
     pub(super) fn open_task_creation_modal(&mut self) {
         let project_dir = self.workspace.focused_session().and_then(|s| {
             s.git_info
@@ -1445,6 +1780,31 @@ impl WorkspaceView {
             error: None,
             project_dir,
             plan_file: String::new(),
+            editing_task_id: None,
+        });
+    }
+
+    /// Open the task modal pre-filled with an existing task's data for editing.
+    pub(super) fn open_task_edit_modal(&mut self, task_id: &TaskId) {
+        let task = match self.task_manager.lock() {
+            Ok(mgr) => mgr.get_task(task_id).cloned(),
+            Err(_) => None,
+        };
+
+        let Some(task) = task else {
+            warn!("Cannot edit task {}: not found", task_id);
+            return;
+        };
+
+        self.task_creation_modal = Some(TaskCreationModal {
+            title: task.title.clone(),
+            description: task.description.clone(),
+            priority: task.priority,
+            focused_field: 0,
+            error: None,
+            project_dir: task.project_dir.clone(),
+            plan_file: task.plan_file.clone().unwrap_or_default(),
+            editing_task_id: Some(task_id.clone()),
         });
     }
 
@@ -1469,34 +1829,63 @@ impl WorkspaceView {
             return;
         }
 
-        // Create task
-        let task_id = TaskId(format!("task-{}", self.next_session_id));
-        self.next_session_id += 1;
-
-        let mut task = Task::new(task_id.clone(), title, description);
-        task.priority = modal.priority;
-        task.project_dir = modal.project_dir.clone();
-        task.plan_file = if modal.plan_file.trim().is_empty() {
+        let plan_file = if modal.plan_file.trim().is_empty() {
             None
         } else {
             Some(modal.plan_file.trim().to_string())
         };
 
-        if let Ok(mut manager) = self.task_manager.lock() {
-            if let Err(e) = manager.create_task(task) {
+        if let Some(existing_id) = &modal.editing_task_id {
+            // Update existing task
+            if let Ok(mut manager) = self.task_manager.lock() {
+                if let Err(e) = manager.update_task(
+                    existing_id,
+                    title,
+                    description,
+                    modal.priority,
+                    plan_file,
+                    modal.project_dir.clone(),
+                ) {
+                    if let Some(ref mut active) = self.task_creation_modal {
+                        active.error = Some(format!("Failed to update task: {}", e));
+                    }
+                    cx.notify();
+                    return;
+                }
+                info!(%existing_id, "Task updated successfully from modal");
+            } else {
                 if let Some(ref mut active) = self.task_creation_modal {
-                    active.error = Some(format!("Failed to create task: {}", e));
+                    active.error = Some("Failed to access task manager".to_string());
                 }
                 cx.notify();
                 return;
             }
-            info!(%task_id, "Task created successfully from modal");
         } else {
-            if let Some(ref mut active) = self.task_creation_modal {
-                active.error = Some("Failed to access task manager".to_string());
+            // Create new task
+            let task_id = TaskId(format!("task-{}", self.next_session_id));
+            self.next_session_id += 1;
+
+            let mut task = Task::new(task_id.clone(), title, description);
+            task.priority = modal.priority;
+            task.project_dir = modal.project_dir.clone();
+            task.plan_file = plan_file;
+
+            if let Ok(mut manager) = self.task_manager.lock() {
+                if let Err(e) = manager.create_task(task) {
+                    if let Some(ref mut active) = self.task_creation_modal {
+                        active.error = Some(format!("Failed to create task: {}", e));
+                    }
+                    cx.notify();
+                    return;
+                }
+                info!(%task_id, "Task created successfully from modal");
+            } else {
+                if let Some(ref mut active) = self.task_creation_modal {
+                    active.error = Some("Failed to access task manager".to_string());
+                }
+                cx.notify();
+                return;
             }
-            cx.notify();
-            return;
         }
 
         self.close_task_creation_modal();
@@ -1526,8 +1915,9 @@ impl WorkspaceView {
                 }
             }
             SessionActionKind::AssignGroup => {
+                let color = self.next_group_color();
                 if let Ok(manager) = self.session_manager.lock() {
-                    if let Err(e) = manager.set_session_group(modal.session_id, Some(value), None) {
+                    if let Err(e) = manager.set_session_group(modal.session_id, Some(value), Some(color)) {
                         warn!("Failed to set session group: {}", e);
                     }
                 }
@@ -1538,6 +1928,7 @@ impl WorkspaceView {
         if let Ok(manager) = self.session_manager.lock() {
             self.workspace.sync_sessions_from_manager(&manager.list_sessions());
         }
+        self.save_state_to_disk();
         self.close_session_action_modal();
         cx.notify();
     }
@@ -1561,18 +1952,19 @@ impl WorkspaceView {
             }
             SessionMenuAction::AssignToGroup(group_name) => {
                 info!(?session_id, %group_name, "Assign to existing group");
-                // Find the color already used by this group
+                // Find the color already used by this group, or pick a new one
                 let color = self
                     .workspace
                     .sessions()
                     .iter()
                     .find(|s| s.group.as_deref() == Some(&group_name))
-                    .and_then(|s| s.color.clone());
+                    .and_then(|s| s.color.clone())
+                    .unwrap_or_else(|| self.next_group_color());
                 if let Ok(manager) = self.session_manager.lock() {
                     let _ = manager.set_session_group(
                         session_id,
                         Some(group_name),
-                        color,
+                        Some(color),
                     );
                 }
                 self.close_session_menu(cx);
@@ -1597,6 +1989,7 @@ impl WorkspaceView {
         if let Ok(manager) = self.session_manager.lock() {
             self.workspace.sync_sessions_from_manager(&manager.list_sessions());
         }
+        self.save_state_to_disk();
         cx.notify();
     }
 
@@ -1934,6 +2327,76 @@ impl WorkspaceView {
         cx.notify();
     }
 
+    /// Find the best session to assign a task to.
+    ///
+    /// Only returns idle sessions with a known CLI running (not GenericShell).
+    /// Never assigns to bare shell sessions — the CLI must be detected first.
+    fn find_assignable_session(&self) -> Option<Session> {
+        self.workspace
+            .sessions()
+            .iter()
+            .find(|s| {
+                s.status == codirigent_core::SessionStatus::Idle
+                    && s.current_task.is_none()
+                    && self.clipboard_service.get_session_cli_type(s.id)
+                        != codirigent_core::CliType::GenericShell
+            })
+            .cloned()
+    }
+
+    /// Detect CLI type from PTY output by scanning for known banners.
+    ///
+    /// Uses simple byte string matching for speed. Returns `None` if no
+    /// known CLI banner is found.
+    fn detect_cli_from_output(data: &[u8]) -> Option<codirigent_core::CliType> {
+        // Only scan a reasonable prefix (first 2KB) to avoid scanning large outputs
+        let scan_len = data.len().min(2048);
+        let scan = &data[..scan_len];
+
+        // Convert to lowercase for case-insensitive matching
+        let lower: Vec<u8> = scan.iter().map(|b| b.to_ascii_lowercase()).collect();
+
+        if lower.windows(10).any(|w| w == b"claude cod")
+            || lower.windows(7).any(|w| w == b"claude>")
+            || lower.windows(15).any(|w| w == "\u{256d}\u{2500} claude code".as_bytes())
+        {
+            return Some(codirigent_core::CliType::ClaudeCode);
+        }
+        if lower.windows(10).any(|w| w == b"gemini cli")
+            || lower.windows(7).any(|w| w == b"gemini>")
+        {
+            return Some(codirigent_core::CliType::GeminiCli);
+        }
+        if lower.windows(5).any(|w| w == b"codex")
+            || lower.windows(6).any(|w| w == b"codex>")
+        {
+            return Some(codirigent_core::CliType::CodexCli);
+        }
+
+        None
+    }
+
+    /// Format a task prompt for sending to a session's PTY.
+    ///
+    /// If the session has a known CLI running, sends the prompt directly
+    /// (the CLI will receive it as stdin). If it's a bare shell, wraps
+    /// the prompt in a `claude -p "..."` command to launch the CLI.
+    fn format_task_input(prompt: &str, cli_type: codirigent_core::CliType) -> String {
+        match cli_type {
+            // CLI is already running — send prompt directly as input
+            codirigent_core::CliType::ClaudeCode
+            | codirigent_core::CliType::GeminiCli
+            | codirigent_core::CliType::CodexCli => {
+                format!("{}\r", prompt)
+            }
+            // Should never assign to bare shell sessions
+            codirigent_core::CliType::GenericShell => {
+                warn!("format_task_input called with GenericShell — this should not happen");
+                format!("{}\r", prompt)
+            }
+        }
+    }
+
     /// Get a reference to the underlying workspace.
     ///
     /// Used by the render module to access workspace state.
@@ -2259,6 +2722,25 @@ impl WorkspaceView {
             }
             modal.error = None;
             cx.notify();
+            return true;
+        }
+
+        // Ctrl+V / Cmd+V — paste from system clipboard
+        if (event.keystroke.modifiers.control || event.keystroke.modifiers.platform)
+            && key == "v"
+        {
+            if let Ok(content) = self.smart_clipboard.read_content() {
+                if let codirigent_core::ClipboardContent::Text(text) = content {
+                    match modal.focused_field {
+                        0 => modal.title.push_str(&text),
+                        1 => modal.description.push_str(&text),
+                        2 => modal.plan_file.push_str(&text),
+                        _ => {}
+                    }
+                    modal.error = None;
+                    cx.notify();
+                }
+            }
             return true;
         }
 

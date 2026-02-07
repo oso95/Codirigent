@@ -974,6 +974,47 @@ impl WorkspaceView {
             header = header.child(git_badge);
         }
 
+        // Group badge (if session is in a group)
+        if let Some(group) = &hints.group_name {
+            let group_color: gpui::Hsla = hints.color_indicator.into();
+            let badge_bg = gpui::Hsla {
+                h: group_color.h,
+                s: group_color.s,
+                l: group_color.l,
+                a: 0.15,
+            };
+            let group_label = if group.chars().count() > 12 {
+                let truncated: String = group.chars().take(10).collect();
+                format!("{}...", truncated)
+            } else {
+                group.clone()
+            };
+            header = header.child(
+                div()
+                    .px(px(5.0))
+                    .py_px()
+                    .rounded_sm()
+                    .bg(badge_bg)
+                    .flex()
+                    .flex_shrink_0()
+                    .items_center()
+                    .gap_1()
+                    .child(
+                        div()
+                            .w(px(6.0))
+                            .h(px(6.0))
+                            .rounded_full()
+                            .bg(group_color),
+                    )
+                    .child(
+                        div()
+                            .text_xs()
+                            .text_color(group_color)
+                            .child(group_label),
+                    ),
+            );
+        }
+
         // Spacer
         header = header.child(div().flex_1());
 
@@ -1514,6 +1555,47 @@ impl WorkspaceView {
             }
 
             header = header.child(git_badge);
+        }
+
+        // Group badge (if session is in a group)
+        if let Some(group) = &hints.group_name {
+            let group_color: gpui::Hsla = hints.color_indicator.into();
+            let badge_bg = gpui::Hsla {
+                h: group_color.h,
+                s: group_color.s,
+                l: group_color.l,
+                a: 0.15,
+            };
+            let group_label = if group.chars().count() > 12 {
+                let truncated: String = group.chars().take(10).collect();
+                format!("{}...", truncated)
+            } else {
+                group.clone()
+            };
+            header = header.child(
+                div()
+                    .px(px(5.0))
+                    .py_px()
+                    .rounded_sm()
+                    .bg(badge_bg)
+                    .flex()
+                    .flex_shrink_0()
+                    .items_center()
+                    .gap_1()
+                    .child(
+                        div()
+                            .w(px(6.0))
+                            .h(px(6.0))
+                            .rounded_full()
+                            .bg(group_color),
+                    )
+                    .child(
+                        div()
+                            .text_xs()
+                            .text_color(group_color)
+                            .child(group_label),
+                    ),
+            );
         }
 
         // Spacer
@@ -2748,6 +2830,7 @@ impl WorkspaceView {
     /// Render the task creation modal.
     pub(super) fn render_task_creation_modal(&mut self, cx: &mut Context<Self>) -> Option<impl IntoElement> {
         let modal = self.task_creation_modal.clone()?;
+        let is_editing = modal.editing_task_id.is_some();
 
         let theme = self.workspace().theme();
         let panel_bg: gpui::Hsla = theme.panel_background.into();
@@ -2829,9 +2912,10 @@ impl WorkspaceView {
                 .items_center()
                 .justify_center()
                 .bg(gpui::Hsla::black().opacity(0.5))
-                .on_click(cx.listener(|this, _: &ClickEvent, _window, cx| {
+                .on_mouse_down(MouseButton::Left, cx.listener(|this, _: &MouseDownEvent, _window, cx| {
                     this.close_task_creation_modal();
                     cx.notify();
+                    cx.stop_propagation();
                 }))
                 .child(
                     div()
@@ -2843,8 +2927,8 @@ impl WorkspaceView {
                         .rounded_lg()
                         .flex()
                         .flex_col()
-                        // Prevent click from closing modal
-                        .on_click(cx.listener(|_this, _: &ClickEvent, _window, cx| {
+                        // Prevent click from closing modal or reaching sessions behind
+                        .on_mouse_down(MouseButton::Left, cx.listener(|_this, _: &MouseDownEvent, _window, cx| {
                             cx.stop_propagation();
                         }))
                         // Header
@@ -2858,10 +2942,10 @@ impl WorkspaceView {
                                 .items_center()
                                 .child(
                                     self.aligned_icon_label_row(
-                                        icons::clipboard_plus(),
+                                        if is_editing { icons::pencil() } else { icons::clipboard_plus() },
                                         fg,
                                         16.0,
-                                        "Create New Task",
+                                        if is_editing { "Edit Task" } else { "Create New Task" },
                                         fg,
                                         16.0,
                                         FontWeight::SEMIBOLD,
@@ -3134,7 +3218,7 @@ impl WorkspaceView {
                                             icons::plus(),
                                             gpui::Hsla::white(),
                                             12.0,
-                                            "Create Task",
+                                            if is_editing { "Save Changes" } else { "Create Task" },
                                             gpui::Hsla::white(),
                                             14.0,
                                             FontWeight::MEDIUM,
@@ -4353,13 +4437,13 @@ impl WorkspaceView {
                 div().flex().items_center().gap(px(4.0)).mt(px(4.0))
                     .child(
                         div()
-                            .px(px(4.0))
-                            .py(px(1.0))
+                            .px(px(6.0))
+                            .py(px(2.0))
                             .rounded(px(3.0))
                             .bg(status_color.opacity(0.15))
                             .child(
                                 div()
-                                    .text_size(px(9.0))
+                                    .text_size(px(10.0))
                                     .text_color(status_color)
                                     .child(item.status.label()),
                             ),
@@ -4367,7 +4451,7 @@ impl WorkspaceView {
                     .when_some(item.assigned_to.clone(), |this, session| {
                         this.child(
                             div()
-                                .text_size(px(9.0))
+                                .text_size(px(10.0))
                                 .text_color(muted.opacity(0.7))
                                 .child(format!("→ {}", session)),
                         )
@@ -4377,32 +4461,40 @@ impl WorkspaceView {
         // Row 3: action buttons from available_actions()
         let actions = item.available_actions();
         if !actions.is_empty() {
-            let mut action_row = div().flex().items_center().gap(px(3.0)).mt(px(4.0));
+            let mut action_row = div().flex().flex_wrap().items_center().gap(px(6.0)).mt(px(6.0));
             for action in actions {
-                let (label, board_action) = match action {
-                    TaskItemAction::Assign => ("Assign", TaskAction::Assign),
-                    TaskItemAction::Edit => ("Edit", TaskAction::Edit),
-                    TaskItemAction::Delete => ("Delete", TaskAction::Delete),
-                    TaskItemAction::MarkForReview => ("Review", TaskAction::Review),
-                    TaskItemAction::Approve => ("Approve", TaskAction::Complete),
-                    TaskItemAction::Reject => ("Delete", TaskAction::Delete),
-                    TaskItemAction::Reopen => ("Start", TaskAction::Start),
+                let (label, board_action, btn_bg) = match action {
+                    TaskItemAction::Assign => ("Assign", TaskAction::Assign,
+                        gpui::hsla(0.48, 0.6, 0.55, 0.2)), // teal
+                    TaskItemAction::Edit => ("Edit", TaskAction::Edit, active_bg),
+                    TaskItemAction::Delete => ("Delete", TaskAction::Delete,
+                        gpui::hsla(0.0, 0.7, 0.56, 0.15)), // red
+                    TaskItemAction::MarkForReview => ("Review", TaskAction::Review,
+                        gpui::hsla(0.11, 0.9, 0.6, 0.2)), // orange
+                    TaskItemAction::Approve => ("Approve", TaskAction::Complete,
+                        gpui::hsla(0.44, 0.7, 0.45, 0.2)), // green
+                    TaskItemAction::Reject => ("Reject", TaskAction::Delete,
+                        gpui::hsla(0.0, 0.7, 0.56, 0.15)), // red
+                    TaskItemAction::Reopen => ("Start", TaskAction::Start, active_bg),
                 };
                 let action_task_id = task_id.clone();
                 action_row = action_row.child(
                     div()
                         .id(SharedString::from(format!("task-action-{}-{}", task_id, label)))
-                        .px(px(4.0))
-                        .py(px(1.0))
-                        .rounded(px(3.0))
-                        .bg(active_bg)
+                        .px(px(8.0))
+                        .py(px(3.0))
+                        .min_w(px(48.0))
+                        .flex()
+                        .justify_center()
+                        .rounded(px(4.0))
+                        .bg(btn_bg)
                         .cursor_pointer()
                         .hover(|style| style.bg(active_bg.opacity(0.8)))
                         .on_click(cx.listener(move |this, _: &ClickEvent, _window, _cx| {
                             this.task_board.trigger_task_action(action_task_id.clone(), board_action);
                         }))
                         .child(
-                            div().text_size(px(9.0)).text_color(muted).child(label),
+                            div().text_size(px(11.0)).text_color(fg).child(label),
                         ),
                 );
             }
@@ -4427,42 +4519,46 @@ impl WorkspaceView {
         let panel_icon_y_offset = 1.0;
 
         // Fetch real task data from TaskManager
-        let (running_items, queued_items, auto_assign_enabled) = if let Ok(manager) = self.task_manager.lock() {
-            let running: Vec<_> = manager.in_progress_tasks().iter()
+        let (running_items, queued_items, review_items, done_items, auto_assign_enabled) = if let Ok(manager) = self.task_manager.lock() {
+            let all_tasks = manager.list_tasks();
+
+            let running: Vec<_> = all_tasks.iter()
+                .filter(|t| matches!(t.status,
+                    codirigent_core::TaskStatus::Assigned | codirigent_core::TaskStatus::Working))
                 .map(|t| self.core_task_to_ui_item(t))
                 .collect();
-            let queued: Vec<_> = manager.queued_tasks().iter()
+            let queued: Vec<_> = all_tasks.iter()
+                .filter(|t| matches!(t.status,
+                    codirigent_core::TaskStatus::Queued | codirigent_core::TaskStatus::Blocked))
+                .map(|t| self.core_task_to_ui_item(t))
+                .collect();
+            let review: Vec<_> = all_tasks.iter()
+                .filter(|t| matches!(t.status,
+                    codirigent_core::TaskStatus::Verifying | codirigent_core::TaskStatus::Review))
+                .map(|t| self.core_task_to_ui_item(t))
+                .collect();
+            let done: Vec<_> = all_tasks.iter()
+                .filter(|t| t.status == codirigent_core::TaskStatus::Done)
                 .map(|t| self.core_task_to_ui_item(t))
                 .collect();
             let auto_assign = manager.assignment().config().auto_assign;
 
-            // Update task board counts
-            let all_tasks = manager.list_tasks();
-            let queue_count = all_tasks.iter()
-                .filter(|t| matches!(t.status,
-                    codirigent_core::TaskStatus::Queued | codirigent_core::TaskStatus::Blocked))
-                .count();
-            let in_progress_count = all_tasks.iter()
-                .filter(|t| matches!(t.status,
-                    codirigent_core::TaskStatus::Assigned | codirigent_core::TaskStatus::Working))
-                .count();
-            let review_count = all_tasks.iter()
-                .filter(|t| matches!(t.status,
-                    codirigent_core::TaskStatus::Verifying | codirigent_core::TaskStatus::Review))
-                .count();
-            let done_count = all_tasks.iter()
-                .filter(|t| t.status == codirigent_core::TaskStatus::Done)
-                .count();
+            let queue_count = queued.len();
+            let in_progress_count = running.len();
+            let review_count = review.len();
+            let done_count = done.len();
             drop(manager);
             self.task_board.set_task_counts(queue_count, in_progress_count, review_count, done_count);
 
-            (running, queued, auto_assign)
+            (running, queued, review, done, auto_assign)
         } else {
-            (Vec::new(), Vec::new(), true)
+            (Vec::new(), Vec::new(), Vec::new(), Vec::new(), true)
         };
 
         let running_count = running_items.len();
         let queued_count = queued_items.len();
+        let review_count = review_items.len();
+        let done_count = done_items.len();
 
         // Auto-assign badge colors
         let auto_dot_color = if auto_assign_enabled { primary } else { muted.opacity(0.4) };
@@ -4470,7 +4566,7 @@ impl WorkspaceView {
         let auto_bg_opacity = if auto_assign_enabled { 0.1 } else { 0.05 };
         let auto_border_opacity = if auto_assign_enabled { 0.2 } else { 0.1 };
 
-        // Render task cards for the running section
+        // Render task cards for each section
         let theme_ref = self.workspace().theme().clone();
         let mut running_section = div().flex().flex_col().gap(px(4.0));
         for item in &running_items {
@@ -4480,6 +4576,16 @@ impl WorkspaceView {
         let mut queued_section = div().flex().flex_col().gap(px(4.0));
         for item in &queued_items {
             queued_section = queued_section.child(self.render_task_card(item, &theme_ref, cx));
+        }
+
+        let mut review_section = div().flex().flex_col().gap(px(4.0));
+        for item in &review_items {
+            review_section = review_section.child(self.render_task_card(item, &theme_ref, cx));
+        }
+
+        let mut done_section = div().flex().flex_col().gap(px(4.0));
+        for item in &done_items {
+            done_section = done_section.child(self.render_task_card(item, &theme_ref, cx));
         }
 
         div()
@@ -4624,7 +4730,61 @@ impl WorkspaceView {
                             .when(queued_count > 0, |this| {
                                 this.child(queued_section)
                             }),
-                    ),
+                    )
+                    // Review section
+                    .when(review_count > 0, |this| {
+                        this.child(
+                            div().flex().flex_col()
+                                .child(
+                                    div().flex().justify_between().items_center().mb_2()
+                                        .child(div().flex().items_center().gap_1()
+                                            .child(self.centered_lucide_icon_with_offset(icons::eye(), muted, panel_label_size, panel_icon_y_offset))
+                                            .child(
+                                                div()
+                                                    .h(px(panel_label_row_height))
+                                                    .flex()
+                                                    .items_center()
+                                                    .child(
+                                                        div()
+                                                            .text_size(px(panel_label_size))
+                                                            .font_weight(FontWeight::BOLD)
+                                                            .text_color(muted)
+                                                            .child("REVIEW"),
+                                                    ),
+                                            ))
+                                        .child(div().px(px(6.0)).rounded_full().bg(active_bg)
+                                            .child(div().text_xs().text_color(muted).child(format!("{}", review_count)))),
+                                )
+                                .child(review_section),
+                        )
+                    })
+                    // Done section
+                    .when(done_count > 0, |this| {
+                        this.child(
+                            div().flex().flex_col()
+                                .child(
+                                    div().flex().justify_between().items_center().mb_2()
+                                        .child(div().flex().items_center().gap_1()
+                                            .child(self.centered_lucide_icon_with_offset(icons::check_circle(), muted, panel_label_size, panel_icon_y_offset))
+                                            .child(
+                                                div()
+                                                    .h(px(panel_label_row_height))
+                                                    .flex()
+                                                    .items_center()
+                                                    .child(
+                                                        div()
+                                                            .text_size(px(panel_label_size))
+                                                            .font_weight(FontWeight::BOLD)
+                                                            .text_color(muted)
+                                                            .child("DONE"),
+                                                    ),
+                                            ))
+                                        .child(div().px(px(6.0)).rounded_full().bg(active_bg)
+                                            .child(div().text_xs().text_color(muted).child(format!("{}", done_count)))),
+                                )
+                                .child(done_section),
+                        )
+                    }),
             )
             // Footer: Add Task button
             .child(
