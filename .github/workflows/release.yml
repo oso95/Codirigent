@@ -81,6 +81,9 @@ jobs:
           VERSION="${GITHUB_REF_NAME#v}"
           echo "version=${VERSION}" >> "$GITHUB_OUTPUT"
           echo "archive_name=codirigent-v${GITHUB_REF_NAME#v}-${{ matrix.target }}" >> "$GITHUB_OUTPUT"
+          # WiX requires x.x.x.x (integers only) — strip any prerelease suffix
+          MSI_VERSION="$(echo "$VERSION" | sed 's/-.*//')"
+          echo "msi_version=${MSI_VERSION}.0" >> "$GITHUB_OUTPUT"
 
       # ── Archives (all platforms) ──────────────────────────────────────
 
@@ -122,7 +125,7 @@ jobs:
         if: runner.os == 'Windows'
         shell: cmd
         run: |
-          set VERSION=${{ steps.meta.outputs.version }}.0
+          set VERSION=${{ steps.meta.outputs.msi_version }}
           set BINARY_PATH=target\${{ matrix.target }}\dist
           candle.exe -dBinaryPath=%BINARY_PATH% -dVersion=%VERSION% -dLicensePath=wix\License.rtf -arch x64 wix\main.wxs -o wix\main.wixobj
           light.exe -ext WixUIExtension wix\main.wixobj -o dist\${{ steps.meta.outputs.archive_name }}.msi
