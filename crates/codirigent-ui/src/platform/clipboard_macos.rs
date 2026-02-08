@@ -41,6 +41,7 @@ static CLIPBOARD_MUTEX: Mutex<()> = Mutex::new(());
 ///
 /// In production with a main run loop, dispatches to the main queue.
 /// In test environments, uses a mutex for serialization.
+/// If already on the main thread, calls the closure directly to avoid deadlock.
 fn with_clipboard_access<F, R>(f: F) -> R
 where
     F: FnOnce() -> R + Send,
@@ -55,11 +56,24 @@ where
     }
 
     // In production, dispatch to the main queue for true thread safety.
-    // This requires a running main run loop (which GPUI provides).
+    // If already on the main thread, call directly to avoid deadlock.
     #[cfg(not(test))]
     {
-        dispatch::Queue::main().exec_sync(f)
+        if pthread_main_np() != 0 {
+            f()
+        } else {
+            dispatch::Queue::main().exec_sync(f)
+        }
     }
+}
+
+/// Returns non-zero if the current thread is the main thread.
+#[cfg(not(test))]
+fn pthread_main_np() -> i32 {
+    extern "C" {
+        fn pthread_main_np() -> i32;
+    }
+    unsafe { pthread_main_np() }
 }
 
 /// macOS clipboard provider.
