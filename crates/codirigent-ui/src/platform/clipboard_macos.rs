@@ -240,7 +240,7 @@ impl MacOSSmartClipboard {
 
         // Check PNG signature
         let png_signature: [u8; 8] = [0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A];
-        if &data[0..8] != &png_signature {
+        if data[0..8] != png_signature {
             return None;
         }
 
@@ -680,10 +680,7 @@ mod tests {
 
         // Wrong signature
         let wrong_sig = vec![0x00, 0x00];
-        assert_eq!(
-            MacOSSmartClipboard::parse_jpeg_dimensions(&wrong_sig),
-            None
-        );
+        assert_eq!(MacOSSmartClipboard::parse_jpeg_dimensions(&wrong_sig), None);
     }
 
     #[test]
@@ -695,10 +692,7 @@ mod tests {
         assert_eq!(urlencoding_decode("/tmp/my%20file.txt"), "/tmp/my file.txt");
 
         // Multiple encoded characters
-        assert_eq!(
-            urlencoding_decode("/tmp/%48%65%6C%6C%6F"),
-            "/tmp/Hello"
-        );
+        assert_eq!(urlencoding_decode("/tmp/%48%65%6C%6C%6F"), "/tmp/Hello");
 
         // Incomplete encoding (should preserve)
         assert_eq!(urlencoding_decode("/tmp/file%2"), "/tmp/file%2");

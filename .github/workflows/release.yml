@@ -26,12 +26,6 @@ jobs:
             archive: zip
             ext: .exe
 
-          - name: macOS Intel
-            runner: macos-14
-            target: x86_64-apple-darwin
-            archive: tar.gz
-            ext: ""
-
           - name: macOS Apple Silicon
             runner: macos-14
             target: aarch64-apple-darwin
