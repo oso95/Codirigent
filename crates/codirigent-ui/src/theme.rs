@@ -369,49 +369,61 @@ impl CodirigentTheme {
     pub fn dark() -> Self {
         Self {
             // === Background Colors (from mockup) ===
-            background: hex("#050505"),        // Darkest background
-            panel_background: hex("#0c0c0e"),  // Panel background
-            header_background: hex("#09090b"), // Header/toolbar background
+            background: hex("#050505"),         // Darkest background
+            panel_background: hex("#0c0c0e"),   // Panel background
+            header_background: hex("#09090b"),  // Header/toolbar background
             sidebar_background: hex("#0c0c0e"), // Same as panel
 
             // === Border & Interaction Colors ===
-            border: hex("#1a1a1f"),           // Border color
-            hover: hex("#151518"),            // Hover state
-            active: hex("#1a1a22"),           // Active/focused state
-            selection: Hsla { a: 0.3, ..hex("#6366f1") }, // Primary @ 30%
+            border: hex("#1a1a1f"), // Border color
+            hover: hex("#151518"),  // Hover state
+            active: hex("#1a1a22"), // Active/focused state
+            selection: Hsla {
+                a: 0.3,
+                ..hex("#6366f1")
+            }, // Primary @ 30%
 
             // === Text Colors ===
-            foreground: hex("#e0e0e0"),       // Primary text
-            text_secondary: hex("#888888"),   // Secondary text
-            muted: hex("#555555"),            // Muted text
+            foreground: hex("#e0e0e0"),     // Primary text
+            text_secondary: hex("#888888"), // Secondary text
+            muted: hex("#555555"),          // Muted text
 
             // === Accent Colors ===
-            primary: hex("#6366f1"),          // Indigo-500 (main accent)
-            secondary: hex("#818cf8"),        // Indigo-400
-            purple: hex("#A78BFA"),           // Purple
-            orange: hex("#F59E0B"),           // Orange
+            primary: hex("#6366f1"),   // Indigo-500 (main accent)
+            secondary: hex("#818cf8"), // Indigo-400
+            purple: hex("#A78BFA"),    // Purple
+            orange: hex("#F59E0B"),    // Orange
 
             // === Mockup-Specific Colors ===
             icon_rail_background: hex("#0c0c0e"),
             drawer_background: hex("#121214"),
             selected_ring: hex("#6366f1"),
             broadcast_accent: hex("#f43f5e"),
-            ai_summary_background: Hsla { a: 0.05, ..hex("#6366f1") },
-            ai_summary_text: Hsla { a: 0.8, ..hex("#c7d2fe") },
-            input_required_background: Hsla { a: 0.2, ..hex("#4c0519") },
+            ai_summary_background: Hsla {
+                a: 0.05,
+                ..hex("#6366f1")
+            },
+            ai_summary_text: Hsla {
+                a: 0.8,
+                ..hex("#c7d2fe")
+            },
+            input_required_background: Hsla {
+                a: 0.2,
+                ..hex("#4c0519")
+            },
             input_required_accent: hex("#f43f5e"),
 
             // === Session Status Colors ===
-            session_idle: hex("#52525b"),     // Zinc-600 for idle
-            session_working: hex("#f59e0b"),  // Amber-500 for working
-            session_waiting: hex("#f43f5e"),  // Rose-500 for waiting input
-            session_done: hex("#10b981"),     // Emerald-500 for done
-            session_error: hex("#ef4444"),    // Red-500 for error
+            session_idle: hex("#52525b"),    // Zinc-600 for idle
+            session_working: hex("#f59e0b"), // Amber-500 for working
+            session_waiting: hex("#f43f5e"), // Rose-500 for waiting input
+            session_done: hex("#10b981"),    // Emerald-500 for done
+            session_error: hex("#ef4444"),   // Red-500 for error
 
             // === Priority Colors ===
-            priority_high: hex("#FF6B6B"),    // Red
-            priority_medium: hex("#F59E0B"),  // Orange
-            priority_low: hex("#5B8DEF"),     // Blue
+            priority_high: hex("#FF6B6B"),   // Red
+            priority_medium: hex("#F59E0B"), // Orange
+            priority_low: hex("#5B8DEF"),    // Blue
 
             // === Session Group Colors ===
             session_colors: [
@@ -424,11 +436,11 @@ impl CodirigentTheme {
             ],
 
             // === Terminal Colors ===
-            cursor: hex("#6366f1"),           // Indigo cursor
+            cursor: hex("#6366f1"), // Indigo cursor
             ansi: AnsiColors::default(),
-            terminal_background: Rgba::rgb(5, 5, 5),      // #050505
+            terminal_background: Rgba::rgb(5, 5, 5), // #050505
             terminal_foreground: Rgba::rgb(224, 224, 224), // #e0e0e0
-            terminal_cursor: Rgba::rgb(99, 102, 241),      // #6366f1
+            terminal_cursor: Rgba::rgb(99, 102, 241), // #6366f1
             terminal_selection_bg: Rgba::new(99, 102, 241, 77), // #6366f1 @ 30%
             terminal_selection_fg: Rgba::rgb(224, 224, 224), // #e0e0e0
 
@@ -464,7 +476,10 @@ impl CodirigentTheme {
             border: hex("#d0d0d8"),
             hover: hex("#e8e8ec"),
             active: hex("#d8d8e0"),
-            selection: Hsla { a: 0.2, ..hex("#4f46e5") }, // Indigo-600 @ 20%
+            selection: Hsla {
+                a: 0.2,
+                ..hex("#4f46e5")
+            }, // Indigo-600 @ 20%
 
             // === Text Colors ===
             foreground: hex("#1a1a1c"),
@@ -472,27 +487,33 @@ impl CodirigentTheme {
             muted: hex("#999999"),
 
             // === Accent Colors (slightly darker for light bg) ===
-            primary: hex("#4f46e5"),          // Indigo-600
-            secondary: hex("#6366f1"),        // Indigo-500
-            purple: hex("#8B6FD9"),           // Darker purple
-            orange: hex("#D98A0B"),           // Darker orange
+            primary: hex("#4f46e5"),   // Indigo-600
+            secondary: hex("#6366f1"), // Indigo-500
+            purple: hex("#8B6FD9"),    // Darker purple
+            orange: hex("#D98A0B"),    // Darker orange
 
             // === Mockup-Specific Colors ===
             icon_rail_background: hex("#f0f0f4"),
             drawer_background: hex("#ffffff"),
             selected_ring: hex("#4f46e5"),
             broadcast_accent: hex("#e11d48"),
-            ai_summary_background: Hsla { a: 0.08, ..hex("#4f46e5") },
+            ai_summary_background: Hsla {
+                a: 0.08,
+                ..hex("#4f46e5")
+            },
             ai_summary_text: hex("#3730a3"),
-            input_required_background: Hsla { a: 0.1, ..hex("#e11d48") },
+            input_required_background: Hsla {
+                a: 0.1,
+                ..hex("#e11d48")
+            },
             input_required_accent: hex("#e11d48"),
 
             // === Session Status Colors ===
-            session_idle: hex("#71717a"),     // Zinc-500
-            session_working: hex("#d97706"),  // Amber-600
-            session_waiting: hex("#e11d48"),  // Rose-600
-            session_done: hex("#059669"),     // Emerald-600
-            session_error: hex("#dc2626"),    // Red-600
+            session_idle: hex("#71717a"),    // Zinc-500
+            session_working: hex("#d97706"), // Amber-600
+            session_waiting: hex("#e11d48"), // Rose-600
+            session_done: hex("#059669"),    // Emerald-600
+            session_error: hex("#dc2626"),   // Red-600
 
             // === Priority Colors ===
             priority_high: hex("#dc2626"),
@@ -514,7 +535,7 @@ impl CodirigentTheme {
             ansi: AnsiColors::default(),
             terminal_background: Rgba::rgb(245, 245, 247),
             terminal_foreground: Rgba::rgb(26, 26, 28),
-            terminal_cursor: Rgba::rgb(79, 70, 229),        // #4f46e5
+            terminal_cursor: Rgba::rgb(79, 70, 229), // #4f46e5
             terminal_selection_bg: Rgba::new(79, 70, 229, 51), // #4f46e5 @ 20%
             terminal_selection_fg: Rgba::rgb(26, 26, 28),
 
@@ -634,18 +655,34 @@ mod tests {
     fn test_dark_theme_creation() {
         let theme = CodirigentTheme::dark();
         // Dark theme should have low lightness background
-        assert!(theme.background.l < 0.1, "Dark bg lightness: {}", theme.background.l);
+        assert!(
+            theme.background.l < 0.1,
+            "Dark bg lightness: {}",
+            theme.background.l
+        );
         // Dark theme should have high lightness foreground
-        assert!(theme.foreground.l > 0.5, "Dark fg lightness: {}", theme.foreground.l);
+        assert!(
+            theme.foreground.l > 0.5,
+            "Dark fg lightness: {}",
+            theme.foreground.l
+        );
     }
 
     #[test]
     fn test_light_theme_creation() {
         let theme = CodirigentTheme::light();
         // Light theme should have high lightness background
-        assert!(theme.background.l > 0.9, "Light bg lightness: {}", theme.background.l);
+        assert!(
+            theme.background.l > 0.9,
+            "Light bg lightness: {}",
+            theme.background.l
+        );
         // Light theme should have low lightness foreground
-        assert!(theme.foreground.l < 0.2, "Light fg lightness: {}", theme.foreground.l);
+        assert!(
+            theme.foreground.l < 0.2,
+            "Light fg lightness: {}",
+            theme.foreground.l
+        );
     }
 
     #[test]

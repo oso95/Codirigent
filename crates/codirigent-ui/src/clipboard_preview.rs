@@ -518,7 +518,10 @@ impl Render for ClipboardPreview {
                 // PNG, TIFF, DIB, RGBA all become PNG after scaling
                 _ => ImageFormat::Png,
             };
-            let new_image = Arc::new(Image::from_bytes(gpui_format, preview.thumbnail_bytes.clone()));
+            let new_image = Arc::new(Image::from_bytes(
+                gpui_format,
+                preview.thumbnail_bytes.clone(),
+            ));
             self.cached_image.0 = Some(Arc::clone(&new_image));
             new_image
         };
@@ -627,7 +630,8 @@ mod tests {
         assert!(!preview.is_visible());
 
         // Show makes it visible
-        let thumbnail = ThumbnailPreview::new(vec![], PathBuf::new(), 100, 100, 0, CoreImageFormat::Png);
+        let thumbnail =
+            ThumbnailPreview::new(vec![], PathBuf::new(), 100, 100, 0, CoreImageFormat::Png);
         preview.show(thumbnail);
         assert!(preview.is_visible());
 

@@ -322,12 +322,10 @@ fn read_directory(path: &Path, show_hidden: bool) -> Result<Vec<FileEntry>> {
 
 /// Sort entries recursively (directories first, then alphabetically).
 fn sort_entries_recursive(entries: &mut [FileEntry]) {
-    entries.sort_by(|a, b| {
-        match (a.is_dir, b.is_dir) {
-            (true, false) => std::cmp::Ordering::Less,
-            (false, true) => std::cmp::Ordering::Greater,
-            _ => a.name.to_lowercase().cmp(&b.name.to_lowercase()),
-        }
+    entries.sort_by(|a, b| match (a.is_dir, b.is_dir) {
+        (true, false) => std::cmp::Ordering::Less,
+        (false, true) => std::cmp::Ordering::Greater,
+        _ => a.name.to_lowercase().cmp(&b.name.to_lowercase()),
     });
 
     for entry in entries.iter_mut() {
@@ -645,7 +643,11 @@ mod tests {
         assert!(tree.is_selected(&deep_file));
 
         // Parents should be expanded
-        assert!(tree.find_entry(&temp.path().join("subdir")).unwrap().expanded);
+        assert!(
+            tree.find_entry(&temp.path().join("subdir"))
+                .unwrap()
+                .expanded
+        );
     }
 
     #[test]

@@ -249,7 +249,10 @@ mod tests {
         }
 
         fn search(&self, query: &str) -> Vec<&Skill> {
-            self.skills.iter().filter(|s| s.matches_query(query)).collect()
+            self.skills
+                .iter()
+                .filter(|s| s.matches_query(query))
+                .collect()
         }
 
         fn refresh(&mut self) -> Result<()> {

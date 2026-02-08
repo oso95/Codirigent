@@ -5,8 +5,8 @@
 //! integration.
 
 use codirigent_core::{
-    DefaultEventBus, CodirigentEvent, EventBus, FileStorageService, ProcessMonitor,
-    Session, SessionId, SessionManager, SessionStatus, StorageService,
+    CodirigentEvent, DefaultEventBus, EventBus, FileStorageService, ProcessMonitor, Session,
+    SessionId, SessionManager, SessionStatus, StorageService,
 };
 use codirigent_detector::{DetectorConfig, InputDetector};
 use codirigent_session::DefaultSessionManager;
@@ -32,7 +32,11 @@ fn create_test_integration() -> (CodirigentIntegration, TempDir) {
 }
 
 /// Create a test session and return its ID.
-fn create_test_session(integration: &CodirigentIntegration, temp: &TempDir, name: &str) -> SessionId {
+fn create_test_session(
+    integration: &CodirigentIntegration,
+    temp: &TempDir,
+    name: &str,
+) -> SessionId {
     integration
         .create_session(name.to_string(), temp.path().to_path_buf())
         .unwrap()
@@ -63,7 +67,9 @@ fn test_full_session_lifecycle() {
     integration.resize_session(id, 48, 120).unwrap();
 
     // Rename session
-    integration.rename_session(id, "Renamed Session".to_string()).unwrap();
+    integration
+        .rename_session(id, "Renamed Session".to_string())
+        .unwrap();
     let session = integration.get_session(id).unwrap().unwrap();
     assert_eq!(session.name, "Renamed Session");
 
@@ -351,9 +357,7 @@ fn test_session_closure_publishes_event() {
 
     // Should receive SessionClosed event
     let event = rx.try_recv().unwrap();
-    assert!(
-        matches!(event, CodirigentEvent::SessionClosed { id: closed_id } if closed_id == id)
-    );
+    assert!(matches!(event, CodirigentEvent::SessionClosed { id: closed_id } if closed_id == id));
 }
 
 /// Test that status changes publish events.
@@ -456,8 +460,8 @@ fn test_detector_multiple_sessions() {
 /// Test workspace session management.
 #[test]
 fn test_workspace_session_management() {
-    use codirigent_ui::workspace::Workspace;
     use codirigent_ui::layout::LayoutProfile;
+    use codirigent_ui::workspace::Workspace;
 
     let mut workspace = Workspace::new();
     workspace.set_layout(LayoutProfile::Grid2x2);
@@ -485,8 +489,8 @@ fn test_workspace_session_management() {
 /// Test workspace layout switching.
 #[test]
 fn test_workspace_layout_switching() {
-    use codirigent_ui::workspace::Workspace;
     use codirigent_ui::layout::LayoutProfile;
+    use codirigent_ui::workspace::Workspace;
 
     let mut workspace = Workspace::new();
 
@@ -601,8 +605,12 @@ fn test_complete_workflow() {
         .unwrap();
 
     // Step 4: Interact with sessions
-    integration.send_input(claude_id, b"echo 'Hello from Claude'\n").unwrap();
-    integration.send_input(codex_id, b"echo 'Hello from Codex'\n").unwrap();
+    integration
+        .send_input(claude_id, b"echo 'Hello from Claude'\n")
+        .unwrap();
+    integration
+        .send_input(codex_id, b"echo 'Hello from Codex'\n")
+        .unwrap();
 
     // Step 5: Simulate input detection
     integration

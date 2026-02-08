@@ -249,7 +249,10 @@ impl CliDetector for DefaultCliDetector {
 impl std::fmt::Debug for DefaultCliDetector {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("DefaultCliDetector")
-            .field("cache_size", &self.cache.read().map(|c| c.len()).unwrap_or(0))
+            .field(
+                "cache_size",
+                &self.cache.read().map(|c| c.len()).unwrap_or(0),
+            )
             .finish()
     }
 }
@@ -329,9 +332,18 @@ mod tests {
             cache.insert(SessionId(3), CliType::CodexCli);
         }
 
-        assert_eq!(detector.get_session_cli(SessionId(1)), Some(CliType::ClaudeCode));
-        assert_eq!(detector.get_session_cli(SessionId(2)), Some(CliType::GeminiCli));
-        assert_eq!(detector.get_session_cli(SessionId(3)), Some(CliType::CodexCli));
+        assert_eq!(
+            detector.get_session_cli(SessionId(1)),
+            Some(CliType::ClaudeCode)
+        );
+        assert_eq!(
+            detector.get_session_cli(SessionId(2)),
+            Some(CliType::GeminiCli)
+        );
+        assert_eq!(
+            detector.get_session_cli(SessionId(3)),
+            Some(CliType::CodexCli)
+        );
         assert_eq!(detector.get_session_cli(SessionId(4)), None);
     }
 
@@ -346,7 +358,10 @@ mod tests {
             cache.insert(session_id, CliType::GeminiCli);
         }
 
-        assert_eq!(detector.get_session_cli(session_id), Some(CliType::GeminiCli));
+        assert_eq!(
+            detector.get_session_cli(session_id),
+            Some(CliType::GeminiCli)
+        );
 
         // Update (will detect from current process)
         let pid = std::process::id();
@@ -443,7 +458,5 @@ mod tests {
     fn test_max_recursion_depth_constant() {
         // Verify the constant is reasonable
         assert_eq!(MAX_RECURSION_DEPTH, 10);
-        assert!(MAX_RECURSION_DEPTH > 0);
-        assert!(MAX_RECURSION_DEPTH < 100); // Sanity check
     }
 }

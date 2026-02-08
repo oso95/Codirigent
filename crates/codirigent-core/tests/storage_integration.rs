@@ -53,8 +53,12 @@ fn test_full_storage_workflow() {
 
     // Add sessions and save
     let mut state = state;
-    state.sessions.push(create_session(1, "Session 1", "/project1"));
-    state.sessions.push(create_session(2, "Session 2", "/project2"));
+    state
+        .sessions
+        .push(create_session(1, "Session 1", "/project1"));
+    state
+        .sessions
+        .push(create_session(2, "Session 2", "/project2"));
     storage.save_state(&state).unwrap();
 
     // Reload and verify
@@ -90,7 +94,10 @@ fn test_task_lifecycle() {
     storage.save_task(&updated_task).unwrap();
 
     // Verify update
-    let loaded = storage.load_task(&TaskId("task-001".to_string())).unwrap().unwrap();
+    let loaded = storage
+        .load_task(&TaskId("task-001".to_string()))
+        .unwrap()
+        .unwrap();
     assert_eq!(loaded.title, "Updated Task");
     assert_eq!(loaded.status, TaskStatus::Working);
     assert_eq!(loaded.assigned_session, Some(SessionId(1)));
@@ -101,8 +108,13 @@ fn test_task_lifecycle() {
     assert_eq!(ids[0].0, "task-001");
 
     // Delete task
-    storage.delete_task(&TaskId("task-001".to_string())).unwrap();
-    assert!(storage.load_task(&TaskId("task-001".to_string())).unwrap().is_none());
+    storage
+        .delete_task(&TaskId("task-001".to_string()))
+        .unwrap();
+    assert!(storage
+        .load_task(&TaskId("task-001".to_string()))
+        .unwrap()
+        .is_none());
     assert!(storage.list_task_ids().unwrap().is_empty());
 }
 
@@ -125,8 +137,12 @@ fn test_multiple_tasks() {
     }
 
     // Delete some tasks
-    storage.delete_task(&TaskId("task-003".to_string())).unwrap();
-    storage.delete_task(&TaskId("task-007".to_string())).unwrap();
+    storage
+        .delete_task(&TaskId("task-003".to_string()))
+        .unwrap();
+    storage
+        .delete_task(&TaskId("task-007".to_string()))
+        .unwrap();
 
     let ids = storage.list_task_ids().unwrap();
     assert_eq!(ids.len(), 8);
@@ -140,11 +156,16 @@ fn test_state_with_layout_modes() {
     let storage = FileStorageService::new(temp.path()).unwrap();
 
     // Test Grid layout
-    let mut state = AppState::default();
-    state.layout = LayoutMode::Grid { rows: 3, cols: 3 };
+    let mut state = AppState {
+        layout: LayoutMode::Grid { rows: 3, cols: 3 },
+        ..Default::default()
+    };
     storage.save_state(&state).unwrap();
     let loaded = storage.load_state().unwrap();
-    assert!(matches!(loaded.layout, LayoutMode::Grid { rows: 3, cols: 3 }));
+    assert!(matches!(
+        loaded.layout,
+        LayoutMode::Grid { rows: 3, cols: 3 }
+    ));
 
     // Test Single layout
     state.layout = LayoutMode::Single;
@@ -155,8 +176,14 @@ fn test_state_with_layout_modes() {
     // Test Custom layout
     state.layout = LayoutMode::Custom {
         positions: vec![
-            (SessionId(1), codirigent_core::GridPosition { row: 0, col: 0 }),
-            (SessionId(2), codirigent_core::GridPosition { row: 0, col: 1 }),
+            (
+                SessionId(1),
+                codirigent_core::GridPosition { row: 0, col: 0 },
+            ),
+            (
+                SessionId(2),
+                codirigent_core::GridPosition { row: 0, col: 1 },
+            ),
         ],
     };
     storage.save_state(&state).unwrap();
@@ -200,7 +227,9 @@ fn test_concurrent_storage_instances() {
     // Create first storage and save state
     let storage1 = FileStorageService::new(temp.path()).unwrap();
     let mut state = AppState::default();
-    state.sessions.push(create_session(1, "From Storage 1", "/project1"));
+    state
+        .sessions
+        .push(create_session(1, "From Storage 1", "/project1"));
     storage1.save_state(&state).unwrap();
 
     // Create second storage and load
@@ -210,7 +239,9 @@ fn test_concurrent_storage_instances() {
 
     // Modify and save from storage2
     let mut state = loaded;
-    state.sessions.push(create_session(2, "From Storage 2", "/project2"));
+    state
+        .sessions
+        .push(create_session(2, "From Storage 2", "/project2"));
     storage2.save_state(&state).unwrap();
 
     // Load from storage1 and verify
@@ -255,10 +286,17 @@ fn test_task_with_dependencies() {
     storage.save_task(&child).unwrap();
 
     // Load and verify
-    let loaded = storage.load_task(&TaskId("child-001".to_string())).unwrap().unwrap();
+    let loaded = storage
+        .load_task(&TaskId("child-001".to_string()))
+        .unwrap()
+        .unwrap();
     assert_eq!(loaded.dependencies.len(), 2);
-    assert!(loaded.dependencies.contains(&TaskId("parent-001".to_string())));
-    assert!(loaded.dependencies.contains(&TaskId("parent-002".to_string())));
+    assert!(loaded
+        .dependencies
+        .contains(&TaskId("parent-001".to_string())));
+    assert!(loaded
+        .dependencies
+        .contains(&TaskId("parent-002".to_string())));
 }
 
 #[test]
@@ -268,13 +306,19 @@ fn test_state_persistence_after_updates() {
 
     // Initial state
     let mut state = AppState::default();
-    state.sessions.push(create_session(1, "Session 1", "/project1"));
+    state
+        .sessions
+        .push(create_session(1, "Session 1", "/project1"));
     storage.save_state(&state).unwrap();
 
     // Multiple updates
     for i in 2..=5 {
         let mut state = storage.load_state().unwrap();
-        state.sessions.push(create_session(i, &format!("Session {}", i), &format!("/project{}", i)));
+        state.sessions.push(create_session(
+            i,
+            &format!("Session {}", i),
+            &format!("/project{}", i),
+        ));
         storage.save_state(&state).unwrap();
     }
 
@@ -293,7 +337,9 @@ fn test_storage_directory_structure() {
 
     // Save state and tasks
     storage.save_state(&AppState::default()).unwrap();
-    storage.save_task(&create_task("task-001", "Task 1")).unwrap();
+    storage
+        .save_task(&create_task("task-001", "Task 1"))
+        .unwrap();
 
     // Verify directory structure
     let codirigent_dir = temp.path().join(".codirigent");

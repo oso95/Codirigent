@@ -2,18 +2,13 @@
 //!
 //! Theme dropdown, UI font size stepper, grid gap stepper.
 
-use super::controls::{
-    setting_dropdown, setting_number, setting_row, settings_section_header,
-};
+use super::controls::{setting_dropdown, setting_number, setting_row, settings_section_header};
 use super::page::SettingsPage;
 use crate::theme::CodirigentTheme;
 use gpui::{div, IntoElement, ParentElement, Styled};
 
 /// Render the Appearance settings panel.
-pub fn render_appearance_panel(
-    page: &SettingsPage,
-    theme: &CodirigentTheme,
-) -> impl IntoElement {
+pub fn render_appearance_panel(page: &SettingsPage, theme: &CodirigentTheme) -> impl IntoElement {
     let appearance = &page.user_settings.appearance;
 
     div()

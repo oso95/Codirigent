@@ -351,8 +351,14 @@ mod tests {
     fn test_thumbnail_preview_new() {
         let bytes = vec![0x89, 0x50, 0x4E, 0x47];
         let path = PathBuf::from("/tmp/screenshot.png");
-        let preview =
-            ThumbnailPreview::new(bytes.clone(), path.clone(), 1920, 1080, 1024000, ImageFormat::Png);
+        let preview = ThumbnailPreview::new(
+            bytes.clone(),
+            path.clone(),
+            1920,
+            1080,
+            1024000,
+            ImageFormat::Png,
+        );
 
         assert_eq!(preview.thumbnail_bytes, bytes);
         assert_eq!(preview.image_path, path);
@@ -365,7 +371,8 @@ mod tests {
     #[test]
     fn test_thumbnail_preview_aspect_ratio() {
         // 16:9 aspect ratio
-        let preview = ThumbnailPreview::new(vec![], PathBuf::new(), 1920, 1080, 0, ImageFormat::Png);
+        let preview =
+            ThumbnailPreview::new(vec![], PathBuf::new(), 1920, 1080, 0, ImageFormat::Png);
         let ratio = preview.aspect_ratio();
         assert!((ratio - 1.777).abs() < 0.01);
 
@@ -391,7 +398,14 @@ mod tests {
         let empty = ThumbnailPreview::new(vec![], PathBuf::new(), 100, 100, 0, ImageFormat::Png);
         assert!(empty.is_empty());
 
-        let filled = ThumbnailPreview::new(vec![1, 2, 3], PathBuf::new(), 100, 100, 100, ImageFormat::Png);
+        let filled = ThumbnailPreview::new(
+            vec![1, 2, 3],
+            PathBuf::new(),
+            100,
+            100,
+            100,
+            ImageFormat::Png,
+        );
         assert!(!filled.is_empty());
     }
 
@@ -409,13 +423,15 @@ mod tests {
 
     #[test]
     fn test_thumbnail_preview_human_readable_size_mb() {
-        let preview = ThumbnailPreview::new(vec![], PathBuf::new(), 0, 0, 1536000, ImageFormat::Png);
+        let preview =
+            ThumbnailPreview::new(vec![], PathBuf::new(), 0, 0, 1536000, ImageFormat::Png);
         assert_eq!(preview.human_readable_size(), "1.5 MB");
     }
 
     #[test]
     fn test_thumbnail_preview_human_readable_size_gb() {
-        let preview = ThumbnailPreview::new(vec![], PathBuf::new(), 0, 0, 1610612736, ImageFormat::Png);
+        let preview =
+            ThumbnailPreview::new(vec![], PathBuf::new(), 0, 0, 1610612736, ImageFormat::Png);
         assert_eq!(preview.human_readable_size(), "1.5 GB");
     }
 

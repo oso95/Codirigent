@@ -177,21 +177,11 @@ impl WindowsSmartClipboard {
         let hdr = &dib_data[offset..];
 
         // Read width at offset 4 (signed 32-bit little-endian)
-        let width = i32::from_le_bytes([
-            hdr[4],
-            hdr[5],
-            hdr[6],
-            hdr[7],
-        ]);
+        let width = i32::from_le_bytes([hdr[4], hdr[5], hdr[6], hdr[7]]);
 
         // Read height at offset 8 (signed 32-bit little-endian)
         // Negative height indicates top-down bitmap, we take absolute value
-        let height = i32::from_le_bytes([
-            hdr[8],
-            hdr[9],
-            hdr[10],
-            hdr[11],
-        ]);
+        let height = i32::from_le_bytes([hdr[8], hdr[9], hdr[10], hdr[11]]);
 
         // Convert to unsigned, handling negative height for top-down bitmaps
         let width = width.unsigned_abs();
@@ -344,10 +334,13 @@ mod tests {
         let clipboard = WindowsSmartClipboard::new();
 
         // Write text
-        let test_text = format!("dirigent_test_{}", std::time::SystemTime::now()
-            .duration_since(std::time::UNIX_EPOCH)
-            .unwrap()
-            .as_nanos());
+        let test_text = format!(
+            "dirigent_test_{}",
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap()
+                .as_nanos()
+        );
 
         let write_result = clipboard.write_text(test_text.clone());
 

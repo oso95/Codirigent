@@ -32,7 +32,7 @@
 
 use anyhow::{anyhow, Context, Result};
 use codirigent_core::{
-    AppState, DefaultEventBus, CodirigentEvent, EventBus, FileStorageService, ProcessMonitor,
+    AppState, CodirigentEvent, DefaultEventBus, EventBus, FileStorageService, ProcessMonitor,
     Session, SessionId, SessionManager, SessionStatus, StorageService,
 };
 use codirigent_detector::{DetectorConfig, InputDetector};
@@ -128,13 +128,10 @@ impl CodirigentIntegration {
         let event_bus = Arc::new(DefaultEventBus::new(64));
 
         let storage = Arc::new(
-            FileStorageService::new(&project_dir)
-                .context("Failed to create storage service")?,
+            FileStorageService::new(&project_dir).context("Failed to create storage service")?,
         );
 
-        let session_manager = Arc::new(Mutex::new(
-            DefaultSessionManager::new(event_bus.clone()),
-        ));
+        let session_manager = Arc::new(Mutex::new(DefaultSessionManager::new(event_bus.clone())));
 
         let detector = Arc::new(Mutex::new(InputDetector::new(
             config.detector_config.clone(),
@@ -226,13 +223,20 @@ impl CodirigentIntegration {
             CodirigentEvent::SessionStatusChanged { id, old, new } => {
                 debug!(%id, ?old, ?new, "Session status changed");
             }
-            CodirigentEvent::InputRequired { session_id, pattern } => {
+            CodirigentEvent::InputRequired {
+                session_id,
+                pattern,
+            } => {
                 info!(%session_id, ?pattern, "Input required");
             }
             CodirigentEvent::InputProvided { session_id } => {
                 debug!(%session_id, "Input provided");
             }
-            CodirigentEvent::SessionRenamed { id, old_name, new_name } => {
+            CodirigentEvent::SessionRenamed {
+                id,
+                old_name,
+                new_name,
+            } => {
                 debug!(%id, %old_name, %new_name, "Session renamed");
                 if auto_save {
                     Self::save_state_internal(session_manager, storage);
@@ -298,7 +302,8 @@ impl CodirigentIntegration {
         // Get child PID and start monitoring
         let child_pid = {
             let manager = self.lock_session_manager()?;
-            manager.get_child_pid(session_id)
+            manager
+                .get_child_pid(session_id)
                 .ok_or_else(|| anyhow!("Session created but child PID not available"))?
         };
 
@@ -573,10 +578,8 @@ mod tests {
             auto_start_event_loop: false,
             ..Default::default()
         };
-        let integration = CodirigentIntegration::with_config(
-            temp.path().to_path_buf(),
-            config,
-        ).unwrap();
+        let integration =
+            CodirigentIntegration::with_config(temp.path().to_path_buf(), config).unwrap();
         (integration, temp)
     }
 
@@ -597,10 +600,9 @@ mod tests {
     fn test_integration_create_session() {
         let (integration, temp) = create_test_integration();
 
-        let id = integration.create_session(
-            "Test Session".to_string(),
-            temp.path().to_path_buf(),
-        ).unwrap();
+        let id = integration
+            .create_session("Test Session".to_string(), temp.path().to_path_buf())
+            .unwrap();
 
         assert_eq!(integration.session_count().unwrap(), 1);
 
@@ -612,10 +614,9 @@ mod tests {
     fn test_integration_close_session() {
         let (integration, temp) = create_test_integration();
 
-        let id = integration.create_session(
-            "Test Session".to_string(),
-            temp.path().to_path_buf(),
-        ).unwrap();
+        let id = integration
+            .create_session("Test Session".to_string(), temp.path().to_path_buf())
+            .unwrap();
 
         integration.close_session(id).unwrap();
         assert_eq!(integration.session_count().unwrap(), 0);
@@ -625,14 +626,12 @@ mod tests {
     fn test_integration_list_sessions() {
         let (integration, temp) = create_test_integration();
 
-        integration.create_session(
-            "Session 1".to_string(),
-            temp.path().to_path_buf(),
-        ).unwrap();
-        integration.create_session(
-            "Session 2".to_string(),
-            temp.path().to_path_buf(),
-        ).unwrap();
+        integration
+            .create_session("Session 1".to_string(), temp.path().to_path_buf())
+            .unwrap();
+        integration
+            .create_session("Session 2".to_string(), temp.path().to_path_buf())
+            .unwrap();
 
         let sessions = integration.list_sessions().unwrap();
         assert_eq!(sessions.len(), 2);
@@ -642,10 +641,9 @@ mod tests {
     fn test_integration_send_input() {
         let (integration, temp) = create_test_integration();
 
-        let id = integration.create_session(
-            "Test Session".to_string(),
-            temp.path().to_path_buf(),
-        ).unwrap();
+        let id = integration
+            .create_session("Test Session".to_string(), temp.path().to_path_buf())
+            .unwrap();
 
         let result = integration.send_input(id, b"echo hello\n");
         assert!(result.is_ok());
@@ -655,10 +653,9 @@ mod tests {
     fn test_integration_resize_session() {
         let (integration, temp) = create_test_integration();
 
-        let id = integration.create_session(
-            "Test Session".to_string(),
-            temp.path().to_path_buf(),
-        ).unwrap();
+        let id = integration
+            .create_session("Test Session".to_string(), temp.path().to_path_buf())
+            .unwrap();
 
         let result = integration.resize_session(id, 48, 120);
         assert!(result.is_ok());
@@ -668,12 +665,13 @@ mod tests {
     fn test_integration_rename_session() {
         let (integration, temp) = create_test_integration();
 
-        let id = integration.create_session(
-            "Original".to_string(),
-            temp.path().to_path_buf(),
-        ).unwrap();
+        let id = integration
+            .create_session("Original".to_string(), temp.path().to_path_buf())
+            .unwrap();
 
-        integration.rename_session(id, "Renamed".to_string()).unwrap();
+        integration
+            .rename_session(id, "Renamed".to_string())
+            .unwrap();
 
         let session = integration.get_session(id).unwrap().unwrap();
         assert_eq!(session.name, "Renamed");
@@ -683,16 +681,13 @@ mod tests {
     fn test_integration_set_session_group() {
         let (integration, temp) = create_test_integration();
 
-        let id = integration.create_session(
-            "Test Session".to_string(),
-            temp.path().to_path_buf(),
-        ).unwrap();
+        let id = integration
+            .create_session("Test Session".to_string(), temp.path().to_path_buf())
+            .unwrap();
 
-        integration.set_session_group(
-            id,
-            Some("backend".to_string()),
-            Some("#ff0000".to_string()),
-        ).unwrap();
+        integration
+            .set_session_group(id, Some("backend".to_string()), Some("#ff0000".to_string()))
+            .unwrap();
 
         let session = integration.get_session(id).unwrap().unwrap();
         assert_eq!(session.group, Some("backend".to_string()));
@@ -703,10 +698,9 @@ mod tests {
     fn test_integration_get_session_status() {
         let (integration, temp) = create_test_integration();
 
-        let id = integration.create_session(
-            "Test Session".to_string(),
-            temp.path().to_path_buf(),
-        ).unwrap();
+        let id = integration
+            .create_session("Test Session".to_string(), temp.path().to_path_buf())
+            .unwrap();
 
         let status = integration.get_session_status(id).unwrap();
         assert!(status.is_some());
@@ -716,10 +710,9 @@ mod tests {
     fn test_integration_process_output() {
         let (integration, temp) = create_test_integration();
 
-        let id = integration.create_session(
-            "Test Session".to_string(),
-            temp.path().to_path_buf(),
-        ).unwrap();
+        let id = integration
+            .create_session("Test Session".to_string(), temp.path().to_path_buf())
+            .unwrap();
 
         let result = integration.process_output(id, b"Continue? [y/n]");
         assert!(result.is_ok());
@@ -732,10 +725,9 @@ mod tests {
     fn test_integration_save_and_load_state() {
         let (integration, temp) = create_test_integration();
 
-        integration.create_session(
-            "Session 1".to_string(),
-            temp.path().to_path_buf(),
-        ).unwrap();
+        integration
+            .create_session("Session 1".to_string(), temp.path().to_path_buf())
+            .unwrap();
 
         integration.save_state().unwrap();
 
@@ -754,15 +746,12 @@ mod tests {
                 auto_start_event_loop: false,
                 ..Default::default()
             };
-            let integration = CodirigentIntegration::with_config(
-                temp.path().to_path_buf(),
-                config,
-            ).unwrap();
+            let integration =
+                CodirigentIntegration::with_config(temp.path().to_path_buf(), config).unwrap();
 
-            integration.create_session(
-                "Persistent Session".to_string(),
-                temp.path().to_path_buf(),
-            ).unwrap();
+            integration
+                .create_session("Persistent Session".to_string(), temp.path().to_path_buf())
+                .unwrap();
 
             integration.save_state().unwrap();
         }
@@ -773,10 +762,8 @@ mod tests {
                 auto_start_event_loop: false,
                 ..Default::default()
             };
-            let integration = CodirigentIntegration::with_config(
-                temp.path().to_path_buf(),
-                config,
-            ).unwrap();
+            let integration =
+                CodirigentIntegration::with_config(temp.path().to_path_buf(), config).unwrap();
 
             let restored = integration.restore_sessions().unwrap();
             assert_eq!(restored, 1);
@@ -870,21 +857,16 @@ mod tests {
                 auto_start_event_loop: false,
                 ..Default::default()
             };
-            let integration = CodirigentIntegration::with_config(
-                temp.path().to_path_buf(),
-                config,
-            ).unwrap();
+            let integration =
+                CodirigentIntegration::with_config(temp.path().to_path_buf(), config).unwrap();
 
-            let id = integration.create_session(
-                "Grouped Session".to_string(),
-                temp.path().to_path_buf(),
-            ).unwrap();
+            let id = integration
+                .create_session("Grouped Session".to_string(), temp.path().to_path_buf())
+                .unwrap();
 
-            integration.set_session_group(
-                id,
-                Some("backend".to_string()),
-                Some("#00ff00".to_string()),
-            ).unwrap();
+            integration
+                .set_session_group(id, Some("backend".to_string()), Some("#00ff00".to_string()))
+                .unwrap();
 
             integration.save_state().unwrap();
         }
@@ -895,10 +877,8 @@ mod tests {
                 auto_start_event_loop: false,
                 ..Default::default()
             };
-            let integration = CodirigentIntegration::with_config(
-                temp.path().to_path_buf(),
-                config,
-            ).unwrap();
+            let integration =
+                CodirigentIntegration::with_config(temp.path().to_path_buf(), config).unwrap();
 
             let restored = integration.restore_sessions().unwrap();
             assert_eq!(restored, 1);
@@ -915,18 +895,15 @@ mod tests {
         let (integration, temp) = create_test_integration();
 
         // Create multiple sessions
-        let id1 = integration.create_session(
-            "Session 1".to_string(),
-            temp.path().to_path_buf(),
-        ).unwrap();
-        let id2 = integration.create_session(
-            "Session 2".to_string(),
-            temp.path().to_path_buf(),
-        ).unwrap();
-        let id3 = integration.create_session(
-            "Session 3".to_string(),
-            temp.path().to_path_buf(),
-        ).unwrap();
+        let id1 = integration
+            .create_session("Session 1".to_string(), temp.path().to_path_buf())
+            .unwrap();
+        let id2 = integration
+            .create_session("Session 2".to_string(), temp.path().to_path_buf())
+            .unwrap();
+        let id3 = integration
+            .create_session("Session 3".to_string(), temp.path().to_path_buf())
+            .unwrap();
 
         assert_eq!(integration.session_count().unwrap(), 3);
 
@@ -944,9 +921,7 @@ mod tests {
     fn test_handle_event_session_created() {
         let temp = TempDir::new().unwrap();
         let event_bus = Arc::new(DefaultEventBus::new(16));
-        let session_manager = Arc::new(Mutex::new(
-            DefaultSessionManager::new(event_bus.clone()),
-        ));
+        let session_manager = Arc::new(Mutex::new(DefaultSessionManager::new(event_bus.clone())));
         let storage = Arc::new(FileStorageService::new(temp.path()).unwrap());
 
         let event = CodirigentEvent::SessionCreated { id: SessionId(1) };
@@ -958,9 +933,7 @@ mod tests {
     fn test_handle_event_session_closed() {
         let temp = TempDir::new().unwrap();
         let event_bus = Arc::new(DefaultEventBus::new(16));
-        let session_manager = Arc::new(Mutex::new(
-            DefaultSessionManager::new(event_bus.clone()),
-        ));
+        let session_manager = Arc::new(Mutex::new(DefaultSessionManager::new(event_bus.clone())));
         let storage = Arc::new(FileStorageService::new(temp.path()).unwrap());
 
         let event = CodirigentEvent::SessionClosed { id: SessionId(1) };
@@ -972,9 +945,7 @@ mod tests {
     fn test_handle_event_status_changed() {
         let temp = TempDir::new().unwrap();
         let event_bus = Arc::new(DefaultEventBus::new(16));
-        let session_manager = Arc::new(Mutex::new(
-            DefaultSessionManager::new(event_bus.clone()),
-        ));
+        let session_manager = Arc::new(Mutex::new(DefaultSessionManager::new(event_bus.clone())));
         let storage = Arc::new(FileStorageService::new(temp.path()).unwrap());
 
         let event = CodirigentEvent::SessionStatusChanged {
@@ -990,9 +961,7 @@ mod tests {
     fn test_handle_event_input_required() {
         let temp = TempDir::new().unwrap();
         let event_bus = Arc::new(DefaultEventBus::new(16));
-        let session_manager = Arc::new(Mutex::new(
-            DefaultSessionManager::new(event_bus.clone()),
-        ));
+        let session_manager = Arc::new(Mutex::new(DefaultSessionManager::new(event_bus.clone())));
         let storage = Arc::new(FileStorageService::new(temp.path()).unwrap());
 
         let event = CodirigentEvent::InputRequired {
@@ -1007,12 +976,12 @@ mod tests {
     fn test_handle_event_input_provided() {
         let temp = TempDir::new().unwrap();
         let event_bus = Arc::new(DefaultEventBus::new(16));
-        let session_manager = Arc::new(Mutex::new(
-            DefaultSessionManager::new(event_bus.clone()),
-        ));
+        let session_manager = Arc::new(Mutex::new(DefaultSessionManager::new(event_bus.clone())));
         let storage = Arc::new(FileStorageService::new(temp.path()).unwrap());
 
-        let event = CodirigentEvent::InputProvided { session_id: SessionId(1) };
+        let event = CodirigentEvent::InputProvided {
+            session_id: SessionId(1),
+        };
         CodirigentIntegration::handle_event(&event, &session_manager, &storage, false);
         // Should not panic
     }
@@ -1021,9 +990,7 @@ mod tests {
     fn test_handle_event_session_renamed() {
         let temp = TempDir::new().unwrap();
         let event_bus = Arc::new(DefaultEventBus::new(16));
-        let session_manager = Arc::new(Mutex::new(
-            DefaultSessionManager::new(event_bus.clone()),
-        ));
+        let session_manager = Arc::new(Mutex::new(DefaultSessionManager::new(event_bus.clone())));
         let storage = Arc::new(FileStorageService::new(temp.path()).unwrap());
 
         let event = CodirigentEvent::SessionRenamed {
@@ -1039,9 +1006,7 @@ mod tests {
     fn test_handle_event_group_changed() {
         let temp = TempDir::new().unwrap();
         let event_bus = Arc::new(DefaultEventBus::new(16));
-        let session_manager = Arc::new(Mutex::new(
-            DefaultSessionManager::new(event_bus.clone()),
-        ));
+        let session_manager = Arc::new(Mutex::new(DefaultSessionManager::new(event_bus.clone())));
         let storage = Arc::new(FileStorageService::new(temp.path()).unwrap());
 
         let event = CodirigentEvent::SessionGroupChanged {
@@ -1057,10 +1022,9 @@ mod tests {
     fn test_drain_output() {
         let (integration, temp) = create_test_integration();
 
-        let id = integration.create_session(
-            "Test Session".to_string(),
-            temp.path().to_path_buf(),
-        ).unwrap();
+        let id = integration
+            .create_session("Test Session".to_string(), temp.path().to_path_buf())
+            .unwrap();
 
         // Drain should work even if empty
         let output = integration.drain_output(id).unwrap();

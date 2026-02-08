@@ -180,10 +180,7 @@ impl TitleBar {
             if components.len() <= 2 {
                 p.to_string_lossy().to_string()
             } else {
-                let last_two: PathBuf = components
-                    .iter()
-                    .skip(components.len() - 2)
-                    .collect();
+                let last_two: PathBuf = components.iter().skip(components.len() - 2).collect();
                 format!(".../{}", last_two.to_string_lossy())
             }
         })
@@ -402,7 +399,10 @@ mod tests {
         let mut bar = TitleBar::new();
         bar.set_control_hovered(WindowControl::Close, true);
 
-        let close = bar.controls().iter().find(|c| c.control == WindowControl::Close);
+        let close = bar
+            .controls()
+            .iter()
+            .find(|c| c.control == WindowControl::Close);
         assert!(close.is_some());
         assert!(close.unwrap().is_hovered);
     }

@@ -10,7 +10,9 @@ fn test_clipboard_workflow_text() {
     let service = DefaultClipboardService::new(temp.path());
 
     let content = ClipboardContent::Text("Hello, world!".to_string());
-    let formatted = service.format_for_cli(&content, CliType::ClaudeCode).unwrap();
+    let formatted = service
+        .format_for_cli(&content, CliType::ClaudeCode)
+        .unwrap();
 
     assert_eq!(formatted, "Hello, world!");
 }
@@ -34,10 +36,14 @@ fn test_clipboard_workflow_image_path_formatting() {
     // Test formatting for different CLI types
     let content = ClipboardContent::Image(image);
 
-    let claude_fmt = service.format_for_cli(&content, CliType::ClaudeCode).unwrap();
+    let claude_fmt = service
+        .format_for_cli(&content, CliType::ClaudeCode)
+        .unwrap();
     assert!(!claude_fmt.starts_with('@'));
 
-    let gemini_fmt = service.format_for_cli(&content, CliType::GeminiCli).unwrap();
+    let gemini_fmt = service
+        .format_for_cli(&content, CliType::GeminiCli)
+        .unwrap();
     assert!(gemini_fmt.starts_with('@'));
 }
 
@@ -50,14 +56,20 @@ fn test_session_cli_type_tracking() {
     let session2 = SessionId(2);
 
     // Default should be GenericShell
-    assert_eq!(service.get_session_cli_type(session1), CliType::GenericShell);
+    assert_eq!(
+        service.get_session_cli_type(session1),
+        CliType::GenericShell
+    );
 
     // Set session 1 to Gemini
     service.set_session_cli_type(session1, CliType::GeminiCli);
     assert_eq!(service.get_session_cli_type(session1), CliType::GeminiCli);
 
     // Session 2 should still be default
-    assert_eq!(service.get_session_cli_type(session2), CliType::GenericShell);
+    assert_eq!(
+        service.get_session_cli_type(session2),
+        CliType::GenericShell
+    );
 }
 
 #[test]
@@ -82,7 +94,9 @@ fn test_temp_file_lifecycle() {
     assert!(saved_path.extension().unwrap() == "png");
 
     // Cleanup should not remove fresh files
-    let cleaned = service.cleanup_temp_files(std::time::Duration::from_secs(3600)).unwrap();
+    let cleaned = service
+        .cleanup_temp_files(std::time::Duration::from_secs(3600))
+        .unwrap();
     assert_eq!(cleaned, 0);
     assert!(saved_path.exists());
 }

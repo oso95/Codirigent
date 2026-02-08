@@ -115,21 +115,12 @@ impl TabButton {
 }
 
 /// Auto-assign toggle state.
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone, Copy, Default)]
 pub struct AutoAssignToggle {
     /// Whether auto-assign is enabled.
     pub enabled: bool,
     /// Whether the toggle is hovered.
     pub is_hovered: bool,
-}
-
-impl Default for AutoAssignToggle {
-    fn default() -> Self {
-        Self {
-            enabled: false,
-            is_hovered: false,
-        }
-    }
 }
 
 impl AutoAssignToggle {
@@ -304,7 +295,13 @@ impl TaskBoardPanel {
     }
 
     /// Update task counts.
-    pub fn set_task_counts(&mut self, queue: usize, in_progress: usize, review: usize, done: usize) {
+    pub fn set_task_counts(
+        &mut self,
+        queue: usize,
+        in_progress: usize,
+        review: usize,
+        done: usize,
+    ) {
         self.task_counts = [queue, in_progress, review, done];
         self.tabs = Self::create_tabs(self.active_tab, &self.task_counts);
     }

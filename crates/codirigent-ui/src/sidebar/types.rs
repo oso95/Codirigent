@@ -285,7 +285,7 @@ impl ContextUsageLevel {
     /// Get the color for this usage level.
     pub fn color(&self) -> Color {
         match self {
-            Self::Normal => Color::from_hex("#888888"),  // Secondary text
+            Self::Normal => Color::from_hex("#888888"), // Secondary text
             Self::Warning => Color::from_hex("#F59E0B"), // Orange
             Self::Critical => Color::from_hex("#FF6B6B"), // Red
         }

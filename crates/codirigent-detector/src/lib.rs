@@ -89,7 +89,9 @@ pub mod platform;
 
 // Re-export main types for convenience
 pub use detector::{DetectorConfig, InputDetector};
-pub use notification::{notify_error, notify_input_required, notify_task_completed, send_notification};
+pub use notification::{
+    notify_error, notify_input_required, notify_task_completed, send_notification,
+};
 pub use patterns::{DEFAULT_PATTERNS, DEFAULT_RECENT_LINES_TO_CHECK};
 pub use platform::{NativeMonitor, PlatformMonitor, ProcessInfo, ProcessState};
 
@@ -189,7 +191,9 @@ mod tests {
         let mut detector = InputDetector::new(DetectorConfig::default(), event_bus);
 
         // Start monitoring
-        detector.start_monitoring(SessionId(1), std::process::id()).unwrap();
+        detector
+            .start_monitoring(SessionId(1), std::process::id())
+            .unwrap();
 
         // Initial status should be Idle or Working depending on process state
         let initial_status = detector.get_status(SessionId(1));
@@ -199,7 +203,10 @@ mod tests {
         detector.process_output(SessionId(1), b"Continue? [y/n]");
 
         // Should detect WaitingForInput
-        assert_eq!(detector.get_status(SessionId(1)), Some(SessionStatus::WaitingForInput));
+        assert_eq!(
+            detector.get_status(SessionId(1)),
+            Some(SessionStatus::WaitingForInput)
+        );
 
         // Stop monitoring
         detector.stop_monitoring(SessionId(1));
@@ -214,13 +221,18 @@ mod tests {
         // Add custom pattern
         detector.add_pattern(r"custom-prompt>".to_string());
 
-        detector.start_monitoring(SessionId(1), std::process::id()).unwrap();
+        detector
+            .start_monitoring(SessionId(1), std::process::id())
+            .unwrap();
 
         // Process output with custom pattern
         detector.process_output(SessionId(1), b"custom-prompt>");
 
         // Should detect WaitingForInput
-        assert_eq!(detector.get_status(SessionId(1)), Some(SessionStatus::WaitingForInput));
+        assert_eq!(
+            detector.get_status(SessionId(1)),
+            Some(SessionStatus::WaitingForInput)
+        );
     }
 
     #[test]
@@ -229,10 +241,15 @@ mod tests {
         let event_bus = Arc::new(DefaultEventBus::new(16));
         let mut detector = InputDetector::new(config, event_bus);
 
-        detector.start_monitoring(SessionId(1), std::process::id()).unwrap();
+        detector
+            .start_monitoring(SessionId(1), std::process::id())
+            .unwrap();
         detector.process_output(SessionId(1), b"my-prompt:");
 
-        assert_eq!(detector.get_status(SessionId(1)), Some(SessionStatus::WaitingForInput));
+        assert_eq!(
+            detector.get_status(SessionId(1)),
+            Some(SessionStatus::WaitingForInput)
+        );
     }
 
     #[test]
@@ -251,7 +268,10 @@ mod tests {
         detector.process_output(SessionId(1), b"Continue? [y/n]");
         detector.process_output(SessionId(2), b"Working...");
 
-        assert_eq!(detector.get_status(SessionId(1)), Some(SessionStatus::WaitingForInput));
+        assert_eq!(
+            detector.get_status(SessionId(1)),
+            Some(SessionStatus::WaitingForInput)
+        );
 
         // Stop one session
         detector.stop_monitoring(SessionId(2));

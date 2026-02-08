@@ -259,8 +259,10 @@ fn test_event_equality() {
 
 #[test]
 fn test_with_status_colors() {
-    let mut colors = StatusColors::default();
-    colors.idle = Color::rgba(1.0, 0.0, 0.0, 1.0);
+    let colors = StatusColors {
+        idle: Color::rgba(1.0, 0.0, 0.0, 1.0),
+        ..Default::default()
+    };
     let sidebar = SessionSidebar::with_status_colors(colors);
     let c = sidebar.status_color(SessionStatus::Idle);
     assert_eq!(c.r, 1.0);
@@ -346,23 +348,50 @@ fn test_take_events_clears() {
 
 #[test]
 fn test_context_usage_level_normal() {
-    assert_eq!(ContextUsageLevel::from_percentage(0.0), ContextUsageLevel::Normal);
-    assert_eq!(ContextUsageLevel::from_percentage(0.5), ContextUsageLevel::Normal);
-    assert_eq!(ContextUsageLevel::from_percentage(0.69), ContextUsageLevel::Normal);
+    assert_eq!(
+        ContextUsageLevel::from_percentage(0.0),
+        ContextUsageLevel::Normal
+    );
+    assert_eq!(
+        ContextUsageLevel::from_percentage(0.5),
+        ContextUsageLevel::Normal
+    );
+    assert_eq!(
+        ContextUsageLevel::from_percentage(0.69),
+        ContextUsageLevel::Normal
+    );
 }
 
 #[test]
 fn test_context_usage_level_warning() {
-    assert_eq!(ContextUsageLevel::from_percentage(0.7), ContextUsageLevel::Warning);
-    assert_eq!(ContextUsageLevel::from_percentage(0.8), ContextUsageLevel::Warning);
-    assert_eq!(ContextUsageLevel::from_percentage(0.89), ContextUsageLevel::Warning);
+    assert_eq!(
+        ContextUsageLevel::from_percentage(0.7),
+        ContextUsageLevel::Warning
+    );
+    assert_eq!(
+        ContextUsageLevel::from_percentage(0.8),
+        ContextUsageLevel::Warning
+    );
+    assert_eq!(
+        ContextUsageLevel::from_percentage(0.89),
+        ContextUsageLevel::Warning
+    );
 }
 
 #[test]
 fn test_context_usage_level_critical() {
-    assert_eq!(ContextUsageLevel::from_percentage(0.9), ContextUsageLevel::Critical);
-    assert_eq!(ContextUsageLevel::from_percentage(0.95), ContextUsageLevel::Critical);
-    assert_eq!(ContextUsageLevel::from_percentage(1.0), ContextUsageLevel::Critical);
+    assert_eq!(
+        ContextUsageLevel::from_percentage(0.9),
+        ContextUsageLevel::Critical
+    );
+    assert_eq!(
+        ContextUsageLevel::from_percentage(0.95),
+        ContextUsageLevel::Critical
+    );
+    assert_eq!(
+        ContextUsageLevel::from_percentage(1.0),
+        ContextUsageLevel::Critical
+    );
 }
 
 #[test]
@@ -436,12 +465,7 @@ fn create_session_with_context(
     }
 }
 
-fn create_session_with_task(
-    id: u64,
-    name: &str,
-    status: SessionStatus,
-    task: &str,
-) -> Session {
+fn create_session_with_task(id: u64, name: &str, status: SessionStatus, task: &str) -> Session {
     use codirigent_core::TaskId;
     Session {
         id: SessionId(id),
@@ -460,9 +484,12 @@ fn create_session_with_task(
 #[test]
 fn test_render_hints_with_context_usage() {
     let mut sidebar = SessionSidebar::new();
-    sidebar.update_sessions(vec![
-        create_session_with_context(1, "S1", SessionStatus::Working, Some(0.85)),
-    ]);
+    sidebar.update_sessions(vec![create_session_with_context(
+        1,
+        "S1",
+        SessionStatus::Working,
+        Some(0.85),
+    )]);
     let hints = sidebar.render_hints();
     if let SidebarItem::Session { context_usage, .. } = &hints.items[0] {
         assert_eq!(*context_usage, Some(0.85));
@@ -474,9 +501,12 @@ fn test_render_hints_with_context_usage() {
 #[test]
 fn test_render_hints_with_task() {
     let mut sidebar = SessionSidebar::new();
-    sidebar.update_sessions(vec![
-        create_session_with_task(1, "S1", SessionStatus::Working, "Implementing feature X"),
-    ]);
+    sidebar.update_sessions(vec![create_session_with_task(
+        1,
+        "S1",
+        SessionStatus::Working,
+        "Implementing feature X",
+    )]);
     let hints = sidebar.render_hints();
     if let SidebarItem::Session { task, .. } = &hints.items[0] {
         assert_eq!(task.as_deref(), Some("Implementing feature X"));
@@ -488,9 +518,13 @@ fn test_render_hints_with_task() {
 #[test]
 fn test_render_hints_with_group_color() {
     let mut sidebar = SessionSidebar::new();
-    sidebar.update_sessions(vec![
-        create_grouped_session(1, "S1", SessionStatus::Idle, "Backend", "#4ECDC4"),
-    ]);
+    sidebar.update_sessions(vec![create_grouped_session(
+        1,
+        "S1",
+        SessionStatus::Idle,
+        "Backend",
+        "#4ECDC4",
+    )]);
     let hints = sidebar.render_hints();
     // First item is the group header, second is the session
     if let SidebarItem::Session { group_color, .. } = &hints.items[1] {
@@ -506,9 +540,7 @@ fn test_render_hints_with_group_color() {
 #[test]
 fn test_render_hints_ungrouped_no_group_color() {
     let mut sidebar = SessionSidebar::new();
-    sidebar.update_sessions(vec![
-        create_test_session(1, "S1", SessionStatus::Idle),
-    ]);
+    sidebar.update_sessions(vec![create_test_session(1, "S1", SessionStatus::Idle)]);
     let hints = sidebar.render_hints();
     if let SidebarItem::Session { group_color, .. } = &hints.items[0] {
         assert!(group_color.is_none());

@@ -62,10 +62,10 @@ use std::sync::Arc;
 ///
 /// `true` if the session directory is within the project directory.
 fn session_matches_project(session_dir: &Path, project_dir: &Path) -> bool {
-    let canon_session = std::fs::canonicalize(session_dir)
-        .unwrap_or_else(|_| session_dir.to_path_buf());
-    let canon_project = std::fs::canonicalize(project_dir)
-        .unwrap_or_else(|_| project_dir.to_path_buf());
+    let canon_session =
+        std::fs::canonicalize(session_dir).unwrap_or_else(|_| session_dir.to_path_buf());
+    let canon_project =
+        std::fs::canonicalize(project_dir).unwrap_or_else(|_| project_dir.to_path_buf());
     canon_session.starts_with(&canon_project)
 }
 
@@ -1280,9 +1280,7 @@ mod tests {
         queue.enqueue(task).unwrap();
 
         assert_eq!(queue.get_state().order.len(), 1);
-        assert!(queue
-            .get_task(&TaskId("task-001".to_string()))
-            .is_some());
+        assert!(queue.get_task(&TaskId("task-001".to_string())).is_some());
     }
 
     #[test]
@@ -1401,11 +1399,7 @@ mod tests {
     fn test_next_task_priority_order() {
         let mut queue = create_queue();
 
-        let mut low_task = Task::new(
-            TaskId("low".to_string()),
-            "Low".to_string(),
-            "".to_string(),
-        );
+        let mut low_task = Task::new(TaskId("low".to_string()), "Low".to_string(), "".to_string());
         low_task.priority = TaskPriority::Low;
 
         let mut high_task = Task::new(
@@ -1472,8 +1466,12 @@ mod tests {
         assert_eq!(next.unwrap().id, TaskId("task-1".to_string()));
 
         // Assign and complete task-1
-        queue.assign_task(&TaskId("task-1".to_string()), SessionId(1)).unwrap();
-        queue.complete_task(&TaskId("task-1".to_string()), true).unwrap();
+        queue
+            .assign_task(&TaskId("task-1".to_string()), SessionId(1))
+            .unwrap();
+        queue
+            .complete_task(&TaskId("task-1".to_string()), true)
+            .unwrap();
 
         // After task-1 completes, task-2 is unblocked
         let next = queue.next_task(&[TaskId("task-1".to_string())]);
@@ -1499,7 +1497,9 @@ mod tests {
         queue.enqueue(task2).unwrap();
 
         // Assign first task
-        queue.assign_task(&TaskId("task-1".to_string()), SessionId(1)).unwrap();
+        queue
+            .assign_task(&TaskId("task-1".to_string()), SessionId(1))
+            .unwrap();
 
         // Next should return second task
         let next = queue.next_task(&[]);
@@ -1530,8 +1530,7 @@ mod tests {
         queue.enqueue(frontend_task).unwrap();
 
         // Session with backend group should prefer backend task
-        let mut session =
-            Session::new(SessionId(1), "Backend".to_string(), PathBuf::from("/tmp"));
+        let mut session = Session::new(SessionId(1), "Backend".to_string(), PathBuf::from("/tmp"));
         session.group = Some("backend".to_string());
 
         let next = queue.next_task_for_session(&session, &[]);
@@ -1847,11 +1846,7 @@ mod tests {
         );
         high_task.priority = TaskPriority::High;
 
-        let low_task = Task::new(
-            TaskId("low".to_string()),
-            "Low".to_string(),
-            "".to_string(),
-        );
+        let low_task = Task::new(TaskId("low".to_string()), "Low".to_string(), "".to_string());
 
         // Add low first, then high
         queue.enqueue(low_task).unwrap();
@@ -1879,7 +1874,10 @@ mod tests {
             "Has deps".to_string(),
             "".to_string(),
         );
-        task2.dependencies = vec![TaskId("external-1".to_string()), TaskId("external-2".to_string())];
+        task2.dependencies = vec![
+            TaskId("external-1".to_string()),
+            TaskId("external-2".to_string()),
+        ];
 
         queue.enqueue(task2).unwrap();
         queue.enqueue(task1).unwrap();
@@ -2031,10 +2029,7 @@ mod tests {
             "Third".to_string(),
             "".to_string(),
         );
-        task3.dependencies = vec![
-            TaskId("task-1".to_string()),
-            TaskId("task-2".to_string()),
-        ];
+        task3.dependencies = vec![TaskId("task-1".to_string()), TaskId("task-2".to_string())];
 
         queue.enqueue(task1).unwrap();
         queue.enqueue(task2).unwrap();

@@ -76,7 +76,12 @@ impl PluginMetadata {
     /// * `name` - Human-readable name
     /// * `version` - Semver version string
     /// * `description` - Brief description
-    pub fn new(id: impl Into<String>, name: impl Into<String>, version: impl Into<String>, description: impl Into<String>) -> Self {
+    pub fn new(
+        id: impl Into<String>,
+        name: impl Into<String>,
+        version: impl Into<String>,
+        description: impl Into<String>,
+    ) -> Self {
         Self {
             id: id.into(),
             name: name.into(),
@@ -444,12 +449,7 @@ mod tests {
 
     #[test]
     fn test_plugin_metadata_new() {
-        let meta = PluginMetadata::new(
-            "my-plugin",
-            "My Plugin",
-            "2.0.0",
-            "Description here",
-        );
+        let meta = PluginMetadata::new("my-plugin", "My Plugin", "2.0.0", "Description here");
         assert_eq!(meta.id, "my-plugin");
         assert_eq!(meta.name, "My Plugin");
         assert_eq!(meta.version, "2.0.0");
@@ -471,8 +471,7 @@ mod tests {
 
     #[test]
     fn test_plugin_metadata_with_size() {
-        let meta = PluginMetadata::new("my-plugin", "My Plugin", "1.0.0", "Desc")
-            .with_size(4096);
+        let meta = PluginMetadata::new("my-plugin", "My Plugin", "1.0.0", "Desc").with_size(4096);
         assert_eq!(meta.size_bytes, 4096);
     }
 
@@ -668,7 +667,10 @@ mod tests {
     #[test]
     fn test_plugin_state_description() {
         assert_eq!(PluginState::Unloaded.description(), "Not loaded");
-        assert_eq!(PluginState::Loaded.description(), "Loaded, ready to activate");
+        assert_eq!(
+            PluginState::Loaded.description(),
+            "Loaded, ready to activate"
+        );
         assert_eq!(PluginState::Active.description(), "Active and running");
         assert_eq!(PluginState::Disabled.description(), "Disabled by user");
         assert_eq!(PluginState::Error.description(), "Error occurred");

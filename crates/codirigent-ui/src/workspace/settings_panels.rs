@@ -7,9 +7,7 @@
 use gpui::*;
 use std::sync::Arc;
 
-use crate::settings::controls::{
-    setting_row, setting_toggle, settings_section_header,
-};
+use crate::settings::controls::{setting_row, setting_toggle, settings_section_header};
 use crate::settings::SettingsCategory;
 use crate::terminal_view::CursorShape;
 
@@ -200,28 +198,20 @@ impl super::gpui::WorkspaceView {
                             } else {
                                 page.open_dropdown = Some(dd_id.clone());
                                 // Store click position for anchored overlay
-                                page.dropdown_click_pos = (
-                                    event.position.x / px(1.0),
-                                    event.position.y / px(1.0),
-                                );
+                                page.dropdown_click_pos =
+                                    (event.position.x / px(1.0), event.position.y / px(1.0));
                             }
                         }
                         cx.notify();
                     }
                 }),
             )
-            .child(
-                div()
-                    .text_color(fg)
-                    .flex_1()
-                    .child(selected_display),
-            )
-            .child(
-                div()
-                    .text_size(px(10.0))
-                    .text_color(fg)
-                    .child(if is_open { "\u{25B2}" } else { "\u{25BC}" }),
-            );
+            .child(div().text_color(fg).flex_1().child(selected_display))
+            .child(div().text_size(px(10.0)).text_color(fg).child(if is_open {
+                "\u{25B2}"
+            } else {
+                "\u{25BC}"
+            }));
 
         // Container with trigger; overlay is rendered separately in render_settings_overlay
         let mut container = div().child(trigger);
@@ -467,8 +457,12 @@ impl super::gpui::WorkspaceView {
                     cx,
                     |this, _, cx| {
                         if let Some(page) = this.settings_page.as_mut() {
-                            page.user_settings.appearance.font_size =
-                                page.user_settings.appearance.font_size.saturating_sub(1).max(10);
+                            page.user_settings.appearance.font_size = page
+                                .user_settings
+                                .appearance
+                                .font_size
+                                .saturating_sub(1)
+                                .max(10);
                             page.user_save_pending = true;
                             let s = page.user_settings.appearance.font_size as f32;
                             let t = this.workspace.theme_mut();
@@ -574,8 +568,12 @@ impl super::gpui::WorkspaceView {
                     cx,
                     |this, window, cx| {
                         if let Some(page) = this.settings_page.as_mut() {
-                            page.user_settings.terminal.font_size =
-                                page.user_settings.terminal.font_size.saturating_sub(1).max(8);
+                            page.user_settings.terminal.font_size = page
+                                .user_settings
+                                .terminal
+                                .font_size
+                                .saturating_sub(1)
+                                .max(8);
                             page.user_save_pending = true;
                             let new_size = page.user_settings.terminal.font_size as f32;
                             this.workspace.theme_mut().terminal_font_size = new_size;
@@ -754,12 +752,7 @@ impl super::gpui::WorkspaceView {
                             cx.notify();
                         }),
                     )
-                    .child(
-                        div()
-                            .flex_1()
-                            .text_color(fg)
-                            .child(label),
-                    )
+                    .child(div().flex_1().text_color(fg).child(label))
                     .child(
                         div()
                             .w(px(160.0))

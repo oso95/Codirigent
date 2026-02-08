@@ -1202,8 +1202,10 @@ mod tests {
 
     #[test]
     fn test_overnight_is_within_window_wrong_day() {
-        let mut config = OvernightConfig::default();
-        config.enabled = true;
+        let config = OvernightConfig {
+            enabled: true,
+            ..Default::default()
+        };
         // Friday (5) is not in default days [0,1,2,3,4]
         assert!(!config.is_within_window(23, 5));
     }
@@ -1256,10 +1258,7 @@ mod tests {
         assert!(config.days_of_week.contains(&5));
 
         config.add_day(5); // Duplicate
-        assert_eq!(
-            config.days_of_week.iter().filter(|&&d| d == 5).count(),
-            1
-        );
+        assert_eq!(config.days_of_week.iter().filter(|&&d| d == 5).count(), 1);
 
         config.remove_day(5);
         assert!(!config.days_of_week.contains(&5));
@@ -1274,8 +1273,10 @@ mod tests {
 
     #[test]
     fn test_overnight_config_set_weekdays() {
-        let mut config = OvernightConfig::default();
-        config.days_of_week = vec![6]; // Only Saturday
+        let mut config = OvernightConfig {
+            days_of_week: vec![6], // Only Saturday
+            ..Default::default()
+        };
 
         config.set_weekdays();
         assert_eq!(config.days_of_week, vec![0, 1, 2, 3, 4]);
@@ -1339,9 +1340,11 @@ mod tests {
 
     #[test]
     fn test_overnight_summary_total_tasks() {
-        let mut summary = OvernightSummary::default();
-        summary.tasks_completed = 5;
-        summary.tasks_failed = 2;
+        let summary = OvernightSummary {
+            tasks_completed: 5,
+            tasks_failed: 2,
+            ..Default::default()
+        };
         assert_eq!(summary.total_tasks(), 7);
     }
 
@@ -1419,11 +1422,13 @@ mod tests {
 
     #[test]
     fn test_overnight_summary_serialization() {
-        let mut summary = OvernightSummary::default();
-        summary.tasks_completed = 3;
-        summary.tasks_failed = 1;
-        summary.sessions_used = vec![SessionId(1)];
-        summary.errors.push("Test error".to_string());
+        let summary = OvernightSummary {
+            tasks_completed: 3,
+            tasks_failed: 1,
+            sessions_used: vec![SessionId(1)],
+            errors: vec!["Test error".to_string()],
+            ..Default::default()
+        };
 
         let json = serde_json::to_string(&summary).unwrap();
         let parsed: OvernightSummary = serde_json::from_str(&json).unwrap();

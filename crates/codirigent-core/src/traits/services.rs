@@ -350,7 +350,11 @@ pub trait BroadcastService: Send + Sync {
     /// # Returns
     ///
     /// The broadcast ID for tracking delivery status.
-    fn send(&mut self, content: &str, targets: Vec<SessionId>) -> Result<crate::broadcast::BroadcastId>;
+    fn send(
+        &mut self,
+        content: &str,
+        targets: Vec<SessionId>,
+    ) -> Result<crate::broadcast::BroadcastId>;
 
     /// Send with template variable expansion.
     ///
@@ -422,7 +426,10 @@ pub trait BroadcastService: Send + Sync {
     /// # Returns
     ///
     /// The broadcast message if found.
-    fn get_broadcast(&self, id: crate::broadcast::BroadcastId) -> Option<&crate::broadcast::BroadcastMessage>;
+    fn get_broadcast(
+        &self,
+        id: crate::broadcast::BroadcastId,
+    ) -> Option<&crate::broadcast::BroadcastMessage>;
 
     /// Clear broadcast history.
     ///
@@ -517,7 +524,12 @@ mod tests {
         }
 
         fn get_session(&self, id: SessionId) -> Option<Session> {
-            self.sessions.lock().unwrap().iter().find(|s| s.id == id).cloned()
+            self.sessions
+                .lock()
+                .unwrap()
+                .iter()
+                .find(|s| s.id == id)
+                .cloned()
         }
 
         fn create_session(

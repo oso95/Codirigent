@@ -558,8 +558,8 @@ mod tests {
     #[test]
     fn test_persistent_session_with_scrollback_hash() {
         let session = Session::new(SessionId(1), "Test".to_string(), PathBuf::from("/tmp"));
-        let persistent = PersistentSession::from_session(&session)
-            .with_scrollback_hash("abc123".to_string());
+        let persistent =
+            PersistentSession::from_session(&session).with_scrollback_hash("abc123".to_string());
 
         assert_eq!(persistent.scrollback_hash, Some("abc123".to_string()));
     }

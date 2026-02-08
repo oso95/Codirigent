@@ -206,7 +206,7 @@ mod tests {
 
     #[test]
     fn test_default_detector_default() {
-        let detector = DefaultDetector::default();
+        let detector = DefaultDetector;
         // Default should be the same as new
         assert!(std::mem::size_of_val(&detector) == 0);
     }

@@ -186,8 +186,7 @@ impl DefaultClipboardService {
         // If file exists, add a counter suffix
         let mut counter = 1;
         while path.exists() {
-            let name_with_counter =
-                format!("clipboard_{}_{}.{}", timestamp, counter, extension);
+            let name_with_counter = format!("clipboard_{}_{}.{}", timestamp, counter, extension);
             path = self.temp_dir.join(name_with_counter);
             counter += 1;
         }
@@ -251,7 +250,7 @@ fn dib_to_rgba(dib: &[u8], width: u32, height: u32) -> Result<Vec<u8>> {
     let pixel_data = &dib[pixel_offset..];
     let bytes_per_pixel = (bi_bit_count as usize) / 8;
     // BMP rows are padded to 4-byte boundaries
-    let row_stride = ((w * bytes_per_pixel + 3) / 4) * 4;
+    let row_stride = (w * bytes_per_pixel).div_ceil(4) * 4;
 
     let mut rgba = vec![255u8; w * h * 4]; // Pre-fill alpha to 255
 
@@ -274,7 +273,7 @@ fn dib_to_rgba(dib: &[u8], width: u32, height: u32) -> Result<Vec<u8>> {
                     rgba[dst_offset + 1] = pixel_data[src_offset + 1]; // G
                     rgba[dst_offset + 2] = pixel_data[src_offset]; // B
                     rgba[dst_offset + 3] = pixel_data[src_offset + 3]; // A (or X=0)
-                    // Many screenshots have A=0 (BGRX). Force opaque.
+                                                                       // Many screenshots have A=0 (BGRX). Force opaque.
                     if rgba[dst_offset + 3] == 0 {
                         rgba[dst_offset + 3] = 255;
                     }
@@ -314,25 +313,21 @@ impl ClipboardService for DefaultClipboardService {
                 // Windows clipboard may return either:
                 // a) Full BMP file (starts with "BM" magic) — from clipboard-win
                 // b) Raw DIB data (BITMAPINFOHEADER + pixels, no file header)
-                let is_full_bmp = image.bytes.len() >= 2
-                    && image.bytes[0] == b'B'
-                    && image.bytes[1] == b'M';
+                let is_full_bmp =
+                    image.bytes.len() >= 2 && image.bytes[0] == b'B' && image.bytes[1] == b'M';
 
                 if is_full_bmp {
-                    let decoded = image::load_from_memory_with_format(
-                        &image.bytes,
-                        image::ImageFormat::Bmp,
-                    )
-                    .context("Failed to decode BMP clipboard image")?;
+                    let decoded =
+                        image::load_from_memory_with_format(&image.bytes, image::ImageFormat::Bmp)
+                            .context("Failed to decode BMP clipboard image")?;
                     decoded
                         .save_with_format(&path, image::ImageFormat::Png)
                         .context("Failed to encode BMP as PNG")?;
                 } else {
                     let rgba = dib_to_rgba(&image.bytes, image.width, image.height)
                         .context("Failed to convert raw DIB to RGBA")?;
-                    let rgba_image =
-                        image::RgbaImage::from_raw(image.width, image.height, rgba)
-                            .context("Failed to create RGBA image from DIB")?;
+                    let rgba_image = image::RgbaImage::from_raw(image.width, image.height, rgba)
+                        .context("Failed to create RGBA image from DIB")?;
                     rgba_image
                         .save_with_format(&path, image::ImageFormat::Png)
                         .context("Failed to encode DIB as PNG")?;
@@ -348,12 +343,9 @@ impl ClipboardService for DefaultClipboardService {
             }
             ImageFormat::Rgba => {
                 // Raw RGBA pixel data — construct image from dimensions
-                let rgba_image = image::RgbaImage::from_raw(
-                    image.width,
-                    image.height,
-                    image.bytes.clone(),
-                )
-                .context("Invalid RGBA dimensions for clipboard image")?;
+                let rgba_image =
+                    image::RgbaImage::from_raw(image.width, image.height, image.bytes.clone())
+                        .context("Invalid RGBA dimensions for clipboard image")?;
                 rgba_image
                     .save_with_format(&path, image::ImageFormat::Png)
                     .context("Failed to encode RGBA image as PNG")?;
@@ -418,10 +410,8 @@ impl ClipboardService for DefaultClipboardService {
             if let Ok(metadata) = entry.metadata() {
                 if let Ok(modified) = metadata.modified() {
                     if let Ok(age) = now.duration_since(modified) {
-                        if age > max_age {
-                            if fs::remove_file(&path).is_ok() {
-                                removed_count += 1;
-                            }
+                        if age > max_age && fs::remove_file(&path).is_ok() {
+                            removed_count += 1;
                         }
                     }
                 }
@@ -523,9 +513,7 @@ mod tests {
             .unwrap();
         assert_eq!(formatted, "Hello, world!");
 
-        let formatted = service
-            .format_for_cli(&content, CliType::CodexCli)
-            .unwrap();
+        let formatted = service.format_for_cli(&content, CliType::CodexCli).unwrap();
         assert_eq!(formatted, "Hello, world!");
     }
 
@@ -818,9 +806,7 @@ mod tests {
         let image = create_test_image();
         let content = ClipboardContent::Image(image);
 
-        let formatted = service
-            .format_for_cli(&content, CliType::CodexCli)
-            .unwrap();
+        let formatted = service.format_for_cli(&content, CliType::CodexCli).unwrap();
 
         // Codex should be like Claude - no prefix
         assert!(!formatted.starts_with('@'));

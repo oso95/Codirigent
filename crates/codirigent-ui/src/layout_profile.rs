@@ -356,8 +356,11 @@ mod tests {
 
     #[test]
     fn test_saved_layout_profile_new() {
-        let profile =
-            SavedLayoutProfile::new("test", "Test Profile", LayoutMode::Grid { rows: 2, cols: 2 });
+        let profile = SavedLayoutProfile::new(
+            "test",
+            "Test Profile",
+            LayoutMode::Grid { rows: 2, cols: 2 },
+        );
         assert_eq!(profile.id, "test");
         assert_eq!(profile.name, "Test Profile");
         assert!(profile.shortcut.is_none());

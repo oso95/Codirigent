@@ -255,17 +255,14 @@ mod tests {
 
     #[test]
     fn test_compile_patterns_all_invalid() {
-        let patterns = vec![
-            r"[invalid".to_string(),
-            r"(unclosed".to_string(),
-        ];
+        let patterns = vec![r"[invalid".to_string(), r"(unclosed".to_string()];
         let compiled = compile_patterns(&patterns);
         assert!(compiled.is_empty());
     }
 
     #[test]
     fn test_find_matching_pattern_yn() {
-        let patterns = compile_patterns(&vec![r"\[y/n\]".to_string()]);
+        let patterns = compile_patterns(&[r"\[y/n\]".to_string()]);
         let result = find_matching_pattern(&patterns, "Continue? [y/n]");
         assert!(result.is_some());
         assert_eq!(result.unwrap(), r"\[y/n\]");
@@ -273,73 +270,70 @@ mod tests {
 
     #[test]
     fn test_find_matching_pattern_yn_upper() {
-        let patterns = compile_patterns(&vec![r"\[Y/n\]".to_string()]);
+        let patterns = compile_patterns(&[r"\[Y/n\]".to_string()]);
         let result = find_matching_pattern(&patterns, "Install? [Y/n]");
         assert!(result.is_some());
     }
 
     #[test]
     fn test_find_matching_pattern_yes_no() {
-        let patterns = compile_patterns(&vec![r"\[yes/no\]".to_string()]);
+        let patterns = compile_patterns(&[r"\[yes/no\]".to_string()]);
         let result = find_matching_pattern(&patterns, "Proceed? [yes/no]");
         assert!(result.is_some());
     }
 
     #[test]
     fn test_find_matching_pattern_question_mark() {
-        let patterns = compile_patterns(&vec![r"\? $".to_string()]);
+        let patterns = compile_patterns(&[r"\? $".to_string()]);
         let result = find_matching_pattern(&patterns, "What do you want? ");
         assert!(result.is_some());
     }
 
     #[test]
     fn test_find_matching_pattern_prompt_angle() {
-        let patterns = compile_patterns(&vec![r"> $".to_string()]);
+        let patterns = compile_patterns(&[r"> $".to_string()]);
         let result = find_matching_pattern(&patterns, "Enter command> ");
         assert!(result.is_some());
     }
 
     #[test]
     fn test_find_matching_pattern_press_enter() {
-        let patterns = compile_patterns(&vec![r"Press Enter".to_string()]);
+        let patterns = compile_patterns(&[r"Press Enter".to_string()]);
         let result = find_matching_pattern(&patterns, "Press Enter to continue...");
         assert!(result.is_some());
     }
 
     #[test]
     fn test_find_matching_pattern_continue() {
-        let patterns = compile_patterns(&vec![r"Continue\?".to_string()]);
+        let patterns = compile_patterns(&[r"Continue\?".to_string()]);
         let result = find_matching_pattern(&patterns, "Continue?");
         assert!(result.is_some());
     }
 
     #[test]
     fn test_find_matching_pattern_y_n_paren() {
-        let patterns = compile_patterns(&vec![r"\(y/N\)".to_string()]);
+        let patterns = compile_patterns(&[r"\(y/N\)".to_string()]);
         let result = find_matching_pattern(&patterns, "Delete file? (y/N)");
         assert!(result.is_some());
     }
 
     #[test]
     fn test_find_matching_pattern_password_lower() {
-        let patterns = compile_patterns(&vec![r"password:".to_string()]);
+        let patterns = compile_patterns(&[r"password:".to_string()]);
         let result = find_matching_pattern(&patterns, "Enter password:");
         assert!(result.is_some());
     }
 
     #[test]
     fn test_find_matching_pattern_password_upper() {
-        let patterns = compile_patterns(&vec![r"Password:".to_string()]);
+        let patterns = compile_patterns(&[r"Password:".to_string()]);
         let result = find_matching_pattern(&patterns, "Password:");
         assert!(result.is_some());
     }
 
     #[test]
     fn test_find_matching_pattern_no_match() {
-        let patterns = compile_patterns(&vec![
-            r"\[y/n\]".to_string(),
-            r"\? $".to_string(),
-        ]);
+        let patterns = compile_patterns(&[r"\[y/n\]".to_string(), r"\? $".to_string()]);
         let result = find_matching_pattern(&patterns, "Hello world");
         assert!(result.is_none());
     }
@@ -353,14 +347,14 @@ mod tests {
 
     #[test]
     fn test_find_matching_pattern_empty_output() {
-        let patterns = compile_patterns(&vec![r"\[y/n\]".to_string()]);
+        let patterns = compile_patterns(&[r"\[y/n\]".to_string()]);
         let result = find_matching_pattern(&patterns, "");
         assert!(result.is_none());
     }
 
     #[test]
     fn test_find_matching_pattern_multiline() {
-        let patterns = compile_patterns(&vec![r"\[y/n\]".to_string()]);
+        let patterns = compile_patterns(&[r"\[y/n\]".to_string()]);
         let output = "Some output\nMore output\nConfirm? [y/n]";
         let result = find_matching_pattern(&patterns, output);
         assert!(result.is_some());
@@ -368,10 +362,7 @@ mod tests {
 
     #[test]
     fn test_find_matching_pattern_returns_first_match() {
-        let patterns = compile_patterns(&vec![
-            r"\[y/n\]".to_string(),
-            r"password:".to_string(),
-        ]);
+        let patterns = compile_patterns(&[r"\[y/n\]".to_string(), r"password:".to_string()]);
         let result = find_matching_pattern(&patterns, "password: [y/n]");
         // Should return the first matching pattern
         assert!(result.is_some());
@@ -380,7 +371,7 @@ mod tests {
 
     #[test]
     fn test_find_matching_pattern_only_recent_lines() {
-        let patterns = compile_patterns(&vec![r"\[y/n\]".to_string()]);
+        let patterns = compile_patterns(&[r"\[y/n\]".to_string()]);
         // Pattern appears in old lines but not in recent 5 lines
         let output = "[y/n]\nline1\nline2\nline3\nline4\nline5\nline6";
         let result = find_matching_pattern(&patterns, output);
@@ -390,13 +381,13 @@ mod tests {
 
     #[test]
     fn test_matches_any_pattern_true() {
-        let patterns = compile_patterns(&vec![r"\[y/n\]".to_string()]);
+        let patterns = compile_patterns(&[r"\[y/n\]".to_string()]);
         assert!(matches_any_pattern(&patterns, "Continue? [y/n]"));
     }
 
     #[test]
     fn test_matches_any_pattern_false() {
-        let patterns = compile_patterns(&vec![r"\[y/n\]".to_string()]);
+        let patterns = compile_patterns(&[r"\[y/n\]".to_string()]);
         assert!(!matches_any_pattern(&patterns, "Hello world"));
     }
 
@@ -442,7 +433,7 @@ mod tests {
 
     #[test]
     fn test_find_matching_pattern_with_limit_custom() {
-        let patterns = compile_patterns(&vec![r"\[y/n\]".to_string()]);
+        let patterns = compile_patterns(&[r"\[y/n\]".to_string()]);
         // Pattern appears in third line from end
         let output = "line1\nline2\n[y/n]\nline4\nline5";
 
@@ -457,7 +448,7 @@ mod tests {
 
     #[test]
     fn test_find_matching_pattern_with_limit_zero() {
-        let patterns = compile_patterns(&vec![r"\[y/n\]".to_string()]);
+        let patterns = compile_patterns(&[r"\[y/n\]".to_string()]);
         let output = "[y/n]";
         // With limit 0, checks 0 lines, so no match
         let result = find_matching_pattern_with_limit(&patterns, output, 0);
@@ -466,7 +457,7 @@ mod tests {
 
     #[test]
     fn test_find_matching_pattern_with_limit_large() {
-        let patterns = compile_patterns(&vec![r"\[y/n\]".to_string()]);
+        let patterns = compile_patterns(&[r"\[y/n\]".to_string()]);
         let output = "[y/n]\nline2";
         // With very large limit, should still work (checks all lines)
         let result = find_matching_pattern_with_limit(&patterns, output, 100);

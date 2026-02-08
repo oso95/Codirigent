@@ -155,13 +155,22 @@ impl DefaultNotesGenerator {
         let mut output = String::new();
         output.push_str("## Learnings\n\n");
 
-        let suggested: Vec<_> = learnings.iter().filter(|l| l.suggested_for_claude_md).collect();
-        let other: Vec<_> = learnings.iter().filter(|l| !l.suggested_for_claude_md).collect();
+        let suggested: Vec<_> = learnings
+            .iter()
+            .filter(|l| l.suggested_for_claude_md)
+            .collect();
+        let other: Vec<_> = learnings
+            .iter()
+            .filter(|l| !l.suggested_for_claude_md)
+            .collect();
 
         if !suggested.is_empty() {
             output.push_str("_Suggested for CLAUDE.md:_\n\n");
             for learning in suggested {
-                output.push_str(&format!("- **[{}]** {}\n", learning.category, learning.content));
+                output.push_str(&format!(
+                    "- **[{}]** {}\n",
+                    learning.category, learning.content
+                ));
             }
             output.push('\n');
         }
@@ -305,7 +314,7 @@ mod tests {
 
     #[test]
     fn test_generator_default() {
-        let generator = DefaultNotesGenerator::default();
+        let generator = DefaultNotesGenerator;
         assert!(format!("{:?}", generator).contains("DefaultNotesGenerator"));
     }
 
@@ -375,7 +384,10 @@ mod tests {
             session_id: SessionId(1),
             state: VerificationState::Passed,
             retry_count: 0,
-            results: vec![VerificationResult::passed(VerificationCheckType::UnitTest, 1000)],
+            results: vec![VerificationResult::passed(
+                VerificationCheckType::UnitTest,
+                1000,
+            )],
             started_at: chrono::Utc::now(),
             completed_at: Some(chrono::Utc::now()),
         };
@@ -735,10 +747,7 @@ mod tests {
             generator.safe_filename("Refactor Auth Module"),
             "refactor-auth-module"
         );
-        assert_eq!(
-            generator.safe_filename("Fix bug #123!"),
-            "fix-bug-123"
-        );
+        assert_eq!(generator.safe_filename("Fix bug #123!"), "fix-bug-123");
         assert_eq!(
             generator.safe_filename("Update: API endpoints"),
             "update-api-endpoints"

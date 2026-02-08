@@ -73,11 +73,7 @@ impl FailureMessageFormatter for DefaultFailureFormatter {
         output.push_str("## Verification Failed\n\n");
 
         // Summary of test results
-        let total_passed: u32 = status
-            .results
-            .iter()
-            .filter_map(|r| r.passed_count)
-            .sum();
+        let total_passed: u32 = status.results.iter().filter_map(|r| r.passed_count).sum();
         let total_failed: u32 = status
             .results
             .iter()
@@ -145,11 +141,7 @@ impl FailureMessageFormatter for DefaultFailureFormatter {
         // Retry info
         output.push_str("---\n\n");
         output.push_str("Please fix the above issues and complete the task again.\n\n");
-        output.push_str(&format!(
-            "*Retry: {}/{}*\n",
-            status.retry_count + 1,
-            3
-        ));
+        output.push_str(&format!("*Retry: {}/{}*\n", status.retry_count + 1, 3));
 
         output
     }
@@ -238,7 +230,7 @@ mod tests {
 
     #[test]
     fn test_default_formatter() {
-        let formatter = DefaultFailureFormatter::default();
+        let formatter = DefaultFailureFormatter;
         let message = formatter.format_review_feedback("test");
         assert!(!message.is_empty());
     }
@@ -357,10 +349,9 @@ mod tests {
         status.state = VerificationState::Failed;
 
         // Add passed result
-        status.results.push(VerificationResult::passed(
-            VerificationCheckType::Lint,
-            100,
-        ));
+        status
+            .results
+            .push(VerificationResult::passed(VerificationCheckType::Lint, 100));
 
         // Add failed result
         status.results.push(VerificationResult {

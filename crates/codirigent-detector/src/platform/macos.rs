@@ -35,10 +35,10 @@ impl MacOSMonitor {
     /// - SZOMB (5): Awaiting collection by parent
     fn state_from_bsd_status(status: u32) -> ProcessState {
         match status {
-            1 => ProcessState::Sleeping, // SIDL - being created, treat as sleeping
-            2 => ProcessState::Running,  // SRUN
-            3 => ProcessState::Sleeping, // SSLEEP
-            4 => ProcessState::Stopped,  // SSTOP
+            1 => ProcessState::Sleeping,   // SIDL - being created, treat as sleeping
+            2 => ProcessState::Running,    // SRUN
+            3 => ProcessState::Sleeping,   // SSLEEP
+            4 => ProcessState::Stopped,    // SSTOP
             5 => ProcessState::Terminated, // SZOMB
             _ => ProcessState::Unknown,
         }
@@ -58,7 +58,12 @@ impl PlatformMonitor for MacOSMonitor {
             .map_err(|e| anyhow!("Failed to get BSD info for process {}: {}", pid, e))?;
 
         let state = Self::state_from_bsd_status(info.pbi_status);
-        debug!(pid, ?state, bsd_status = info.pbi_status, "Got macOS process state");
+        debug!(
+            pid,
+            ?state,
+            bsd_status = info.pbi_status,
+            "Got macOS process state"
+        );
         Ok(state)
     }
 
@@ -151,10 +156,7 @@ impl PlatformMonitor for MacOSMonitor {
 
         debug!(
             pid,
-            process_pgid,
-            fg_pgid,
-            is_foreground,
-            "Checking if process is waiting for input"
+            process_pgid, fg_pgid, is_foreground, "Checking if process is waiting for input"
         );
 
         Ok(is_foreground)
@@ -173,35 +175,56 @@ mod tests {
 
     #[test]
     fn test_macos_monitor_default() {
-        let monitor = MacOSMonitor::default();
+        let monitor = MacOSMonitor;
         let _ = format!("{:?}", monitor);
     }
 
     #[test]
     fn test_state_from_bsd_status_running() {
-        assert_eq!(MacOSMonitor::state_from_bsd_status(2), ProcessState::Running);
+        assert_eq!(
+            MacOSMonitor::state_from_bsd_status(2),
+            ProcessState::Running
+        );
     }
 
     #[test]
     fn test_state_from_bsd_status_sleeping() {
-        assert_eq!(MacOSMonitor::state_from_bsd_status(1), ProcessState::Sleeping);
-        assert_eq!(MacOSMonitor::state_from_bsd_status(3), ProcessState::Sleeping);
+        assert_eq!(
+            MacOSMonitor::state_from_bsd_status(1),
+            ProcessState::Sleeping
+        );
+        assert_eq!(
+            MacOSMonitor::state_from_bsd_status(3),
+            ProcessState::Sleeping
+        );
     }
 
     #[test]
     fn test_state_from_bsd_status_stopped() {
-        assert_eq!(MacOSMonitor::state_from_bsd_status(4), ProcessState::Stopped);
+        assert_eq!(
+            MacOSMonitor::state_from_bsd_status(4),
+            ProcessState::Stopped
+        );
     }
 
     #[test]
     fn test_state_from_bsd_status_terminated() {
-        assert_eq!(MacOSMonitor::state_from_bsd_status(5), ProcessState::Terminated);
+        assert_eq!(
+            MacOSMonitor::state_from_bsd_status(5),
+            ProcessState::Terminated
+        );
     }
 
     #[test]
     fn test_state_from_bsd_status_unknown() {
-        assert_eq!(MacOSMonitor::state_from_bsd_status(0), ProcessState::Unknown);
-        assert_eq!(MacOSMonitor::state_from_bsd_status(99), ProcessState::Unknown);
+        assert_eq!(
+            MacOSMonitor::state_from_bsd_status(0),
+            ProcessState::Unknown
+        );
+        assert_eq!(
+            MacOSMonitor::state_from_bsd_status(99),
+            ProcessState::Unknown
+        );
     }
 
     #[test]

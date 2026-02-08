@@ -1736,7 +1736,7 @@ mod tests {
         assert_eq!(text_copy, ClipboardContentType::Text);
 
         // Test clone
-        let text_cloned = text.clone();
+        let text_cloned = text;
         assert_eq!(text_cloned, ClipboardContentType::Text);
     }
 
@@ -1803,7 +1803,10 @@ mod tests {
         };
         if let CodirigentEvent::ClipboardImageSaved { session_id, path } = event {
             assert!(session_id.is_none());
-            assert_eq!(path, PathBuf::from("/project/.codirigent/images/img_001.png"));
+            assert_eq!(
+                path,
+                PathBuf::from("/project/.codirigent/images/img_001.png")
+            );
         } else {
             panic!("Wrong event type");
         }

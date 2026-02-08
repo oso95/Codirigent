@@ -1156,7 +1156,9 @@ mod tests {
 
         // Check that warning event was emitted
         let event = rx.try_recv().unwrap();
-        assert!(matches!(event, CodirigentEvent::TokenBudgetWarning { budget } if budget.is_warning()));
+        assert!(
+            matches!(event, CodirigentEvent::TokenBudgetWarning { budget } if budget.is_warning())
+        );
     }
 
     #[test]

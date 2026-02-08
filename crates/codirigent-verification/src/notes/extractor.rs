@@ -86,11 +86,7 @@ impl PatternLearningsExtractor {
             if let (Some(preferred), Some(avoided)) = (caps.get(1), caps.get(2)) {
                 learnings.push(Learning {
                     category: LearningCategory::Preference,
-                    content: format!(
-                        "Use {} instead of {}",
-                        preferred.as_str(),
-                        avoided.as_str()
-                    ),
+                    content: format!("Use {} instead of {}", preferred.as_str(), avoided.as_str()),
                     suggested_for_claude_md: true,
                 });
             }
@@ -418,7 +414,9 @@ mod tests {
 
         let learnings = extractor.extract(output);
         assert_eq!(learnings.len(), 3);
-        assert!(learnings.iter().all(|l| l.category == LearningCategory::Gotcha));
+        assert!(learnings
+            .iter()
+            .all(|l| l.category == LearningCategory::Gotcha));
     }
 
     #[test]

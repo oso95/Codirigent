@@ -257,7 +257,11 @@ impl Render for SplashScreen {
 /// * `duration` - How long to show the splash screen
 /// * `on_complete` - Callback when splash is complete
 /// * `cx` - Context that implements AppContext (typically from open_window callback)
-pub fn create_splash_screen<C, F>(duration: Duration, on_complete: F, cx: &mut C) -> C::Result<Entity<SplashScreen>>
+pub fn create_splash_screen<C, F>(
+    duration: Duration,
+    on_complete: F,
+    cx: &mut C,
+) -> C::Result<Entity<SplashScreen>>
 where
     C: AppContext,
     F: FnOnce(&mut Context<SplashScreen>) + Send + 'static,

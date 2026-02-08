@@ -411,14 +411,14 @@ mod tests {
             // Create a simple script that echoes an env var
             let script_path = _temp.path().join("test.sh");
             std::fs::write(&script_path, "#!/bin/sh\necho $TEST_VAR").unwrap();
-            std::fs::set_permissions(&script_path, std::os::unix::fs::PermissionsExt::from_mode(0o755)).unwrap();
+            std::fs::set_permissions(
+                &script_path,
+                std::os::unix::fs::PermissionsExt::from_mode(0o755),
+            )
+            .unwrap();
 
             let result = _executor
-                .execute_with_env(
-                    "./test.sh",
-                    _temp.path(),
-                    &[("TEST_VAR", "hello_world")],
-                )
+                .execute_with_env("./test.sh", _temp.path(), &[("TEST_VAR", "hello_world")])
                 .await
                 .unwrap();
 
@@ -436,12 +436,13 @@ mod tests {
             // Create a simple script that echoes the CI env var
             let script_path = _temp.path().join("test.sh");
             std::fs::write(&script_path, "#!/bin/sh\necho $CI").unwrap();
-            std::fs::set_permissions(&script_path, std::os::unix::fs::PermissionsExt::from_mode(0o755)).unwrap();
+            std::fs::set_permissions(
+                &script_path,
+                std::os::unix::fs::PermissionsExt::from_mode(0o755),
+            )
+            .unwrap();
 
-            let result = _executor
-                .execute("./test.sh", _temp.path())
-                .await
-                .unwrap();
+            let result = _executor.execute("./test.sh", _temp.path()).await.unwrap();
 
             assert!(result.stdout.contains("true"));
         }

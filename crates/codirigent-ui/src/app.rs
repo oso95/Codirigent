@@ -163,11 +163,7 @@ impl AppView {
 
     /// Render a single grid cell of the logo.
     fn render_logo_cell(color: gpui::Hsla, size: f32, radius: f32) -> impl IntoElement {
-        div()
-            .w(px(size))
-            .h(px(size))
-            .rounded(px(radius))
-            .bg(color)
+        div().w(px(size)).h(px(size)).rounded(px(radius)).bg(color)
     }
 
     /// Render the 3x3 grid logo.
@@ -291,9 +287,10 @@ impl Render for AppView {
             AppViewState::Splash { loading_message } => {
                 self.render_splash(loading_message, cx).into_any_element()
             }
-            AppViewState::Workspace { workspace } => {
-                div().size_full().child(workspace.clone()).into_any_element()
-            }
+            AppViewState::Workspace { workspace } => div()
+                .size_full()
+                .child(workspace.clone())
+                .into_any_element(),
         }
     }
 }
@@ -418,7 +415,7 @@ impl CodirigentApp {
                         window_min_size: Some(size(px(min_width), px(min_height))),
                         titlebar: Some(TitlebarOptions {
                             title: Some("Codirigent".into()),
-                            appears_transparent: true,  // Custom titlebar like Zed
+                            appears_transparent: true, // Custom titlebar like Zed
                             traffic_light_position: None,
                             ..Default::default()
                         }),
@@ -446,7 +443,7 @@ impl CodirigentApp {
                         window_min_size: Some(size(px(min_width), px(min_height))),
                         titlebar: Some(TitlebarOptions {
                             title: Some("Codirigent".into()),
-                            appears_transparent: true,  // Custom titlebar like Zed
+                            appears_transparent: true, // Custom titlebar like Zed
                             traffic_light_position: None,
                             ..Default::default()
                         }),
@@ -500,9 +497,15 @@ impl CodirigentApp {
         }
         register_focus_fallback!(
             cx,
-            FocusSession1, FocusSession2, FocusSession3,
-            FocusSession4, FocusSession5, FocusSession6,
-            FocusSession7, FocusSession8, FocusSession9,
+            FocusSession1,
+            FocusSession2,
+            FocusSession3,
+            FocusSession4,
+            FocusSession5,
+            FocusSession6,
+            FocusSession7,
+            FocusSession8,
+            FocusSession9,
         );
     }
 }
@@ -557,6 +560,9 @@ mod tests {
     #[test]
     fn test_default_splash_duration() {
         let app = CodirigentApp::new();
-        assert_eq!(app.splash_duration, Duration::from_millis(DEFAULT_SPLASH_DURATION_MS));
+        assert_eq!(
+            app.splash_duration,
+            Duration::from_millis(DEFAULT_SPLASH_DURATION_MS)
+        );
     }
 }

@@ -227,8 +227,7 @@ mod tests {
 
     #[test]
     fn test_process_info_with_command() {
-        let info =
-            ProcessInfo::new(1234, ProcessState::Running).with_command("bash".to_string());
+        let info = ProcessInfo::new(1234, ProcessState::Running).with_command("bash".to_string());
         assert_eq!(info.command, Some("bash".to_string()));
     }
 

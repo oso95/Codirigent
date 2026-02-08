@@ -772,10 +772,7 @@ mod tests {
 
     #[test]
     fn test_cli_type_detect_case_insensitive_cmdline() {
-        assert_eq!(
-            CliType::detect("node", Some("CLAUDE")),
-            CliType::ClaudeCode
-        );
+        assert_eq!(CliType::detect("node", Some("CLAUDE")), CliType::ClaudeCode);
         assert_eq!(CliType::detect("node", Some("GEMINI")), CliType::GeminiCli);
         assert_eq!(CliType::detect("node", Some("CODEX")), CliType::CodexCli);
     }

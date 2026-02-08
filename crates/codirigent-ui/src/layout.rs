@@ -58,7 +58,10 @@ pub const MIN_CELL_WIDTH: f32 = RECOMMENDED_MIN_CELL_WIDTH;
 pub const MIN_CELL_HEIGHT: f32 = RECOMMENDED_MIN_CELL_HEIGHT;
 
 /// Width of the old sidebar in pixels (deprecated: replaced by IconRail 56px + Drawer 288px).
-#[deprecated(since = "0.1.0", note = "Use icon_rail::IconRail::WIDTH + drawer::Drawer::WIDTH instead")]
+#[deprecated(
+    since = "0.1.0",
+    note = "Use icon_rail::IconRail::WIDTH + drawer::Drawer::WIDTH instead"
+)]
 pub const SIDEBAR_WIDTH: f32 = 260.0;
 
 /// Height of the old title bar in pixels (deprecated: replaced by TopBar 48px).
@@ -73,7 +76,10 @@ pub const TOOLBAR_HEIGHT: f32 = 48.0;
 pub const TOP_BAR_HEIGHT: f32 = 48.0;
 
 /// Height of the old status bar in pixels (deprecated: removed, info moved to TopBar).
-#[deprecated(since = "0.1.0", note = "Status bar has been removed; info is now in TopBar")]
+#[deprecated(
+    since = "0.1.0",
+    note = "Status bar has been removed; info is now in TopBar"
+)]
 pub const STATUS_BAR_HEIGHT: f32 = 24.0;
 
 /// Width of the right task board panel in pixels.
@@ -239,10 +245,8 @@ impl LayoutProfile {
     /// assert!(LayoutProfile::custom(11, 3).is_none());
     /// ```
     pub fn custom(rows: u32, cols: u32) -> Option<Self> {
-        if rows >= MIN_GRID_DIMENSION
-            && rows <= MAX_GRID_DIMENSION
-            && cols >= MIN_GRID_DIMENSION
-            && cols <= MAX_GRID_DIMENSION
+        if (MIN_GRID_DIMENSION..=MAX_GRID_DIMENSION).contains(&rows)
+            && (MIN_GRID_DIMENSION..=MAX_GRID_DIMENSION).contains(&cols)
         {
             Some(LayoutProfile::Custom { rows, cols })
         } else {
@@ -439,13 +443,11 @@ impl LayoutProfile {
 
         // IconRail (56px) is the minimum left chrome; drawer is optional.
         let icon_rail_width = 56.0;
-        let min_width = icon_rail_width
-            + (ABSOLUTE_MIN_CELL_WIDTH * cols as f32)
-            + (gap * (cols - 1) as f32);
+        let min_width =
+            icon_rail_width + (ABSOLUTE_MIN_CELL_WIDTH * cols as f32) + (gap * (cols - 1) as f32);
 
-        let min_height = TOP_BAR_HEIGHT
-            + (ABSOLUTE_MIN_CELL_HEIGHT * rows as f32)
-            + (gap * (rows - 1) as f32);
+        let min_height =
+            TOP_BAR_HEIGHT + (ABSOLUTE_MIN_CELL_HEIGHT * rows as f32) + (gap * (rows - 1) as f32);
 
         (min_width, min_height)
     }
@@ -1698,7 +1700,7 @@ mod tests {
         // 4K monitor (3840×2160) with 2x2 grid should be very comfortable
         let _available_height = 2160.0 - TOP_BAR_HEIGHT;
         let available_width = 3840.0 - 56.0; // icon rail
-        // Note: Using width for both dimensions to ensure very large cells
+                                             // Note: Using width for both dimensions to ensure very large cells
         let bounds = Bounds::from_size(available_width, available_width);
         let layout = GridLayout::from_profile(LayoutProfile::Grid2x2, bounds, 4.0);
 
@@ -1715,11 +1717,8 @@ mod tests {
 
         // Should use absolute minimums (200×150) with icon rail (56px)
         let icon_rail_width = 56.0;
-        let expected_width =
-            icon_rail_width + (ABSOLUTE_MIN_CELL_WIDTH * 3.0) + (4.0 * 2.0);
-        let expected_height = TOP_BAR_HEIGHT
-            + (ABSOLUTE_MIN_CELL_HEIGHT * 3.0)
-            + (4.0 * 2.0);
+        let expected_width = icon_rail_width + (ABSOLUTE_MIN_CELL_WIDTH * 3.0) + (4.0 * 2.0);
+        let expected_height = TOP_BAR_HEIGHT + (ABSOLUTE_MIN_CELL_HEIGHT * 3.0) + (4.0 * 2.0);
 
         assert!((width - expected_width).abs() < 0.01);
         assert!((height - expected_height).abs() < 0.01);
@@ -1735,11 +1734,8 @@ mod tests {
 
         // Should use recommended minimums (400×300) with icon rail (56px)
         let icon_rail_width = 56.0;
-        let expected_width =
-            icon_rail_width + (RECOMMENDED_MIN_CELL_WIDTH * 3.0) + (4.0 * 2.0);
-        let expected_height = TOP_BAR_HEIGHT
-            + (RECOMMENDED_MIN_CELL_HEIGHT * 3.0)
-            + (4.0 * 2.0);
+        let expected_width = icon_rail_width + (RECOMMENDED_MIN_CELL_WIDTH * 3.0) + (4.0 * 2.0);
+        let expected_height = TOP_BAR_HEIGHT + (RECOMMENDED_MIN_CELL_HEIGHT * 3.0) + (4.0 * 2.0);
 
         assert!((width - expected_width).abs() < 0.01);
         assert!((height - expected_height).abs() < 0.01);
@@ -1793,16 +1789,24 @@ mod tests {
 
     #[test]
     fn test_constants_are_consistent() {
+        // Use let-bindings so the comparisons are not flagged as constant-value
+        // assertions by clippy. These guards protect against future edits to the
+        // constant values.
+        let abs_w = ABSOLUTE_MIN_CELL_WIDTH;
+        let abs_h = ABSOLUTE_MIN_CELL_HEIGHT;
+        let rec_w = RECOMMENDED_MIN_CELL_WIDTH;
+        let rec_h = RECOMMENDED_MIN_CELL_HEIGHT;
+
         // Absolute minimums should be less than recommended
-        assert!(ABSOLUTE_MIN_CELL_WIDTH < RECOMMENDED_MIN_CELL_WIDTH);
-        assert!(ABSOLUTE_MIN_CELL_HEIGHT < RECOMMENDED_MIN_CELL_HEIGHT);
+        assert!(abs_w < rec_w);
+        assert!(abs_h < rec_h);
 
         // Absolute minimums should be reasonable (not too small)
-        assert!(ABSOLUTE_MIN_CELL_WIDTH >= 100.0);
-        assert!(ABSOLUTE_MIN_CELL_HEIGHT >= 100.0);
+        assert!(abs_w >= 100.0);
+        assert!(abs_h >= 100.0);
 
         // Recommended minimums should be reasonable
-        assert!(RECOMMENDED_MIN_CELL_WIDTH >= 300.0);
-        assert!(RECOMMENDED_MIN_CELL_HEIGHT >= 200.0);
+        assert!(rec_w >= 300.0);
+        assert!(rec_h >= 200.0);
     }
 }

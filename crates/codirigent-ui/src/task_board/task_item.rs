@@ -95,7 +95,7 @@ impl TaskTag {
 }
 
 /// A task item in the task board.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Default)]
 pub struct TaskItem {
     /// Unique task identifier.
     pub id: String,
@@ -117,23 +117,6 @@ pub struct TaskItem {
     pub estimated_time: Option<String>,
     /// Created timestamp.
     pub created_at: Option<String>,
-}
-
-impl Default for TaskItem {
-    fn default() -> Self {
-        Self {
-            id: String::new(),
-            title: String::new(),
-            priority: TaskPriority::default(),
-            status: TaskStatus::default(),
-            tags: Vec::new(),
-            assigned_to: None,
-            is_selected: false,
-            is_hovered: false,
-            estimated_time: None,
-            created_at: None,
-        }
-    }
 }
 
 impl TaskItem {
@@ -213,18 +196,9 @@ impl TaskItem {
                 TaskItemAction::Edit,
                 TaskItemAction::Delete,
             ],
-            TaskStatus::InProgress => vec![
-                TaskItemAction::MarkForReview,
-                TaskItemAction::Edit,
-            ],
-            TaskStatus::PendingReview => vec![
-                TaskItemAction::Approve,
-                TaskItemAction::Reject,
-            ],
-            TaskStatus::Completed => vec![
-                TaskItemAction::Reopen,
-                TaskItemAction::Delete,
-            ],
+            TaskStatus::InProgress => vec![TaskItemAction::MarkForReview, TaskItemAction::Edit],
+            TaskStatus::PendingReview => vec![TaskItemAction::Approve, TaskItemAction::Reject],
+            TaskStatus::Completed => vec![TaskItemAction::Reopen, TaskItemAction::Delete],
         }
     }
 }

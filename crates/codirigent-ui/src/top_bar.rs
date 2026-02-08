@@ -241,18 +241,20 @@ mod tests {
         let mut bar = TopBar::new();
         bar.set_active_layout(LayoutProfile::Single);
         assert_eq!(bar.active_layout(), LayoutProfile::Single);
-        assert!(bar
-            .tabs()
-            .iter()
-            .find(|t| t.profile == LayoutProfile::Single)
-            .unwrap()
-            .is_active);
-        assert!(!bar
-            .tabs()
-            .iter()
-            .find(|t| t.profile == LayoutProfile::Grid2x2)
-            .unwrap()
-            .is_active);
+        assert!(
+            bar.tabs()
+                .iter()
+                .find(|t| t.profile == LayoutProfile::Single)
+                .unwrap()
+                .is_active
+        );
+        assert!(
+            !bar.tabs()
+                .iter()
+                .find(|t| t.profile == LayoutProfile::Grid2x2)
+                .unwrap()
+                .is_active
+        );
     }
 
     #[test]

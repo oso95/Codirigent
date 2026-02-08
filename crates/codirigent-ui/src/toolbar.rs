@@ -120,7 +120,7 @@ impl CustomLayoutPicker {
     /// Sets the error message on failure.
     pub fn validate(&mut self) -> Option<(u32, u32)> {
         let rows = match self.rows_input.parse::<u32>() {
-            Ok(r) if r >= 1 && r <= 10 => r,
+            Ok(r) if (1..=10).contains(&r) => r,
             Ok(_) => {
                 self.error = Some("Rows must be between 1 and 10".to_string());
                 return None;
@@ -132,7 +132,7 @@ impl CustomLayoutPicker {
         };
 
         let cols = match self.cols_input.parse::<u32>() {
-            Ok(c) if c >= 1 && c <= 10 => c,
+            Ok(c) if (1..=10).contains(&c) => c,
             Ok(_) => {
                 self.error = Some("Columns must be between 1 and 10".to_string());
                 return None;
@@ -271,7 +271,8 @@ impl SessionsToolbar {
             } else {
                 let profile = tab.profile;
                 self.set_active_layout(profile);
-                self.pending_events.push(ToolbarEvent::LayoutSelected(profile));
+                self.pending_events
+                    .push(ToolbarEvent::LayoutSelected(profile));
             }
         }
     }

@@ -150,7 +150,9 @@ impl RuleBasedRiskAssessor {
     /// Check if a path matches any custom patterns.
     fn matches_custom_patterns(&self, path: &Path, patterns: &[String]) -> bool {
         let path_str = path.to_string_lossy().to_lowercase();
-        patterns.iter().any(|p| path_str.contains(&p.to_lowercase()))
+        patterns
+            .iter()
+            .any(|p| path_str.contains(&p.to_lowercase()))
     }
 
     /// Get the default high-risk patterns.
@@ -528,8 +530,7 @@ mod tests {
     #[test]
     fn test_assess_password_file() {
         let assessor = RuleBasedRiskAssessor::new();
-        let risk =
-            assessor.assess_file(Path::new("src/utils/password.ts"), ChangeType::Modified);
+        let risk = assessor.assess_file(Path::new("src/utils/password.ts"), ChangeType::Modified);
         assert_eq!(risk, RiskLevel::High);
     }
 
@@ -553,8 +554,7 @@ mod tests {
     #[test]
     fn test_assess_config_file() {
         let assessor = RuleBasedRiskAssessor::new();
-        let risk =
-            assessor.assess_file(Path::new("src/config/database.ts"), ChangeType::Modified);
+        let risk = assessor.assess_file(Path::new("src/config/database.ts"), ChangeType::Modified);
         assert_eq!(risk, RiskLevel::High);
     }
 
@@ -641,16 +641,14 @@ mod tests {
     #[test]
     fn test_assess_fixture_file() {
         let assessor = RuleBasedRiskAssessor::new();
-        let risk =
-            assessor.assess_file(Path::new("tests/fixtures/user.json"), ChangeType::Created);
+        let risk = assessor.assess_file(Path::new("tests/fixtures/user.json"), ChangeType::Created);
         assert_eq!(risk, RiskLevel::Low);
     }
 
     #[test]
     fn test_assess_mock_file() {
         let assessor = RuleBasedRiskAssessor::new();
-        let risk =
-            assessor.assess_file(Path::new("__mocks__/api.ts"), ChangeType::Modified);
+        let risk = assessor.assess_file(Path::new("__mocks__/api.ts"), ChangeType::Modified);
         assert_eq!(risk, RiskLevel::Low);
     }
 

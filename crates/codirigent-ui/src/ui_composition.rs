@@ -122,15 +122,15 @@
 //!     )
 //! ```
 
-use crate::empty_session::{EmptySessionPool, EmptySessionEvent};
+use crate::empty_session::{EmptySessionEvent, EmptySessionPool};
 use crate::layout::LayoutProfile;
 use crate::sidebar::{SessionSidebar, SidebarEvent};
-use codirigent_core::GridPosition;
 use crate::status_bar::StatusBar;
-use crate::task_board::{TaskBoardPanel, TaskBoardEvent};
+use crate::task_board::{TaskBoardEvent, TaskBoardPanel};
 use crate::terminal_header::TerminalHeader;
 use crate::title_bar::TitleBar;
 use crate::toolbar::{SessionsToolbar, ToolbarEvent};
+use codirigent_core::GridPosition;
 use codirigent_core::{SessionId, SessionStatus};
 
 /// Complete UI state container.
@@ -186,9 +186,16 @@ impl AppUiState {
     }
 
     /// Update task counts in status bar and task board.
-    pub fn update_task_counts(&mut self, queue: usize, in_progress: usize, review: usize, done: usize) {
+    pub fn update_task_counts(
+        &mut self,
+        queue: usize,
+        in_progress: usize,
+        review: usize,
+        done: usize,
+    ) {
         self.status_bar.set_task_counts(queue, in_progress);
-        self.task_board.set_task_counts(queue, in_progress, review, done);
+        self.task_board
+            .set_task_counts(queue, in_progress, review, done);
     }
 
     /// Add or update a terminal header for a session.
@@ -197,20 +204,23 @@ impl AppUiState {
             header.session_name = name.to_string();
             header.status = status;
         } else {
-            self.terminal_headers.push((id, TerminalHeader::new(name, status)));
+            self.terminal_headers
+                .push((id, TerminalHeader::new(name, status)));
         }
     }
 
     /// Get a terminal header for a session.
     pub fn terminal_header(&self, id: SessionId) -> Option<&TerminalHeader> {
-        self.terminal_headers.iter()
+        self.terminal_headers
+            .iter()
             .find(|(sid, _)| *sid == id)
             .map(|(_, h)| h)
     }
 
     /// Get a mutable terminal header for a session.
     pub fn terminal_header_mut(&mut self, id: SessionId) -> Option<&mut TerminalHeader> {
-        self.terminal_headers.iter_mut()
+        self.terminal_headers
+            .iter_mut()
             .find(|(sid, _)| *sid == id)
             .map(|(_, h)| h)
     }
@@ -234,7 +244,6 @@ impl AppUiState {
             empty_session: self.empty_cells.take_events(),
         }
     }
-
 }
 
 /// Collected events from all UI components.
@@ -417,9 +426,13 @@ mod tests {
 
     #[test]
     fn test_layout_constants() {
-        assert!(layout::TITLE_BAR_HEIGHT > 0.0);
-        assert!(layout::SIDEBAR_WIDTH > 0.0);
-        assert!(layout::STATUS_BAR_HEIGHT > 0.0);
-        assert!(layout::GRID_GAP > 0.0);
+        let title_bar = layout::TITLE_BAR_HEIGHT;
+        let sidebar = layout::SIDEBAR_WIDTH;
+        let status_bar = layout::STATUS_BAR_HEIGHT;
+        let grid_gap = layout::GRID_GAP;
+        assert!(title_bar > 0.0);
+        assert!(sidebar > 0.0);
+        assert!(status_bar > 0.0);
+        assert!(grid_gap > 0.0);
     }
 }

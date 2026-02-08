@@ -11,10 +11,7 @@ use crate::theme::CodirigentTheme;
 use gpui::{div, IntoElement, ParentElement, Styled};
 
 /// Render the General settings panel.
-pub fn render_general_panel(
-    page: &SettingsPage,
-    theme: &CodirigentTheme,
-) -> impl IntoElement {
+pub fn render_general_panel(page: &SettingsPage, theme: &CodirigentTheme) -> impl IntoElement {
     let general = &page.user_settings.general;
 
     div()
@@ -45,10 +42,7 @@ pub fn render_general_panel(
             "Default working directory",
             "Initial directory for new sessions",
             theme,
-            setting_path(
-                general.default_working_dir.as_deref().unwrap_or(""),
-                theme,
-            ),
+            setting_path(general.default_working_dir.as_deref().unwrap_or(""), theme),
         ))
         // Startup section
         .child(settings_section_header("Startup", theme, false))

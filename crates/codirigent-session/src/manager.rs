@@ -278,9 +278,7 @@ impl SessionManager for DefaultSessionManager {
     }
 
     fn get_session(&self, id: SessionId) -> Option<Session> {
-        self.lock_sessions()
-            .get(&id)
-            .map(|s| s.session.clone())
+        self.lock_sessions().get(&id).map(|s| s.session.clone())
     }
 
     fn create_session(&self, name: String, working_dir: PathBuf) -> Result<SessionId> {
@@ -518,7 +516,9 @@ mod tests {
             .unwrap();
 
         let event = rx.try_recv().unwrap();
-        assert!(matches!(event, CodirigentEvent::SessionCreated { id: created_id } if created_id == id));
+        assert!(
+            matches!(event, CodirigentEvent::SessionCreated { id: created_id } if created_id == id)
+        );
     }
 
     #[test]
@@ -549,7 +549,9 @@ mod tests {
         manager.close_session(id).unwrap();
 
         let event = rx.try_recv().unwrap();
-        assert!(matches!(event, CodirigentEvent::SessionClosed { id: closed_id } if closed_id == id));
+        assert!(
+            matches!(event, CodirigentEvent::SessionClosed { id: closed_id } if closed_id == id)
+        );
     }
 
     #[test]

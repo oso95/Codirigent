@@ -89,7 +89,10 @@ impl std::fmt::Debug for PipelineOrchestrator {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("PipelineOrchestrator")
             .field("notes_output_dir", &self.notes_output_dir)
-            .field("states_count", &self.states.read().map(|s| s.len()).unwrap_or(0))
+            .field(
+                "states_count",
+                &self.states.read().map(|s| s.len()).unwrap_or(0),
+            )
             .finish_non_exhaustive()
     }
 }
@@ -470,12 +473,7 @@ impl VerificationPipeline for PipelineOrchestrator {
 
         let change_summary = self
             .change_detector
-            .generate_summary(
-                task_id.clone(),
-                state.session_id,
-                &state.working_dir,
-                None,
-            )
+            .generate_summary(task_id.clone(), state.session_id, &state.working_dir, None)
             .context("Failed to generate change summary")?;
 
         self.emit(PipelineEvent::ChangeSummaryGenerated {
@@ -600,11 +598,7 @@ mod tests {
 
         // Start a pipeline
         let task_id = TaskId("task-001".to_string());
-        let state = PipelineState::new(
-            task_id.clone(),
-            SessionId(1),
-            temp.path().to_path_buf(),
-        );
+        let state = PipelineState::new(task_id.clone(), SessionId(1), temp.path().to_path_buf());
         pipeline.store_state(state);
         assert!(pipeline.get_state(&task_id).is_some());
 
@@ -644,11 +638,8 @@ mod tests {
 
         // Create a pipeline in the wrong stage
         let task_id = TaskId("task-001".to_string());
-        let mut state = PipelineState::new(
-            task_id.clone(),
-            SessionId(1),
-            temp.path().to_path_buf(),
-        );
+        let mut state =
+            PipelineState::new(task_id.clone(), SessionId(1), temp.path().to_path_buf());
         state.stage = PipelineStage::Verifying;
         pipeline.store_state(state);
 
@@ -656,7 +647,10 @@ mod tests {
             .submit_review(&task_id, ReviewDecision::Approve)
             .await;
         assert!(result.is_err());
-        assert!(result.unwrap_err().to_string().contains("not awaiting review"));
+        assert!(result
+            .unwrap_err()
+            .to_string()
+            .contains("not awaiting review"));
     }
 
     #[tokio::test]
@@ -666,16 +660,15 @@ mod tests {
 
         // Create a pipeline awaiting review
         let task_id = TaskId("task-001".to_string());
-        let mut state = PipelineState::new(
-            task_id.clone(),
-            SessionId(1),
-            temp.path().to_path_buf(),
-        );
+        let mut state =
+            PipelineState::new(task_id.clone(), SessionId(1), temp.path().to_path_buf());
         state.stage = PipelineStage::AwaitingReview;
         pipeline.store_state(state);
 
         // Approve
-        let result = pipeline.submit_review(&task_id, ReviewDecision::Approve).await;
+        let result = pipeline
+            .submit_review(&task_id, ReviewDecision::Approve)
+            .await;
         assert!(result.is_ok());
 
         // Check final state
@@ -692,11 +685,8 @@ mod tests {
 
         // Create a pipeline awaiting review
         let task_id = TaskId("task-001".to_string());
-        let mut state = PipelineState::new(
-            task_id.clone(),
-            SessionId(1),
-            temp.path().to_path_buf(),
-        );
+        let mut state =
+            PipelineState::new(task_id.clone(), SessionId(1), temp.path().to_path_buf());
         state.stage = PipelineStage::AwaitingReview;
         pipeline.store_state(state);
 
@@ -724,11 +714,8 @@ mod tests {
 
         // Create a pipeline awaiting review
         let task_id = TaskId("task-001".to_string());
-        let mut state = PipelineState::new(
-            task_id.clone(),
-            SessionId(1),
-            temp.path().to_path_buf(),
-        );
+        let mut state =
+            PipelineState::new(task_id.clone(), SessionId(1), temp.path().to_path_buf());
         state.stage = PipelineStage::AwaitingReview;
         pipeline.store_state(state);
 
@@ -768,11 +755,8 @@ mod tests {
 
         // Create a pipeline in the wrong stage
         let task_id = TaskId("task-001".to_string());
-        let mut state = PipelineState::new(
-            task_id.clone(),
-            SessionId(1),
-            temp.path().to_path_buf(),
-        );
+        let mut state =
+            PipelineState::new(task_id.clone(), SessionId(1), temp.path().to_path_buf());
         state.stage = PipelineStage::AwaitingReview;
         pipeline.store_state(state);
 
@@ -788,11 +772,8 @@ mod tests {
 
         // Create a pipeline in verifying stage
         let task_id = TaskId("task-001".to_string());
-        let mut state = PipelineState::new(
-            task_id.clone(),
-            SessionId(1),
-            temp.path().to_path_buf(),
-        );
+        let mut state =
+            PipelineState::new(task_id.clone(), SessionId(1), temp.path().to_path_buf());
         state.stage = PipelineStage::Verifying;
         pipeline.store_state(state);
 
@@ -835,16 +816,16 @@ mod tests {
 
         // Create a pipeline awaiting review
         let task_id = TaskId("task-001".to_string());
-        let mut state = PipelineState::new(
-            task_id.clone(),
-            SessionId(1),
-            temp.path().to_path_buf(),
-        );
+        let mut state =
+            PipelineState::new(task_id.clone(), SessionId(1), temp.path().to_path_buf());
         state.stage = PipelineStage::AwaitingReview;
         pipeline.store_state(state);
 
         // Approve and check events
-        pipeline.submit_review(&task_id, ReviewDecision::Approve).await.unwrap();
+        pipeline
+            .submit_review(&task_id, ReviewDecision::Approve)
+            .await
+            .unwrap();
 
         // Should receive events
         let mut received_reviewed = false;
@@ -883,7 +864,10 @@ mod tests {
             let state = pipeline.get_state(&task_id).unwrap();
             if state.stage == PipelineStage::AwaitingReview {
                 // Approve
-                pipeline.submit_review(&task_id, ReviewDecision::Approve).await.unwrap();
+                pipeline
+                    .submit_review(&task_id, ReviewDecision::Approve)
+                    .await
+                    .unwrap();
                 let final_state = pipeline.get_state(&task_id).unwrap();
                 assert_eq!(final_state.stage, PipelineStage::Complete);
             }
@@ -898,11 +882,7 @@ mod tests {
         // Create multiple pipelines
         for i in 0..3 {
             let task_id = TaskId(format!("task-{:03}", i));
-            let state = PipelineState::new(
-                task_id,
-                SessionId(i as u64),
-                temp.path().to_path_buf(),
-            );
+            let state = PipelineState::new(task_id, SessionId(i as u64), temp.path().to_path_buf());
             pipeline.store_state(state);
         }
 

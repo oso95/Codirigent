@@ -328,10 +328,7 @@ impl BroadcastService for DefaultBroadcastService {
     fn retry_failed(&mut self, id: BroadcastId) -> Result<()> {
         // First, get the content and failed sessions
         let (content, failed_sessions) = {
-            let message = self
-                .broadcasts
-                .get(&id)
-                .context("Broadcast not found")?;
+            let message = self.broadcasts.get(&id).context("Broadcast not found")?;
 
             let failed: Vec<SessionId> = message
                 .delivery_status
@@ -348,7 +345,11 @@ impl BroadcastService for DefaultBroadcastService {
             return Ok(());
         }
 
-        info!(?id, count = failed_sessions.len(), "Retrying failed deliveries");
+        info!(
+            ?id,
+            count = failed_sessions.len(),
+            "Retrying failed deliveries"
+        );
 
         // Collect delivery results
         let mut results: Vec<(SessionId, Result<()>)> = Vec::new();
@@ -605,8 +606,7 @@ mod tests {
 
     #[test]
     fn test_retry_failed() {
-        let call_count: Arc<Mutex<HashMap<SessionId, u32>>> =
-            Arc::new(Mutex::new(HashMap::new()));
+        let call_count: Arc<Mutex<HashMap<SessionId, u32>>> = Arc::new(Mutex::new(HashMap::new()));
         let call_count_clone = call_count.clone();
 
         // Fail on first call, succeed on retry

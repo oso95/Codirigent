@@ -320,11 +320,8 @@ mod tests {
 
         // Should receive all events
         let mut count = 0;
-        while let Ok(_event) = tokio::time::timeout(
-            std::time::Duration::from_millis(100),
-            rx.recv(),
-        )
-        .await
+        while let Ok(_event) =
+            tokio::time::timeout(std::time::Duration::from_millis(100), rx.recv()).await
         {
             count += 1;
             if count >= 10 {

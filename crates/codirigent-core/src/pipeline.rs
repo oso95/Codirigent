@@ -99,7 +99,6 @@ impl std::fmt::Display for PipelineStage {
     }
 }
 
-
 /// Result of a human review.
 ///
 /// Represents the decision made by a human reviewer after examining
@@ -618,7 +617,10 @@ mod tests {
             format!("{}", PipelineStage::GeneratingChangeSummary),
             "GeneratingChangeSummary"
         );
-        assert_eq!(format!("{}", PipelineStage::AwaitingReview), "AwaitingReview");
+        assert_eq!(
+            format!("{}", PipelineStage::AwaitingReview),
+            "AwaitingReview"
+        );
         assert_eq!(
             format!("{}", PipelineStage::GeneratingNotes),
             "GeneratingNotes"
@@ -706,11 +708,21 @@ mod tests {
     fn test_review_decision_display() {
         assert_eq!(format!("{}", ReviewDecision::Approve), "Approved");
         assert_eq!(
-            format!("{}", ReviewDecision::Reject { reason: "bad".to_string() }),
+            format!(
+                "{}",
+                ReviewDecision::Reject {
+                    reason: "bad".to_string()
+                }
+            ),
             "Rejected: bad"
         );
         assert_eq!(
-            format!("{}", ReviewDecision::RequestChanges { feedback: "fix".to_string() }),
+            format!(
+                "{}",
+                ReviewDecision::RequestChanges {
+                    feedback: "fix".to_string()
+                }
+            ),
             "Changes Requested: fix"
         );
     }

@@ -5,13 +5,10 @@
 use super::controls::settings_section_header;
 use super::page::SettingsPage;
 use crate::theme::CodirigentTheme;
-use gpui::{div, px, IntoElement, InteractiveElement, ParentElement, Styled};
+use gpui::{div, px, InteractiveElement, IntoElement, ParentElement, Styled};
 
 /// Render the Keyboard Shortcuts settings panel.
-pub fn render_shortcuts_panel(
-    page: &SettingsPage,
-    theme: &CodirigentTheme,
-) -> impl IntoElement {
+pub fn render_shortcuts_panel(page: &SettingsPage, theme: &CodirigentTheme) -> impl IntoElement {
     let fg: gpui::Hsla = theme.foreground.into();
     let muted: gpui::Hsla = theme.muted.into();
     let accent: gpui::Hsla = theme.primary.into();

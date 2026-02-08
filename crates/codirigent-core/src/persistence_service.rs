@@ -512,11 +512,7 @@ mod tests {
         let service = DefaultPersistenceService::new(temp.path());
 
         let mut state = PersistentState::new();
-        let session = Session::new(
-            SessionId(1),
-            "Test".to_string(),
-            temp.path().to_path_buf(),
-        );
+        let session = Session::new(SessionId(1), "Test".to_string(), temp.path().to_path_buf());
         state.add_session(PersistentSession::from_session(&session));
 
         service.save_state(&state).unwrap();
@@ -653,11 +649,7 @@ mod tests {
 
         let mut state = PersistentState::new();
         // Use temp directory as working directory so it exists
-        let session = Session::new(
-            SessionId(1),
-            "Test".to_string(),
-            temp.path().to_path_buf(),
-        );
+        let session = Session::new(SessionId(1), "Test".to_string(), temp.path().to_path_buf());
         state.add_session(PersistentSession::from_session(&session));
         service.save_state(&state).unwrap();
 
@@ -672,11 +664,7 @@ mod tests {
         let service = DefaultPersistenceService::new(temp.path());
 
         let mut state = PersistentState::new();
-        let session = Session::new(
-            SessionId(1),
-            "Test".to_string(),
-            temp.path().to_path_buf(),
-        );
+        let session = Session::new(SessionId(1), "Test".to_string(), temp.path().to_path_buf());
         let mut persistent = PersistentSession::from_session(&session);
         persistent.context_usage = Some(0.5); // Will trigger warning
         state.add_session(persistent);
@@ -775,11 +763,7 @@ mod tests {
         let service = DefaultPersistenceService::new(temp.path());
 
         let mut state = PersistentState::new();
-        let session = Session::new(
-            SessionId(1),
-            "Test".to_string(),
-            temp.path().to_path_buf(),
-        );
+        let session = Session::new(SessionId(1), "Test".to_string(), temp.path().to_path_buf());
         let mut persistent = PersistentSession::from_session(&session);
         persistent.worktree_path = Some(PathBuf::from("/nonexistent/worktree"));
         state.add_session(persistent);
@@ -797,11 +781,7 @@ mod tests {
         let service = DefaultPersistenceService::new(temp.path());
 
         let mut state = PersistentState::new();
-        let session = Session::new(
-            SessionId(1),
-            "Test".to_string(),
-            temp.path().to_path_buf(),
-        );
+        let session = Session::new(SessionId(1), "Test".to_string(), temp.path().to_path_buf());
         let persistent =
             PersistentSession::from_session(&session).with_scrollback_hash("abc123".to_string());
         state.add_session(persistent);

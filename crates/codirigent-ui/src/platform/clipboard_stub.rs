@@ -122,7 +122,7 @@ mod tests {
 
     #[test]
     fn test_stub_clipboard_default() {
-        let clipboard = StubSmartClipboard::default();
+        let clipboard = StubSmartClipboard;
         assert!(!clipboard.has_image());
     }
 

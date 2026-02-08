@@ -57,7 +57,10 @@ fn test_toggle_auto_assign() {
     assert!(panel.is_auto_assign_enabled());
 
     let events = panel.take_events();
-    assert!(matches!(&events[0], TaskBoardEvent::AutoAssignToggled(true)));
+    assert!(matches!(
+        &events[0],
+        TaskBoardEvent::AutoAssignToggled(true)
+    ));
 }
 
 #[test]

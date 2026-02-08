@@ -10,10 +10,7 @@ use crate::theme::CodirigentTheme;
 use gpui::{div, IntoElement, ParentElement, Styled};
 
 /// Render the Sessions settings panel.
-pub fn render_sessions_panel(
-    page: &SettingsPage,
-    theme: &CodirigentTheme,
-) -> impl IntoElement {
+pub fn render_sessions_panel(page: &SettingsPage, theme: &CodirigentTheme) -> impl IntoElement {
     let sessions = &page.project_config.sessions;
 
     div()
@@ -31,11 +28,7 @@ pub fn render_sessions_panel(
             "Default CLI",
             "CLI tool used for new sessions",
             theme,
-            setting_dropdown(
-                &["claude", "codex", "gemini"],
-                &sessions.default_cli,
-                theme,
-            ),
+            setting_dropdown(&["claude", "codex", "gemini"], &sessions.default_cli, theme),
         ))
         .child(settings_section_header("Cleanup", theme, false))
         .child(setting_row(

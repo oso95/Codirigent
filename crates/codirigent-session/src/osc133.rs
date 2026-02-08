@@ -164,9 +164,7 @@ mod tests {
         let events = extract_osc133_events(data);
         assert_eq!(
             events,
-            vec![ShellState::CommandFinished {
-                exit_code: Some(0)
-            }]
+            vec![ShellState::CommandFinished { exit_code: Some(0) }]
         );
     }
 
@@ -176,9 +174,7 @@ mod tests {
         let events = extract_osc133_events(data);
         assert_eq!(
             events,
-            vec![ShellState::CommandFinished {
-                exit_code: Some(1)
-            }]
+            vec![ShellState::CommandFinished { exit_code: Some(1) }]
         );
     }
 
@@ -205,9 +201,7 @@ mod tests {
                 ShellState::PromptStart,
                 ShellState::CommandInputStart,
                 ShellState::CommandExecuted,
-                ShellState::CommandFinished {
-                    exit_code: Some(0)
-                },
+                ShellState::CommandFinished { exit_code: Some(0) },
             ]
         );
     }
@@ -220,9 +214,7 @@ mod tests {
         assert_eq!(
             events,
             vec![
-                ShellState::CommandFinished {
-                    exit_code: Some(0)
-                },
+                ShellState::CommandFinished { exit_code: Some(0) },
                 ShellState::PromptStart,
                 ShellState::CommandInputStart,
             ]
@@ -253,9 +245,7 @@ mod tests {
         assert_eq!(
             events,
             vec![
-                ShellState::CommandFinished {
-                    exit_code: Some(0)
-                },
+                ShellState::CommandFinished { exit_code: Some(0) },
                 ShellState::PromptStart,
                 ShellState::CommandInputStart,
             ]
@@ -320,9 +310,7 @@ mod tests {
         assert_eq!(
             events,
             vec![
-                ShellState::CommandFinished {
-                    exit_code: Some(0)
-                },
+                ShellState::CommandFinished { exit_code: Some(0) },
                 ShellState::PromptStart,
                 ShellState::CommandInputStart,
             ]

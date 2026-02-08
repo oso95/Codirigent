@@ -10,10 +10,7 @@ use crate::theme::CodirigentTheme;
 use gpui::{div, IntoElement, ParentElement, Styled};
 
 /// Render the Advanced settings panel.
-pub fn render_advanced_panel(
-    page: &SettingsPage,
-    theme: &CodirigentTheme,
-) -> impl IntoElement {
+pub fn render_advanced_panel(page: &SettingsPage, theme: &CodirigentTheme) -> impl IntoElement {
     let scheduler = &page.project_config.scheduler;
     let verification = &page.project_config.verification;
     let git = &page.project_config.git;

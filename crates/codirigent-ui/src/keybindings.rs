@@ -367,10 +367,7 @@ impl KeybindingManager {
 
         // Add new mapping
         self.bindings.insert(binding.clone(), action.clone());
-        self.reverse_map
-            .entry(action)
-            .or_default()
-            .push(binding);
+        self.reverse_map.entry(action).or_default().push(binding);
     }
 
     /// Remove a binding.

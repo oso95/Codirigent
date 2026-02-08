@@ -266,7 +266,7 @@ mod tests {
             CodirigentError::SessionNotFound(SessionId(1)),
             CodirigentError::TaskNotFound(TaskId("t".to_string())),
             CodirigentError::Pty("err".to_string()),
-            CodirigentError::Io(std::io::Error::new(std::io::ErrorKind::Other, "err")),
+            CodirigentError::Io(std::io::Error::other("err")),
             CodirigentError::Storage("err".to_string()),
             CodirigentError::Config("err".to_string()),
             CodirigentError::SessionExists(SessionId(1)),

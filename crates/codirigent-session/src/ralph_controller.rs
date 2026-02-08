@@ -133,7 +133,11 @@ impl DefaultRalphLoopController {
     pub fn trigger_compaction(&self, session_id: SessionId) {
         if let Some((_, state)) = self.loops.get(&session_id) {
             if !state.status.is_finished() {
-                info!(?session_id, iteration = state.current_iteration, "Triggering context compaction");
+                info!(
+                    ?session_id,
+                    iteration = state.current_iteration,
+                    "Triggering context compaction"
+                );
                 self.emit(CodirigentEvent::RalphLoopCompacted {
                     session_id,
                     iteration: state.current_iteration,
@@ -146,7 +150,9 @@ impl DefaultRalphLoopController {
     ///
     /// Returns the configured delay between iterations, or None if no loop exists.
     pub fn iteration_delay_ms(&self, session_id: SessionId) -> Option<u64> {
-        self.loops.get(&session_id).map(|(c, _)| c.iteration_delay_ms)
+        self.loops
+            .get(&session_id)
+            .map(|(c, _)| c.iteration_delay_ms)
     }
 
     /// Get statistics for all loops.
@@ -154,10 +160,12 @@ impl DefaultRalphLoopController {
     /// Returns a summary of all managed loops including active count,
     /// total iterations, and success/failure counts.
     pub fn stats(&self) -> LoopStats {
-        let mut stats = LoopStats::default();
-        stats.total_loops = self.loops.len();
+        let mut stats = LoopStats {
+            total_loops: self.loops.len(),
+            ..Default::default()
+        };
 
-        for (_, (_, state)) in &self.loops {
+        for (_, state) in self.loops.values() {
             match state.status {
                 RalphLoopStatus::Running | RalphLoopStatus::Paused => {
                     stats.active_loops += 1;
@@ -183,7 +191,8 @@ impl DefaultRalphLoopController {
     /// Returns the number of loops removed.
     pub fn cleanup_finished(&mut self) -> usize {
         let before = self.loops.len();
-        self.loops.retain(|_, (_, state)| !state.status.is_finished());
+        self.loops
+            .retain(|_, (_, state)| !state.status.is_finished());
         before - self.loops.len()
     }
 
@@ -493,8 +502,10 @@ mod tests {
         let mut controller = DefaultRalphLoopController::new();
         let session_id = SessionId(1);
 
-        let mut config = RalphLoopConfig::default();
-        config.verification_command = String::new(); // Invalid
+        let config = RalphLoopConfig {
+            verification_command: String::new(), // Invalid
+            ..Default::default()
+        };
 
         assert!(controller.start(session_id, config).is_err());
     }

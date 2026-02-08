@@ -336,7 +336,10 @@ impl ChangeDetector for GitChangeDetector {
 
         // Check if it's a git repo
         if !self.is_git_repo(working_dir) {
-            warn!(?working_dir, "Not a git repository, returning empty changes");
+            warn!(
+                ?working_dir,
+                "Not a git repository, returning empty changes"
+            );
             return Ok(Vec::new());
         }
 

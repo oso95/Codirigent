@@ -100,7 +100,7 @@ impl FileTreeIcon {
     pub fn color(&self) -> Color {
         match self {
             Self::Folder | Self::FolderOpen => Color::from_hex("#F59E0B"), // Orange
-            Self::File => Color::from_hex("#888888"),                       // Gray
+            Self::File => Color::from_hex("#888888"),                      // Gray
             Self::Rust => Color::from_hex("#FF6B6B"),                      // Rust orange-red
             Self::Markdown => Color::from_hex("#5B8DEF"),                  // Blue
             Self::Json | Self::Toml | Self::Yaml => Color::from_hex("#4ECDC4"), // Teal

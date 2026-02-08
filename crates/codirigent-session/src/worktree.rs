@@ -246,9 +246,9 @@ impl WorktreeManager {
     pub fn create(&mut self, options: WorktreeCreateOptions) -> Result<Worktree> {
         let repo = Repository::open(&self.repo_path)?;
 
-        let worktree_path = options.path.unwrap_or_else(|| {
-            self.repo_path.join("worktrees").join(&options.branch)
-        });
+        let worktree_path = options
+            .path
+            .unwrap_or_else(|| self.repo_path.join("worktrees").join(&options.branch));
 
         // Create parent directory if needed
         if let Some(parent) = worktree_path.parent() {
@@ -743,8 +743,8 @@ mod tests {
         let mut manager = WorktreeManager::new(&path).unwrap();
 
         let custom_path = path.join("custom-worktree");
-        let options = WorktreeCreateOptions::new("feature-custom".to_string())
-            .with_path(custom_path.clone());
+        let options =
+            WorktreeCreateOptions::new("feature-custom".to_string()).with_path(custom_path.clone());
 
         let wt = manager.create(options).unwrap();
         // Path might be canonicalized — use normalize_path for consistent comparison
@@ -788,8 +788,8 @@ mod tests {
         let mut manager = WorktreeManager::new(&path).unwrap();
 
         let deep_path = path.join("deep").join("nested").join("path").join("wt");
-        let options = WorktreeCreateOptions::new("feature-deep".to_string())
-            .with_path(deep_path.clone());
+        let options =
+            WorktreeCreateOptions::new("feature-deep".to_string()).with_path(deep_path.clone());
 
         let result = manager.create(options);
         assert!(result.is_ok());

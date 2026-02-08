@@ -442,8 +442,7 @@ impl AssignmentManager {
     /// manager.clear_expired(60);
     /// ```
     pub fn clear_expired(&mut self, max_age_seconds: u64) {
-        let cutoff =
-            chrono::Utc::now() - chrono::Duration::seconds(max_age_seconds as i64);
+        let cutoff = chrono::Utc::now() - chrono::Duration::seconds(max_age_seconds as i64);
 
         self.pending.retain(|p| p.proposed_at > cutoff);
     }
@@ -1060,11 +1059,7 @@ mod tests {
 
         let mut queue = TaskQueue::new(SchedulerConfig::default(), event_bus);
 
-        let session = Session::new(
-            SessionId(1),
-            "Test".to_string(),
-            PathBuf::from("/test"),
-        );
+        let session = Session::new(SessionId(1), "Test".to_string(), PathBuf::from("/test"));
 
         let task = Task::new(
             TaskId("task-001".to_string()),
@@ -1093,11 +1088,7 @@ mod tests {
 
         let mut queue = TaskQueue::new(SchedulerConfig::default(), event_bus);
 
-        let session = Session::new(
-            SessionId(1),
-            "Test".to_string(),
-            PathBuf::from("/test"),
-        );
+        let session = Session::new(SessionId(1), "Test".to_string(), PathBuf::from("/test"));
 
         let task = Task::new(
             TaskId("task-001".to_string()),
@@ -1159,7 +1150,10 @@ mod tests {
 
         let result = manager.confirm_assignment(&TaskId("nonexistent".to_string()));
         assert!(result.is_err());
-        assert!(result.unwrap_err().to_string().contains("No pending assignment"));
+        assert!(result
+            .unwrap_err()
+            .to_string()
+            .contains("No pending assignment"));
     }
 
     // ========== Reject Assignment Tests ==========
@@ -1348,10 +1342,7 @@ mod tests {
             session_id: SessionId(1),
         };
 
-        assert!(matches!(
-            action,
-            AssignmentAction::AwaitConfirmation { .. }
-        ));
+        assert!(matches!(action, AssignmentAction::AwaitConfirmation { .. }));
     }
 
     #[test]
@@ -1407,8 +1398,8 @@ mod tests {
             proposed_at: chrono::Utc::now(),
         });
 
-        let prompt = AssignmentService::confirm(&mut manager, &TaskId("task-001".to_string()))
-            .unwrap();
+        let prompt =
+            AssignmentService::confirm(&mut manager, &TaskId("task-001".to_string())).unwrap();
         assert_eq!(prompt, "Test prompt");
     }
 
@@ -1509,11 +1500,7 @@ mod tests {
         queue.enqueue(task).unwrap();
 
         // Session becomes idle
-        let session = Session::new(
-            SessionId(1),
-            "Session".to_string(),
-            PathBuf::from("/tmp"),
-        );
+        let session = Session::new(SessionId(1), "Session".to_string(), PathBuf::from("/tmp"));
 
         // Get assignment - should require confirmation
         let action = manager.on_session_idle(&session, &mut queue, &[]);

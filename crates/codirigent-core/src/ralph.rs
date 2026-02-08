@@ -734,29 +734,37 @@ mod tests {
 
     #[test]
     fn test_config_invalid_empty_command() {
-        let mut config = RalphLoopConfig::default();
-        config.verification_command = String::new();
+        let config = RalphLoopConfig {
+            verification_command: String::new(),
+            ..Default::default()
+        };
         assert!(!config.is_valid());
     }
 
     #[test]
     fn test_config_invalid_threshold() {
-        let mut config = RalphLoopConfig::default();
-        config.compact_threshold = 1.5;
+        let config = RalphLoopConfig {
+            compact_threshold: 1.5,
+            ..Default::default()
+        };
         assert!(!config.is_valid());
     }
 
     #[test]
     fn test_config_invalid_zero_iterations() {
-        let mut config = RalphLoopConfig::default();
-        config.max_iterations = 0;
+        let config = RalphLoopConfig {
+            max_iterations: 0,
+            ..Default::default()
+        };
         assert!(!config.is_valid());
     }
 
     #[test]
     fn test_config_invalid_zero_stuck_threshold() {
-        let mut config = RalphLoopConfig::default();
-        config.stuck_threshold = 0;
+        let config = RalphLoopConfig {
+            stuck_threshold: 0,
+            ..Default::default()
+        };
         assert!(!config.is_valid());
     }
 

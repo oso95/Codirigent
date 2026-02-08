@@ -3,14 +3,14 @@
 //! Provides a full-page overlay settings panel with category sidebar
 //! and scrollable content area. Accessed via gear icon or `Ctrl+,`.
 
-mod page;
-pub(crate) mod controls;
-pub(crate) mod render;
-mod general;
-mod appearance;
-mod terminal;
-mod shortcuts;
-mod sessions;
 mod advanced;
+mod appearance;
+pub(crate) mod controls;
+mod general;
+mod page;
+pub(crate) mod render;
+mod sessions;
+mod shortcuts;
+mod terminal;
 
 pub use page::{SettingsCategory, SettingsPage};

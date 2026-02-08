@@ -37,7 +37,9 @@
 use crate::patterns::{compile_patterns, find_matching_pattern_with_limit, get_default_patterns};
 use crate::platform::{NativeMonitor, PlatformMonitor, ProcessState};
 use anyhow::Result;
-use codirigent_core::{CodirigentEvent, EventBus, ProcessMonitor, SessionId, SessionStatus, ShellState};
+use codirigent_core::{
+    CodirigentEvent, EventBus, ProcessMonitor, SessionId, SessionStatus, ShellState,
+};
 use regex::Regex;
 use std::collections::HashMap;
 use std::sync::Arc;
@@ -285,7 +287,10 @@ impl InputDetector {
                 Some(s) => s,
                 None => return,
             };
-            (self.determine_status(session), session.pattern_matched.clone())
+            (
+                self.determine_status(session),
+                session.pattern_matched.clone(),
+            )
         };
 
         // Update and publish if changed
@@ -296,11 +301,12 @@ impl InputDetector {
 
                 debug!(%session_id, ?old, ?new_status, "Session status changed");
 
-                self.event_bus.publish(CodirigentEvent::SessionStatusChanged {
-                    id: session_id,
-                    old,
-                    new: new_status,
-                });
+                self.event_bus
+                    .publish(CodirigentEvent::SessionStatusChanged {
+                        id: session_id,
+                        old,
+                        new: new_status,
+                    });
 
                 // Send InputRequired event if waiting for input
                 if new_status == SessionStatus::WaitingForInput {
@@ -315,9 +321,8 @@ impl InputDetector {
                     && new_status != SessionStatus::WaitingForInput
                 {
                     session.pattern_matched = None;
-                    self.event_bus.publish(CodirigentEvent::InputProvided {
-                        session_id,
-                    });
+                    self.event_bus
+                        .publish(CodirigentEvent::InputProvided { session_id });
                 }
             }
         }

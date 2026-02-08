@@ -30,7 +30,9 @@
 //! assert_eq!(result.passed_count, Some(23));
 //! ```
 
-use codirigent_core::verification::{VerificationCheckType, VerificationFailure, VerificationResult};
+use codirigent_core::verification::{
+    VerificationCheckType, VerificationFailure, VerificationResult,
+};
 use regex::Regex;
 
 /// Parse test output into structured results.
@@ -172,8 +174,14 @@ impl OutputParser for CargoTestParser {
 
         // Parse test results from the summary line
         if let Some(caps) = self.test_result_pattern.captures(&combined) {
-            let passed: u32 = caps.get(2).and_then(|m| m.as_str().parse().ok()).unwrap_or(0);
-            let failed: u32 = caps.get(3).and_then(|m| m.as_str().parse().ok()).unwrap_or(0);
+            let passed: u32 = caps
+                .get(2)
+                .and_then(|m| m.as_str().parse().ok())
+                .unwrap_or(0);
+            let failed: u32 = caps
+                .get(3)
+                .and_then(|m| m.as_str().parse().ok())
+                .unwrap_or(0);
             passed_count = Some(passed);
             total_count = Some(passed + failed);
         }
@@ -350,8 +358,14 @@ impl OutputParser for JestParser {
         let mut total_count = None;
 
         if let Some(caps) = self.summary_pattern.captures(&combined) {
-            let passed: u32 = caps.get(2).and_then(|m| m.as_str().parse().ok()).unwrap_or(0);
-            let total: u32 = caps.get(3).and_then(|m| m.as_str().parse().ok()).unwrap_or(0);
+            let passed: u32 = caps
+                .get(2)
+                .and_then(|m| m.as_str().parse().ok())
+                .unwrap_or(0);
+            let total: u32 = caps
+                .get(3)
+                .and_then(|m| m.as_str().parse().ok())
+                .unwrap_or(0);
             passed_count = Some(passed);
             total_count = Some(total);
         }
@@ -415,7 +429,9 @@ impl OutputParser for PytestParser {
 /// # Returns
 ///
 /// A boxed parser suitable for the project type.
-pub fn parser_for_project(project_type: Option<codirigent_core::ProjectType>) -> Box<dyn OutputParser> {
+pub fn parser_for_project(
+    project_type: Option<codirigent_core::ProjectType>,
+) -> Box<dyn OutputParser> {
     use codirigent_core::ProjectType;
 
     match project_type {
@@ -441,7 +457,7 @@ mod tests {
 
     #[test]
     fn test_generic_parser_default() {
-        let parser = GenericParser::default();
+        let parser = GenericParser;
         assert!(std::mem::size_of_val(&parser) == 0);
     }
 
@@ -485,13 +501,7 @@ mod tests {
     #[test]
     fn test_generic_parser_combined_output() {
         let parser = GenericParser;
-        let result = parser.parse(
-            VerificationCheckType::Lint,
-            0,
-            "stdout",
-            "stderr",
-            500,
-        );
+        let result = parser.parse(VerificationCheckType::Lint, 0, "stdout", "stderr", 500);
         let raw = result.raw_output.unwrap();
         assert!(raw.contains("stdout"));
         assert!(raw.contains("stderr"));
@@ -503,20 +513,26 @@ mod tests {
     fn test_cargo_parser_new() {
         let parser = CargoTestParser::new();
         // Verify patterns are compiled
-        assert!(parser.test_result_pattern.is_match("test result: ok. 1 passed; 0 failed; 0 ignored"));
+        assert!(parser
+            .test_result_pattern
+            .is_match("test result: ok. 1 passed; 0 failed; 0 ignored"));
     }
 
     #[test]
     fn test_cargo_parser_default() {
         let parser = CargoTestParser::default();
-        assert!(parser.test_result_pattern.is_match("test result: ok. 1 passed; 0 failed; 0 ignored"));
+        assert!(parser
+            .test_result_pattern
+            .is_match("test result: ok. 1 passed; 0 failed; 0 ignored"));
     }
 
     #[test]
     fn test_cargo_parser_clone() {
         let parser = CargoTestParser::new();
         let cloned = parser.clone();
-        assert!(cloned.test_result_pattern.is_match("test result: ok. 1 passed; 0 failed; 0 ignored"));
+        assert!(cloned
+            .test_result_pattern
+            .is_match("test result: ok. 1 passed; 0 failed; 0 ignored"));
     }
 
     #[test]
@@ -598,20 +614,26 @@ mod tests {
     fn test_jest_parser_new() {
         let parser = JestParser::new();
         // Verify pattern is compiled
-        assert!(parser.summary_pattern.is_match("Tests: 10 passed, 10 total"));
+        assert!(parser
+            .summary_pattern
+            .is_match("Tests: 10 passed, 10 total"));
     }
 
     #[test]
     fn test_jest_parser_default() {
         let parser = JestParser::default();
-        assert!(parser.summary_pattern.is_match("Tests: 10 passed, 10 total"));
+        assert!(parser
+            .summary_pattern
+            .is_match("Tests: 10 passed, 10 total"));
     }
 
     #[test]
     fn test_jest_parser_clone() {
         let parser = JestParser::new();
         let cloned = parser.clone();
-        assert!(cloned.summary_pattern.is_match("Tests: 10 passed, 10 total"));
+        assert!(cloned
+            .summary_pattern
+            .is_match("Tests: 10 passed, 10 total"));
     }
 
     #[test]
@@ -668,7 +690,7 @@ mod tests {
 
     #[test]
     fn test_pytest_parser_default() {
-        let parser = PytestParser::default();
+        let parser = PytestParser;
         assert!(std::mem::size_of_val(&parser) == 0);
     }
 
@@ -682,13 +704,7 @@ mod tests {
     #[test]
     fn test_pytest_parser_success() {
         let parser = PytestParser::new();
-        let result = parser.parse(
-            VerificationCheckType::UnitTest,
-            0,
-            "5 passed",
-            "",
-            1000,
-        );
+        let result = parser.parse(VerificationCheckType::UnitTest, 0, "5 passed", "", 1000);
         assert!(result.passed);
     }
 
@@ -739,26 +755,14 @@ mod tests {
     fn test_parser_for_python() {
         use codirigent_core::ProjectType;
         let parser = parser_for_project(Some(ProjectType::Python));
-        let result = parser.parse(
-            VerificationCheckType::UnitTest,
-            0,
-            "5 passed",
-            "",
-            1000,
-        );
+        let result = parser.parse(VerificationCheckType::UnitTest, 0, "5 passed", "", 1000);
         assert!(result.passed);
     }
 
     #[test]
     fn test_parser_for_unknown() {
         let parser = parser_for_project(None);
-        let result = parser.parse(
-            VerificationCheckType::UnitTest,
-            0,
-            "OK",
-            "",
-            1000,
-        );
+        let result = parser.parse(VerificationCheckType::UnitTest, 0, "OK", "", 1000);
         assert!(result.passed);
     }
 
@@ -766,13 +770,7 @@ mod tests {
     fn test_parser_for_go() {
         use codirigent_core::ProjectType;
         let parser = parser_for_project(Some(ProjectType::Go));
-        let result = parser.parse(
-            VerificationCheckType::UnitTest,
-            0,
-            "ok",
-            "",
-            1000,
-        );
+        let result = parser.parse(VerificationCheckType::UnitTest, 0, "ok", "", 1000);
         assert!(result.passed);
     }
 
@@ -788,13 +786,7 @@ mod tests {
         ];
 
         for parser in parsers {
-            let result = parser.parse(
-                VerificationCheckType::UnitTest,
-                0,
-                "ok",
-                "",
-                100,
-            );
+            let result = parser.parse(VerificationCheckType::UnitTest, 0, "ok", "", 100);
             assert!(result.passed);
         }
     }

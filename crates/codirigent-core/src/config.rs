@@ -247,7 +247,11 @@ impl Default for GeneralSettings {
     fn default() -> Self {
         Self {
             editor_command: "code".to_string(),
-            default_shell: if cfg!(windows) { "powershell".to_string() } else { "bash".to_string() },
+            default_shell: if cfg!(windows) {
+                "powershell".to_string()
+            } else {
+                "bash".to_string()
+            },
             default_working_dir: None,
             show_splash: true,
         }
@@ -511,10 +515,18 @@ mod tests {
 
     #[test]
     fn test_project_config_custom_values() {
-        let mut config = ProjectConfig::default();
-        config.version = "2.0".to_string();
-        config.scheduler.auto_assign = false;
-        config.sessions.max_concurrent = 12;
+        let config = ProjectConfig {
+            version: "2.0".to_string(),
+            scheduler: SchedulerConfig {
+                auto_assign: false,
+                ..Default::default()
+            },
+            sessions: SessionsConfig {
+                max_concurrent: 12,
+                ..Default::default()
+            },
+            ..Default::default()
+        };
 
         let json = serde_json::to_string(&config).unwrap();
         let parsed: ProjectConfig = serde_json::from_str(&json).unwrap();
@@ -528,8 +540,10 @@ mod tests {
     fn test_project_config_equality() {
         let config1 = ProjectConfig::default();
         let config2 = ProjectConfig::default();
-        let mut config3 = ProjectConfig::default();
-        config3.version = "2.0".to_string();
+        let config3 = ProjectConfig {
+            version: "2.0".to_string(),
+            ..Default::default()
+        };
 
         assert_eq!(config1, config2);
         assert_ne!(config1, config3);
@@ -603,8 +617,12 @@ mod tests {
     #[test]
     fn test_verification_settings_with_commands() {
         let mut config = VerificationSettings::default();
-        config.commands.insert("unit".to_string(), "cargo test".to_string());
-        config.commands.insert("lint".to_string(), "cargo clippy".to_string());
+        config
+            .commands
+            .insert("unit".to_string(), "cargo test".to_string());
+        config
+            .commands
+            .insert("lint".to_string(), "cargo clippy".to_string());
 
         let json = serde_json::to_string(&config).unwrap();
         let parsed: VerificationSettings = serde_json::from_str(&json).unwrap();

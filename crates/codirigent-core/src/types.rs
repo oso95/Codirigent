@@ -1153,16 +1153,21 @@ mod tests {
 
     #[test]
     fn test_queue_state_serialization() {
-        let mut state = QueueState::default();
-        state.order = vec![
-            TaskId("task-001".to_string()),
-            TaskId("task-002".to_string()),
-        ];
-        state.blocked.insert(
-            TaskId("task-003".to_string()),
-            vec![TaskId("task-001".to_string())],
-        );
-        state.updated_at = Some(chrono::Utc::now());
+        let state = QueueState {
+            order: vec![
+                TaskId("task-001".to_string()),
+                TaskId("task-002".to_string()),
+            ],
+            blocked: {
+                let mut m = HashMap::new();
+                m.insert(
+                    TaskId("task-003".to_string()),
+                    vec![TaskId("task-001".to_string())],
+                );
+                m
+            },
+            updated_at: Some(chrono::Utc::now()),
+        };
 
         let json = serde_json::to_string_pretty(&state).unwrap();
         let parsed: QueueState = serde_json::from_str(&json).unwrap();
@@ -1263,7 +1268,10 @@ mod tests {
             skipped: 1,
             failures: vec![],
         };
-        assert_eq!(results.total, results.passed + results.failed + results.skipped);
+        assert_eq!(
+            results.total,
+            results.passed + results.failed + results.skipped
+        );
     }
 
     #[test]
@@ -1537,7 +1545,10 @@ mod tests {
         let json = serde_json::to_string(&task).unwrap();
         let parsed: Task = serde_json::from_str(&json).unwrap();
 
-        assert_eq!(parsed.project_dir, Some(PathBuf::from("/home/user/project")));
+        assert_eq!(
+            parsed.project_dir,
+            Some(PathBuf::from("/home/user/project"))
+        );
         assert_eq!(parsed.plan_file, Some("plans/phase-1.md".to_string()));
     }
 
@@ -1875,8 +1886,8 @@ mod tests {
 
     #[test]
     fn test_worktree_create_options_clone() {
-        let opts = WorktreeCreateOptions::new("feature".to_string())
-            .with_base_branch("main".to_string());
+        let opts =
+            WorktreeCreateOptions::new("feature".to_string()).with_base_branch("main".to_string());
         let cloned = opts.clone();
         assert_eq!(opts.branch, cloned.branch);
         assert_eq!(opts.base_branch, cloned.base_branch);
@@ -1902,7 +1913,10 @@ mod tests {
     #[test]
     fn test_context_threshold_state_equality() {
         assert_eq!(ContextThresholdState::Normal, ContextThresholdState::Normal);
-        assert_ne!(ContextThresholdState::Normal, ContextThresholdState::Warning);
+        assert_ne!(
+            ContextThresholdState::Normal,
+            ContextThresholdState::Warning
+        );
         assert_ne!(
             ContextThresholdState::Warning,
             ContextThresholdState::Critical

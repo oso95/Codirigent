@@ -404,10 +404,7 @@ impl VerificationStatus {
 
     /// Get all failures from all results.
     pub fn all_failures(&self) -> Vec<&VerificationFailure> {
-        self.results
-            .iter()
-            .flat_map(|r| &r.failures)
-            .collect()
+        self.results.iter().flat_map(|r| &r.failures).collect()
     }
 
     /// Get the total duration of all checks in milliseconds.
@@ -717,13 +714,20 @@ impl OutputParser {
     pub fn parse_jest(output: &str) -> Option<ParsedTestResults> {
         // Pattern: "Tests: X failed, Y passed, Z total"
         let re = regex::Regex::new(
-            r"Tests?:\s*(?:(\d+)\s+failed,\s*)?(\d+)\s+passed(?:,\s*(\d+)\s+total)?"
-        ).ok()?;
+            r"Tests?:\s*(?:(\d+)\s+failed,\s*)?(\d+)\s+passed(?:,\s*(\d+)\s+total)?",
+        )
+        .ok()?;
 
         if let Some(caps) = re.captures(output) {
-            let failed = caps.get(1).and_then(|m| m.as_str().parse().ok()).unwrap_or(0);
+            let failed = caps
+                .get(1)
+                .and_then(|m| m.as_str().parse().ok())
+                .unwrap_or(0);
             let passed: u32 = caps.get(2)?.as_str().parse().ok()?;
-            let total = caps.get(3).and_then(|m| m.as_str().parse().ok()).unwrap_or(passed + failed);
+            let total = caps
+                .get(3)
+                .and_then(|m| m.as_str().parse().ok())
+                .unwrap_or(passed + failed);
 
             let failures = Self::extract_jest_failures(output);
 
@@ -775,8 +779,9 @@ impl OutputParser {
     pub fn parse_cargo(output: &str) -> Option<ParsedTestResults> {
         // Pattern: "test result: ok. X passed; Y failed; Z ignored"
         let re = regex::Regex::new(
-            r"test result: \w+\.\s*(\d+)\s+passed;\s*(\d+)\s+failed;\s*(\d+)\s+ignored"
-        ).ok()?;
+            r"test result: \w+\.\s*(\d+)\s+passed;\s*(\d+)\s+failed;\s*(\d+)\s+ignored",
+        )
+        .ok()?;
 
         if let Some(caps) = re.captures(output) {
             let passed: u32 = caps.get(1)?.as_str().parse().ok()?;
@@ -833,14 +838,20 @@ impl OutputParser {
     /// Parsed test results if a recognized pattern was found.
     pub fn parse_pytest(output: &str) -> Option<ParsedTestResults> {
         // Pattern: "X passed, Y failed, Z skipped"
-        let re = regex::Regex::new(
-            r"(\d+)\s+passed(?:,\s*(\d+)\s+failed)?(?:,\s*(\d+)\s+skipped)?"
-        ).ok()?;
+        let re =
+            regex::Regex::new(r"(\d+)\s+passed(?:,\s*(\d+)\s+failed)?(?:,\s*(\d+)\s+skipped)?")
+                .ok()?;
 
         if let Some(caps) = re.captures(output) {
             let passed: u32 = caps.get(1)?.as_str().parse().ok()?;
-            let failed = caps.get(2).and_then(|m| m.as_str().parse().ok()).unwrap_or(0);
-            let skipped = caps.get(3).and_then(|m| m.as_str().parse().ok()).unwrap_or(0);
+            let failed = caps
+                .get(2)
+                .and_then(|m| m.as_str().parse().ok())
+                .unwrap_or(0);
+            let skipped = caps
+                .get(3)
+                .and_then(|m| m.as_str().parse().ok())
+                .unwrap_or(0);
 
             let failures = Self::extract_pytest_failures(output);
 
@@ -1117,8 +1128,8 @@ impl VerificationRunner {
         working_dir: &std::path::Path,
         timeout: Option<std::time::Duration>,
     ) -> anyhow::Result<VerificationResult> {
-        use tokio::process::Command;
         use std::process::Stdio;
+        use tokio::process::Command;
 
         let timeout_duration = timeout.unwrap_or(self.config.default_timeout);
         let start = std::time::Instant::now();
@@ -1171,7 +1182,11 @@ impl VerificationRunner {
         let mut result = if output.status.success() && parsed.failed == 0 {
             VerificationResult::passed(VerificationCheckType::UnitTest, duration.as_millis() as u64)
         } else {
-            VerificationResult::failed(VerificationCheckType::UnitTest, failures, duration.as_millis() as u64)
+            VerificationResult::failed(
+                VerificationCheckType::UnitTest,
+                failures,
+                duration.as_millis() as u64,
+            )
         };
 
         // Add counts if available
@@ -1403,8 +1418,8 @@ mod tests {
 
     #[test]
     fn test_verification_result_with_counts() {
-        let result = VerificationResult::passed(VerificationCheckType::UnitTest, 100)
-            .with_counts(10, 10);
+        let result =
+            VerificationResult::passed(VerificationCheckType::UnitTest, 100).with_counts(10, 10);
         assert_eq!(result.passed_count, Some(10));
         assert_eq!(result.total_count, Some(10));
     }
@@ -1463,8 +1478,14 @@ mod tests {
     #[test]
     fn test_verification_check_type_display() {
         assert_eq!(format!("{}", VerificationCheckType::UnitTest), "Unit Test");
-        assert_eq!(format!("{}", VerificationCheckType::IntegrationTest), "Integration Test");
-        assert_eq!(format!("{}", VerificationCheckType::TypeCheck), "Type Check");
+        assert_eq!(
+            format!("{}", VerificationCheckType::IntegrationTest),
+            "Integration Test"
+        );
+        assert_eq!(
+            format!("{}", VerificationCheckType::TypeCheck),
+            "Type Check"
+        );
         assert_eq!(format!("{}", VerificationCheckType::Lint), "Lint");
         assert_eq!(format!("{}", VerificationCheckType::Format), "Format");
         assert_eq!(format!("{}", VerificationCheckType::Custom), "Custom");
@@ -1483,15 +1504,14 @@ mod tests {
 
     #[test]
     fn test_verification_failure_with_file() {
-        let failure = VerificationFailure::new("test_foo", "failed")
-            .with_file(PathBuf::from("src/test.rs"));
+        let failure =
+            VerificationFailure::new("test_foo", "failed").with_file(PathBuf::from("src/test.rs"));
         assert_eq!(failure.file, Some(PathBuf::from("src/test.rs")));
     }
 
     #[test]
     fn test_verification_failure_with_line() {
-        let failure = VerificationFailure::new("test_foo", "failed")
-            .with_line(42);
+        let failure = VerificationFailure::new("test_foo", "failed").with_line(42);
         assert_eq!(failure.line, Some(42));
     }
 
@@ -1625,7 +1645,10 @@ mod tests {
         assert_eq!(format!("{}", VerificationState::Running), "Running");
         assert_eq!(format!("{}", VerificationState::Passed), "Passed");
         assert_eq!(format!("{}", VerificationState::Failed), "Failed");
-        assert_eq!(format!("{}", VerificationState::RetryingInSession), "Retrying in Session");
+        assert_eq!(
+            format!("{}", VerificationState::RetryingInSession),
+            "Retrying in Session"
+        );
         assert_eq!(format!("{}", VerificationState::Blocked), "Blocked");
         assert_eq!(format!("{}", VerificationState::Skipped), "Skipped");
     }
@@ -1667,10 +1690,7 @@ mod tests {
 
     #[test]
     fn test_verification_status_new() {
-        let status = VerificationStatus::new(
-            TaskId("task-001".to_string()),
-            SessionId(1),
-        );
+        let status = VerificationStatus::new(TaskId("task-001".to_string()), SessionId(1));
         assert_eq!(status.state, VerificationState::Pending);
         assert_eq!(status.retry_count, 0);
         assert!(status.results.is_empty());
@@ -1678,38 +1698,51 @@ mod tests {
 
     #[test]
     fn test_verification_status_all_passed() {
-        let mut status = VerificationStatus::new(
-            TaskId("task-001".to_string()),
-            SessionId(1),
-        );
+        let mut status = VerificationStatus::new(TaskId("task-001".to_string()), SessionId(1));
         assert!(!status.all_passed()); // No results
 
-        status.results.push(VerificationResult::passed(VerificationCheckType::UnitTest, 100));
-        status.results.push(VerificationResult::passed(VerificationCheckType::Lint, 50));
+        status.results.push(VerificationResult::passed(
+            VerificationCheckType::UnitTest,
+            100,
+        ));
+        status
+            .results
+            .push(VerificationResult::passed(VerificationCheckType::Lint, 50));
         assert!(status.all_passed());
 
         let failures = vec![VerificationFailure::new("test", "failed")];
-        status.results.push(VerificationResult::failed(VerificationCheckType::TypeCheck, failures, 100));
+        status.results.push(VerificationResult::failed(
+            VerificationCheckType::TypeCheck,
+            failures,
+            100,
+        ));
         assert!(!status.all_passed());
     }
 
     #[test]
     fn test_verification_status_all_failures() {
-        let mut status = VerificationStatus::new(
-            TaskId("task-001".to_string()),
-            SessionId(1),
-        );
+        let mut status = VerificationStatus::new(TaskId("task-001".to_string()), SessionId(1));
 
-        status.results.push(VerificationResult::passed(VerificationCheckType::Lint, 100));
+        status
+            .results
+            .push(VerificationResult::passed(VerificationCheckType::Lint, 100));
 
         let failures1 = vec![
             VerificationFailure::new("test1", "failed1"),
             VerificationFailure::new("test2", "failed2"),
         ];
-        status.results.push(VerificationResult::failed(VerificationCheckType::UnitTest, failures1, 100));
+        status.results.push(VerificationResult::failed(
+            VerificationCheckType::UnitTest,
+            failures1,
+            100,
+        ));
 
         let failures2 = vec![VerificationFailure::new("test3", "failed3")];
-        status.results.push(VerificationResult::failed(VerificationCheckType::TypeCheck, failures2, 100));
+        status.results.push(VerificationResult::failed(
+            VerificationCheckType::TypeCheck,
+            failures2,
+            100,
+        ));
 
         let all_failures = status.all_failures();
         assert_eq!(all_failures.len(), 3);
@@ -1717,23 +1750,25 @@ mod tests {
 
     #[test]
     fn test_verification_status_total_duration() {
-        let mut status = VerificationStatus::new(
-            TaskId("task-001".to_string()),
-            SessionId(1),
-        );
-        status.results.push(VerificationResult::passed(VerificationCheckType::UnitTest, 100));
-        status.results.push(VerificationResult::passed(VerificationCheckType::Lint, 50));
-        status.results.push(VerificationResult::passed(VerificationCheckType::TypeCheck, 200));
+        let mut status = VerificationStatus::new(TaskId("task-001".to_string()), SessionId(1));
+        status.results.push(VerificationResult::passed(
+            VerificationCheckType::UnitTest,
+            100,
+        ));
+        status
+            .results
+            .push(VerificationResult::passed(VerificationCheckType::Lint, 50));
+        status.results.push(VerificationResult::passed(
+            VerificationCheckType::TypeCheck,
+            200,
+        ));
 
         assert_eq!(status.total_duration_ms(), 350);
     }
 
     #[test]
     fn test_verification_status_complete() {
-        let mut status = VerificationStatus::new(
-            TaskId("task-001".to_string()),
-            SessionId(1),
-        );
+        let mut status = VerificationStatus::new(TaskId("task-001".to_string()), SessionId(1));
         assert!(status.completed_at.is_none());
 
         status.complete(VerificationState::Passed);
@@ -1918,7 +1953,10 @@ mod tests {
         std::fs::write(temp.path().join("go.mod"), "module test").unwrap();
 
         let detector = TestCommandDetector::new();
-        assert_eq!(detector.detect(temp.path()), Some("go test ./...".to_string()));
+        assert_eq!(
+            detector.detect(temp.path()),
+            Some("go test ./...".to_string())
+        );
     }
 
     #[test]
@@ -1970,7 +2008,10 @@ mod tests {
         detector.add_rule(DetectionRule::new("custom.toml", "custom-test"));
 
         // Custom rule should match first
-        assert_eq!(detector.detect(temp.path()), Some("custom-test".to_string()));
+        assert_eq!(
+            detector.detect(temp.path()),
+            Some("custom-test".to_string())
+        );
     }
 
     #[test]
@@ -2118,7 +2159,8 @@ mod tests {
 
     #[test]
     fn test_parse_pytest_extract_failures() {
-        let output = "FAILED test_file.py::test_one\nFAILED test_file.py::test_two\n5 passed, 2 failed";
+        let output =
+            "FAILED test_file.py::test_one\nFAILED test_file.py::test_two\n5 passed, 2 failed";
         let result = OutputParser::parse_pytest(output).unwrap();
 
         assert_eq!(result.failures.len(), 2);
@@ -2372,7 +2414,10 @@ mod tests {
 
         let result = VerificationResult::failed(
             VerificationCheckType::UnitTest,
-            vec![VerificationFailure::new("test_auth", "Expected 401, got 200")],
+            vec![VerificationFailure::new(
+                "test_auth",
+                "Expected 401, got 200",
+            )],
             5000,
         );
 

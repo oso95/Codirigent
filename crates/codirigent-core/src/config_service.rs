@@ -389,9 +389,13 @@ mod tests {
 
     #[test]
     fn test_user_settings_path() {
-        let service = DefaultConfigService::with_config_dir(PathBuf::from("/home/user/.config/dirigent"));
+        let service =
+            DefaultConfigService::with_config_dir(PathBuf::from("/home/user/.config/dirigent"));
         let path = service.user_settings_path();
-        assert_eq!(path, PathBuf::from("/home/user/.config/dirigent/settings.json"));
+        assert_eq!(
+            path,
+            PathBuf::from("/home/user/.config/dirigent/settings.json")
+        );
     }
 
     #[test]
@@ -460,7 +464,9 @@ mod tests {
         // Save custom project config
         let mut project_config = ProjectConfig::default();
         project_config.sessions.max_concurrent = 12;
-        service.save_project_config(temp.path(), &project_config).unwrap();
+        service
+            .save_project_config(temp.path(), &project_config)
+            .unwrap();
 
         // Save custom user settings
         let mut user_settings = UserSettings::default();

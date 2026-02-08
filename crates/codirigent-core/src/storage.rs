@@ -154,12 +154,21 @@ impl FileStorageService {
     /// Creates the `.codirigent` directory and the `tasks` subdirectory
     /// if they don't already exist. This operation is idempotent.
     fn ensure_directories(&self) -> Result<()> {
-        fs::create_dir_all(&self.codirigent_dir)
-            .with_context(|| format!("Failed to create .codirigent directory at {:?}", self.codirigent_dir))?;
-        fs::create_dir_all(self.tasks_dir())
-            .with_context(|| format!("Failed to create tasks directory at {:?}", self.tasks_dir()))?;
-        fs::create_dir_all(self.context_dir())
-            .with_context(|| format!("Failed to create context directory at {:?}", self.context_dir()))?;
+        fs::create_dir_all(&self.codirigent_dir).with_context(|| {
+            format!(
+                "Failed to create .codirigent directory at {:?}",
+                self.codirigent_dir
+            )
+        })?;
+        fs::create_dir_all(self.tasks_dir()).with_context(|| {
+            format!("Failed to create tasks directory at {:?}", self.tasks_dir())
+        })?;
+        fs::create_dir_all(self.context_dir()).with_context(|| {
+            format!(
+                "Failed to create context directory at {:?}",
+                self.context_dir()
+            )
+        })?;
         debug!("Directories ensured at {}", self.codirigent_dir.display());
         Ok(())
     }
@@ -195,7 +204,8 @@ impl FileStorageService {
     ///
     /// * `session_id` - The session ID
     pub fn context_file(&self, session_id: SessionId) -> PathBuf {
-        self.context_dir().join(format!("session-{}.json", session_id.0))
+        self.context_dir()
+            .join(format!("session-{}.json", session_id.0))
     }
 
     /// Get the path to a specific task file.
@@ -206,17 +216,16 @@ impl FileStorageService {
     /// path separators, and control characters) are replaced with underscore.
     fn task_path(&self, id: &TaskId) -> PathBuf {
         // Sanitize: only allow alphanumeric, dash, underscore (whitelist approach)
-        let safe_id: String = id
-            .0
-            .chars()
-            .map(|c| {
-                if c.is_alphanumeric() || c == '-' || c == '_' {
-                    c
-                } else {
-                    '_'
-                }
-            })
-            .collect();
+        let safe_id: String =
+            id.0.chars()
+                .map(|c| {
+                    if c.is_alphanumeric() || c == '-' || c == '_' {
+                        c
+                    } else {
+                        '_'
+                    }
+                })
+                .collect();
         self.tasks_dir().join(format!("{}.json", safe_id))
     }
 
@@ -281,8 +290,7 @@ impl StorageService for FileStorageService {
         let mut state = state.clone();
         state.updated_at = Some(chrono::Utc::now());
 
-        let content = serde_json::to_string_pretty(&state)
-            .context("Failed to serialize state")?;
+        let content = serde_json::to_string_pretty(&state).context("Failed to serialize state")?;
 
         self.atomic_write(&path, &content)?;
         debug!("Saved state to {}", path.display());
@@ -322,8 +330,7 @@ impl StorageService for FileStorageService {
     #[instrument(skip(self, task), fields(task_id = %task.id))]
     fn save_task(&self, task: &Task) -> Result<()> {
         let path = self.task_path(&task.id);
-        let content = serde_json::to_string_pretty(task)
-            .context("Failed to serialize task")?;
+        let content = serde_json::to_string_pretty(task).context("Failed to serialize task")?;
 
         self.atomic_write(&path, &content)?;
         debug!("Saved task to {}", path.display());
@@ -507,7 +514,11 @@ mod tests {
         let storage = FileStorageService::new(temp.path()).unwrap();
 
         let task_id = TaskId("task-001".to_string());
-        let expected = temp.path().join(".codirigent").join("tasks").join("task-001.json");
+        let expected = temp
+            .path()
+            .join(".codirigent")
+            .join("tasks")
+            .join("task-001.json");
         assert_eq!(storage.task_path(&task_id), expected);
     }
 
@@ -539,15 +550,15 @@ mod tests {
         // Test various dangerous characters are sanitized
         let test_cases = [
             // (input, expected_sanitized_stem)
-            ("valid-task_123", "valid-task_123"),           // Valid chars unchanged
-            ("task/with/slashes", "task_with_slashes"),     // Slashes sanitized
-            ("task\\backslash", "task_backslash"),          // Backslashes sanitized
-            ("task..dots", "task__dots"),                   // Dots sanitized
-            ("task\0null", "task_null"),                    // Null bytes sanitized
-            ("task\nwith\ttabs", "task_with_tabs"),         // Control chars sanitized
-            ("task with spaces", "task_with_spaces"),       // Spaces sanitized
-            ("task:colon", "task_colon"),                   // Colons sanitized
-            ("task<>|", "task___"),                         // Special chars sanitized
+            ("valid-task_123", "valid-task_123"), // Valid chars unchanged
+            ("task/with/slashes", "task_with_slashes"), // Slashes sanitized
+            ("task\\backslash", "task_backslash"), // Backslashes sanitized
+            ("task..dots", "task__dots"),         // Dots sanitized
+            ("task\0null", "task_null"),          // Null bytes sanitized
+            ("task\nwith\ttabs", "task_with_tabs"), // Control chars sanitized
+            ("task with spaces", "task_with_spaces"), // Spaces sanitized
+            ("task:colon", "task_colon"),         // Colons sanitized
+            ("task<>|", "task___"),               // Special chars sanitized
         ];
 
         for (input, expected) in test_cases {
@@ -586,7 +597,10 @@ mod tests {
 
         let state = storage.load_state().unwrap();
         assert!(state.sessions.is_empty());
-        assert!(matches!(state.layout, LayoutMode::Grid { rows: 2, cols: 2 }));
+        assert!(matches!(
+            state.layout,
+            LayoutMode::Grid { rows: 2, cols: 2 }
+        ));
     }
 
     #[test]
@@ -608,7 +622,10 @@ mod tests {
         assert_eq!(loaded.sessions.len(), 1);
         assert_eq!(loaded.sessions[0].id, SessionId(1));
         assert_eq!(loaded.sessions[0].name, "Test Session");
-        assert!(matches!(loaded.layout, LayoutMode::Grid { rows: 3, cols: 3 }));
+        assert!(matches!(
+            loaded.layout,
+            LayoutMode::Grid { rows: 3, cols: 3 }
+        ));
         assert!(loaded.updated_at.is_some());
     }
 
@@ -714,7 +731,10 @@ mod tests {
 
         let loaded_session = &loaded.sessions[0];
         assert_eq!(loaded_session.status, SessionStatus::Working);
-        assert_eq!(loaded_session.current_task, Some(TaskId("task-001".to_string())));
+        assert_eq!(
+            loaded_session.current_task,
+            Some(TaskId("task-001".to_string()))
+        );
         assert_eq!(loaded_session.context_usage, Some(0.75));
         assert_eq!(loaded_session.group, Some("backend".to_string()));
         assert_eq!(loaded_session.color, Some("#FF5733".to_string()));
@@ -742,7 +762,9 @@ mod tests {
         let temp = TempDir::new().unwrap();
         let storage = FileStorageService::new(temp.path()).unwrap();
 
-        let result = storage.load_task(&TaskId("nonexistent".to_string())).unwrap();
+        let result = storage
+            .load_task(&TaskId("nonexistent".to_string()))
+            .unwrap();
         assert!(result.is_none());
     }
 
@@ -836,8 +858,12 @@ mod tests {
 
         // Create tasks in non-alphabetical order
         storage.save_task(&create_test_task("zzz", "Last")).unwrap();
-        storage.save_task(&create_test_task("aaa", "First")).unwrap();
-        storage.save_task(&create_test_task("mmm", "Middle")).unwrap();
+        storage
+            .save_task(&create_test_task("aaa", "First"))
+            .unwrap();
+        storage
+            .save_task(&create_test_task("mmm", "Middle"))
+            .unwrap();
 
         let ids = storage.list_task_ids().unwrap();
         assert_eq!(ids.len(), 3);
@@ -852,7 +878,9 @@ mod tests {
         let storage = FileStorageService::new(temp.path()).unwrap();
 
         // Create a real task
-        storage.save_task(&create_test_task("task-001", "Real Task")).unwrap();
+        storage
+            .save_task(&create_test_task("task-001", "Real Task"))
+            .unwrap();
 
         // Create a temp file manually
         let tmp_path = storage.tasks_dir().join("task-tmp.json.tmp");
@@ -990,7 +1018,9 @@ mod tests {
             assert_eq!(ids.len(), 3);
 
             for i in 1..=3 {
-                let task = storage.load_task(&TaskId(format!("task-{:03}", i))).unwrap();
+                let task = storage
+                    .load_task(&TaskId(format!("task-{:03}", i)))
+                    .unwrap();
                 assert!(task.is_some());
             }
         }
@@ -1052,7 +1082,9 @@ mod tests {
         assert!(sanitized_path.exists());
 
         // Loading with original ID works because both use same sanitization
-        let loaded = storage.load_task(&TaskId("task with spaces".to_string())).unwrap();
+        let loaded = storage
+            .load_task(&TaskId("task with spaces".to_string()))
+            .unwrap();
         assert!(loaded.is_some());
         assert_eq!(loaded.unwrap().title, "Spaced Task");
     }
@@ -1121,7 +1153,11 @@ mod tests {
         let storage = FileStorageService::new(temp.path()).unwrap();
 
         let path = storage.context_file(SessionId(42));
-        let expected = temp.path().join(".codirigent").join("context").join("session-42.json");
+        let expected = temp
+            .path()
+            .join(".codirigent")
+            .join("context")
+            .join("session-42.json");
         assert_eq!(path, expected);
     }
 

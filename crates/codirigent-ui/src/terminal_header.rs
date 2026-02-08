@@ -502,7 +502,8 @@ mod tests {
     #[test]
     fn test_task_badge_utf8_truncation() {
         // Test with multi-byte UTF-8 characters (Chinese) - must be longer than MAX_DISPLAY_LEN (30)
-        let chinese_text = "這是一個非常非常非常非常非常非常非常非常長的任務描述，需要被截斷才能顯示在介面上";
+        let chinese_text =
+            "這是一個非常非常非常非常非常非常非常非常長的任務描述，需要被截斷才能顯示在介面上";
         assert!(chinese_text.chars().count() > TaskBadge::MAX_DISPLAY_LEN);
         let badge = TaskBadge::new(chinese_text);
         // Should not panic and should be valid UTF-8
@@ -554,8 +555,7 @@ mod tests {
 
     #[test]
     fn test_header_context_display() {
-        let header = TerminalHeader::new("S1", SessionStatus::Idle)
-            .with_context_usage(0.5);
+        let header = TerminalHeader::new("S1", SessionStatus::Idle).with_context_usage(0.5);
         let context = header.context_display();
         assert!(context.is_some());
         assert_eq!(context.unwrap().text(), "50%");
@@ -563,8 +563,7 @@ mod tests {
 
     #[test]
     fn test_header_task_badge() {
-        let header = TerminalHeader::new("S1", SessionStatus::Idle)
-            .with_task("Testing");
+        let header = TerminalHeader::new("S1", SessionStatus::Idle).with_task("Testing");
         let badge = header.task_badge();
         assert!(badge.is_some());
         assert_eq!(badge.unwrap().text, "Testing");
@@ -572,8 +571,8 @@ mod tests {
 
     #[test]
     fn test_terminal_header_project_name() {
-        let header = TerminalHeader::new("S1", SessionStatus::Working)
-            .with_project_name("backend-repo");
+        let header =
+            TerminalHeader::new("S1", SessionStatus::Working).with_project_name("backend-repo");
         assert_eq!(header.project_name, Some("backend-repo".to_string()));
         let hints = header.render_hints();
         assert_eq!(hints.project_name, Some("backend-repo".to_string()));
@@ -581,8 +580,7 @@ mod tests {
 
     #[test]
     fn test_terminal_header_cli_name() {
-        let header = TerminalHeader::new("S1", SessionStatus::Working)
-            .with_cli_name("Gemini 2.0");
+        let header = TerminalHeader::new("S1", SessionStatus::Working).with_cli_name("Gemini 2.0");
         assert_eq!(header.cli_name, Some("Gemini 2.0".to_string()));
     }
 

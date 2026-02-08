@@ -69,11 +69,7 @@ pub fn setting_row(
                 .flex()
                 .flex_col()
                 .flex_1()
-                .child(
-                    div()
-                        .text_color(fg)
-                        .child(label),
-                )
+                .child(div().text_color(fg).child(label))
                 .child(
                     div()
                         .text_size(px(theme.font_size_small))
@@ -85,14 +81,20 @@ pub fn setting_row(
 }
 
 /// Render a toggle switch with sliding circle indicator.
-pub fn setting_toggle(
-    value: bool,
-    theme: &CodirigentTheme,
-) -> impl IntoElement {
+pub fn setting_toggle(value: bool, theme: &CodirigentTheme) -> impl IntoElement {
     let accent: gpui::Hsla = theme.primary.into();
     let muted: gpui::Hsla = theme.muted.into();
-    let track_bg = if value { accent } else { gpui::Hsla { a: 0.3, ..muted } };
-    let circle_color = gpui::Hsla { h: 0.0, s: 0.0, l: 1.0, a: 1.0 };
+    let track_bg = if value {
+        accent
+    } else {
+        gpui::Hsla { a: 0.3, ..muted }
+    };
+    let circle_color = gpui::Hsla {
+        h: 0.0,
+        s: 0.0,
+        l: 1.0,
+        a: 1.0,
+    };
 
     let circle = div()
         .w(px(16.0))
@@ -153,12 +155,7 @@ pub fn setting_dropdown(
                 .flex_1()
                 .child(selected),
         )
-        .child(
-            div()
-                .text_size(px(10.0))
-                .text_color(fg)
-                .child("\u{25BC}"),
-        )
+        .child(div().text_size(px(10.0)).text_color(fg).child("\u{25BC}"))
 }
 
 /// Render a number stepper (display only -- interactive behavior wired in render).
@@ -211,11 +208,7 @@ pub fn setting_number(
 }
 
 /// Render a text input field (display only -- interactive behavior wired in render).
-pub fn setting_text(
-    value: &str,
-    placeholder: &str,
-    theme: &CodirigentTheme,
-) -> impl IntoElement {
+pub fn setting_text(value: &str, placeholder: &str, theme: &CodirigentTheme) -> impl IntoElement {
     let fg: gpui::Hsla = theme.foreground.into();
     let muted: gpui::Hsla = theme.muted.into();
     let panel_bg: gpui::Hsla = theme.panel_background.into();
@@ -241,10 +234,7 @@ pub fn setting_text(
 }
 
 /// Render a path input with browse button.
-pub fn setting_path(
-    value: &str,
-    theme: &CodirigentTheme,
-) -> impl IntoElement {
+pub fn setting_path(value: &str, theme: &CodirigentTheme) -> impl IntoElement {
     let fg: gpui::Hsla = theme.foreground.into();
     let muted: gpui::Hsla = theme.muted.into();
     let panel_bg: gpui::Hsla = theme.panel_background.into();

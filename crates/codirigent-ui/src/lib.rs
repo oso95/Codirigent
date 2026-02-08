@@ -85,7 +85,6 @@ pub mod empty_session;
 pub mod icon_rail;
 pub mod icons;
 pub mod integration;
-pub mod ui_composition;
 pub mod keybindings;
 pub mod layout;
 pub mod layout_profile;
@@ -102,6 +101,7 @@ pub mod theme_manager;
 pub mod title_bar;
 pub mod toolbar;
 pub mod top_bar;
+pub mod ui_composition;
 pub mod workspace;
 
 // Modules that require GPUI feature only
@@ -131,19 +131,22 @@ pub use actions::{
     CloseSession, CreateSession, FocusNextSession, FocusPreviousSession, FocusSession, NextLayout,
     PreviousLayout, Quit, ToggleSidebar,
 };
+pub use integration::{CodirigentIntegration, IntegrationConfig};
 pub use layout::{Bounds, FocusDirection, GridLayout, LayoutProfile, LayoutState, Point, Size};
 pub use sidebar::{
     SessionGroup, SessionSidebar, SidebarEvent, SidebarItem, SidebarRenderHints, StatusColors,
 };
 pub use theme::{CodirigentTheme, Hsla, Rgba};
 pub use workspace::{CellInfo, Workspace};
-pub use integration::{CodirigentIntegration, IntegrationConfig};
 
 // Re-export new advanced UI modules
-pub use keybindings::{Action, KeybindingManager, Modifiers};
 pub use keybindings::KeyBinding as AdvancedKeyBinding;
+pub use keybindings::{Action, KeybindingManager, Modifiers};
 pub use layout_profile::{LayoutProfileManager, SavedLayoutProfile};
-pub use theme_config::{Theme as ConfigTheme, ThemeColors, ThemeSpacing, ThemeTypography, TerminalColors as ConfigTerminalColors};
+pub use theme_config::{
+    TerminalColors as ConfigTerminalColors, Theme as ConfigTheme, ThemeColors, ThemeSpacing,
+    ThemeTypography,
+};
 pub use theme_manager::ThemeManager;
 
 // Re-export smart clipboard types
@@ -153,10 +156,12 @@ pub use smart_clipboard::{SmartClipboardProvider, ThumbnailPreview};
 pub use clipboard_preview::ClipboardPreview;
 
 // Re-export empty session types
-pub use empty_session::{EmptySessionCell, EmptySessionEvent, EmptySessionPool, EmptySessionRenderHints};
+pub use empty_session::{
+    EmptySessionCell, EmptySessionEvent, EmptySessionPool, EmptySessionRenderHints,
+};
 
 // Re-export UI composition types
-pub use ui_composition::{AppUiState, AppUiEvents};
+pub use ui_composition::{AppUiEvents, AppUiState};
 
 // Re-export GPUI app when feature is enabled
 #[cfg(feature = "gpui-full")]
@@ -168,4 +173,4 @@ pub use workspace::WorkspaceView;
 
 // Re-export SplashScreen when GPUI is enabled
 #[cfg(feature = "gpui-full")]
-pub use splash_screen::{SplashScreen, brand as splash_brand, create_splash_screen};
+pub use splash_screen::{brand as splash_brand, create_splash_screen, SplashScreen};

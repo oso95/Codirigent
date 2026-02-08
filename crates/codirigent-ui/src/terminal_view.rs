@@ -698,7 +698,10 @@ impl TerminalView {
                     // Check if we can merge with the previous background rect
                     let merged = background_rects.last_mut().and_then(
                         |last: &mut (usize, usize, usize, Rgba)| {
-                            if last.0 == row_idx && last.2 == cell.column && last.3 == cell.background {
+                            if last.0 == row_idx
+                                && last.2 == cell.column
+                                && last.3 == cell.background
+                            {
                                 last.2 = cell.column + 1;
                                 Some(())
                             } else {
@@ -707,7 +710,12 @@ impl TerminalView {
                         },
                     );
                     if merged.is_none() {
-                        background_rects.push((row_idx, cell.column, cell.column + 1, cell.background));
+                        background_rects.push((
+                            row_idx,
+                            cell.column,
+                            cell.column + 1,
+                            cell.background,
+                        ));
                     }
                 }
             }
@@ -777,7 +785,7 @@ pub fn compute_cell_dimensions(
     font_family: &'static str,
     font_size: f32,
 ) -> (f32, f32) {
-    use gpui::{Font, FontFeatures, FontStyle, FontWeight, px};
+    use gpui::{px, Font, FontFeatures, FontStyle, FontWeight};
 
     let font = Font {
         family: font_family.into(),
@@ -1001,8 +1009,14 @@ mod tests {
     fn test_resize_to_fit() {
         let mut view = create_test_view();
         view.resize_to_fit(400.0, 200.0);
-        assert_eq!(view.terminal().cols(), (400.0 / view.cell_width()).floor() as u16);
-        assert_eq!(view.terminal().rows(), (200.0 / view.cell_height()).floor() as u16);
+        assert_eq!(
+            view.terminal().cols(),
+            (400.0 / view.cell_width()).floor() as u16
+        );
+        assert_eq!(
+            view.terminal().rows(),
+            (200.0 / view.cell_height()).floor() as u16
+        );
     }
 
     #[test]
@@ -1020,7 +1034,7 @@ mod tests {
         // Simulate multi-line output with Windows-style \r\n endings
         // This mimics what ConPTY sends for a simple dir/ls listing
         view.terminal_mut().process_output(
-            b"file1.txt\x1b[K\r\nfile2.txt\x1b[K\r\nfile3.txt\x1b[K\r\nfile4.txt\x1b[K\r\n"
+            b"file1.txt\x1b[K\r\nfile2.txt\x1b[K\r\nfile3.txt\x1b[K\r\nfile4.txt\x1b[K\r\n",
         );
         let cells = view.visible_cells();
 
@@ -1030,13 +1044,19 @@ mod tests {
         rows.dedup();
 
         println!("Content rows: {:?}", rows);
-        assert!(rows.len() >= 4, "Expected at least 4 content rows, got {:?}", rows);
+        assert!(
+            rows.len() >= 4,
+            "Expected at least 4 content rows, got {:?}",
+            rows
+        );
 
         // Verify rows are consecutive (no gaps)
         for i in 1..rows.len() {
             assert_eq!(
-                rows[i], rows[i - 1] + 1,
-                "Rows must be consecutive but found gap: {:?}", rows
+                rows[i],
+                rows[i - 1] + 1,
+                "Rows must be consecutive but found gap: {:?}",
+                rows
             );
         }
     }
@@ -1119,7 +1139,7 @@ mod tests {
             Row2 text here\x1b[K\r\n\
             Row3 text here\x1b[K\r\n\
             Row4 text here\x1b[K\r\n\
-            \x1b[?25h"
+            \x1b[?25h",
         );
         let cells = view.visible_cells();
 
@@ -1128,12 +1148,18 @@ mod tests {
         rows.dedup();
 
         println!("ANSI content rows: {:?}", rows);
-        assert!(rows.len() >= 5, "Expected at least 5 content rows, got {:?}", rows);
+        assert!(
+            rows.len() >= 5,
+            "Expected at least 5 content rows, got {:?}",
+            rows
+        );
 
         for i in 1..rows.len() {
             assert_eq!(
-                rows[i], rows[i - 1] + 1,
-                "Rows must be consecutive with ANSI output: {:?}", rows
+                rows[i],
+                rows[i - 1] + 1,
+                "Rows must be consecutive with ANSI output: {:?}",
+                rows
             );
         }
     }

@@ -881,8 +881,7 @@ mod tests {
 
     #[test]
     fn test_broadcast_history_entry_all_delivered() {
-        let mut msg =
-            BroadcastMessage::new(BroadcastId(1), "Test".to_string(), vec![SessionId(1)]);
+        let mut msg = BroadcastMessage::new(BroadcastId(1), "Test".to_string(), vec![SessionId(1)]);
         msg.delivery_status[0].mark_delivered();
 
         let entry = BroadcastHistoryEntry::from_message(msg);

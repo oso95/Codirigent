@@ -67,8 +67,7 @@ impl IconRail {
     pub fn close_drawer(&mut self) {
         if self.active_panel.is_some() {
             self.active_panel = None;
-            self.pending_events
-                .push(IconRailEvent::DrawerToggled(None));
+            self.pending_events.push(IconRailEvent::DrawerToggled(None));
         }
     }
 

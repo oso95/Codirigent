@@ -411,11 +411,7 @@ impl TaskManager {
     /// Bypasses the pending assignment mechanism — generates the prompt
     /// and assigns immediately. Use this when the user explicitly clicks
     /// "Assign" on a task card.
-    pub fn direct_assign(
-        &mut self,
-        task_id: &TaskId,
-        session_id: SessionId,
-    ) -> Result<String> {
+    pub fn direct_assign(&mut self, task_id: &TaskId, session_id: SessionId) -> Result<String> {
         let task = self
             .queue
             .get_task(task_id)
@@ -483,16 +479,17 @@ impl TaskManager {
             .clone();
 
         // Check if verification should run
-        let commands = task.verification.as_ref().map(|v| {
-            crate::verification::VerificationCommands {
-                unit: if v.command.is_empty() {
-                    None
-                } else {
-                    Some(v.command.clone())
-                },
-                ..Default::default()
-            }
-        });
+        let commands =
+            task.verification
+                .as_ref()
+                .map(|v| crate::verification::VerificationCommands {
+                    unit: if v.command.is_empty() {
+                        None
+                    } else {
+                        Some(v.command.clone())
+                    },
+                    ..Default::default()
+                });
 
         let should_verify = self
             .verification
@@ -505,7 +502,10 @@ impl TaskManager {
         }
 
         // Run verification
-        let result = self.verification.verify(commands.as_ref(), working_dir).await?;
+        let result = self
+            .verification
+            .verify(commands.as_ref(), working_dir)
+            .await?;
 
         if result.passed {
             // Move to review status
@@ -515,9 +515,11 @@ impl TaskManager {
             })
         } else if task.can_retry() {
             // Generate retry message
-            let message =
-                self.verification
-                    .format_failure(&result, task.retry.retry_count + 1, task.retry.max_retries);
+            let message = self.verification.format_failure(
+                &result,
+                task.retry.retry_count + 1,
+                task.retry.max_retries,
+            );
 
             // Requeue task
             self.queue.requeue_task(task_id)?;
@@ -642,7 +644,9 @@ impl TaskManager {
     ///
     /// The effective context usage if available.
     pub fn get_context(&self, session_id: SessionId) -> Option<f32> {
-        self.context.get_usage(session_id).map(|u| u.effective_usage)
+        self.context
+            .get_usage(session_id)
+            .map(|u| u.effective_usage)
     }
 
     // === Accessors ===
@@ -1010,11 +1014,7 @@ mod tests {
         manager.create_task(task).unwrap();
 
         // Assign first
-        let session = Session::new(
-            SessionId(1),
-            "Test".to_string(),
-            PathBuf::from("/test"),
-        );
+        let session = Session::new(SessionId(1), "Test".to_string(), PathBuf::from("/test"));
         if let Some(AssignmentAction::AssignNow { task_id, .. }) = manager.on_session_idle(&session)
         {
             manager.queue.assign_task(&task_id, SessionId(1)).unwrap();
@@ -1146,11 +1146,7 @@ mod tests {
         );
         manager.create_task(task).unwrap();
 
-        let session = Session::new(
-            SessionId(1),
-            "Test".to_string(),
-            PathBuf::from("/test"),
-        );
+        let session = Session::new(SessionId(1), "Test".to_string(), PathBuf::from("/test"));
 
         let action = TaskManagementService::assign_to_session(&mut manager, &session);
         assert!(matches!(action, Some(AssignmentAction::AssignNow { .. })));
@@ -1208,7 +1204,10 @@ mod tests {
                 1000,
             ),
         };
-        assert!(matches!(result, TaskCompletionResult::ReadyForReview { .. }));
+        assert!(matches!(
+            result,
+            TaskCompletionResult::ReadyForReview { .. }
+        ));
     }
 
     #[test]
@@ -1239,7 +1238,10 @@ mod tests {
         let result = TaskCompletionResult::NoVerification {
             task_id: TaskId("task-001".to_string()),
         };
-        assert!(matches!(result, TaskCompletionResult::NoVerification { .. }));
+        assert!(matches!(
+            result,
+            TaskCompletionResult::NoVerification { .. }
+        ));
     }
 
     #[test]

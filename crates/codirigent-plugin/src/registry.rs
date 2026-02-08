@@ -1,8 +1,8 @@
 //! Plugin registry for storing and looking up plugins.
 
+use anyhow::{anyhow, Result};
 use codirigent_core::plugin::{Plugin, PluginMetadata};
 use std::collections::HashMap;
-use anyhow::{Result, anyhow};
 
 /// Registry for storing and looking up plugins.
 ///
@@ -210,7 +210,10 @@ mod tests {
         assert!(registry.register(Box::new(plugin1)).is_ok());
         let result = registry.register(Box::new(plugin2));
         assert!(result.is_err());
-        assert!(result.unwrap_err().to_string().contains("already registered"));
+        assert!(result
+            .unwrap_err()
+            .to_string()
+            .contains("already registered"));
     }
 
     #[test]
@@ -263,8 +266,12 @@ mod tests {
     #[test]
     fn test_registry_list() {
         let mut registry = PluginRegistry::new();
-        registry.register(Box::new(MockPlugin::new("plugin1"))).unwrap();
-        registry.register(Box::new(MockPlugin::new("plugin2"))).unwrap();
+        registry
+            .register(Box::new(MockPlugin::new("plugin1")))
+            .unwrap();
+        registry
+            .register(Box::new(MockPlugin::new("plugin2")))
+            .unwrap();
 
         let list = registry.list();
         assert_eq!(list.len(), 2);
@@ -273,8 +280,12 @@ mod tests {
     #[test]
     fn test_registry_list_metadata() {
         let mut registry = PluginRegistry::new();
-        registry.register(Box::new(MockPlugin::new("plugin1"))).unwrap();
-        registry.register(Box::new(MockPlugin::new("plugin2"))).unwrap();
+        registry
+            .register(Box::new(MockPlugin::new("plugin1")))
+            .unwrap();
+        registry
+            .register(Box::new(MockPlugin::new("plugin2")))
+            .unwrap();
 
         let metadata_list = registry.list_metadata();
         assert_eq!(metadata_list.len(), 2);
@@ -287,8 +298,12 @@ mod tests {
     #[test]
     fn test_registry_iter_mut() {
         let mut registry = PluginRegistry::new();
-        registry.register(Box::new(MockPlugin::new("plugin1"))).unwrap();
-        registry.register(Box::new(MockPlugin::new("plugin2"))).unwrap();
+        registry
+            .register(Box::new(MockPlugin::new("plugin1")))
+            .unwrap();
+        registry
+            .register(Box::new(MockPlugin::new("plugin2")))
+            .unwrap();
 
         let count = registry.iter_mut().count();
         assert_eq!(count, 2);
@@ -299,7 +314,9 @@ mod tests {
         let mut registry = PluginRegistry::new();
         assert!(!registry.contains("test"));
 
-        registry.register(Box::new(MockPlugin::new("test"))).unwrap();
+        registry
+            .register(Box::new(MockPlugin::new("test")))
+            .unwrap();
         assert!(registry.contains("test"));
     }
 
@@ -308,10 +325,14 @@ mod tests {
         let mut registry = PluginRegistry::new();
         assert_eq!(registry.len(), 0);
 
-        registry.register(Box::new(MockPlugin::new("plugin1"))).unwrap();
+        registry
+            .register(Box::new(MockPlugin::new("plugin1")))
+            .unwrap();
         assert_eq!(registry.len(), 1);
 
-        registry.register(Box::new(MockPlugin::new("plugin2"))).unwrap();
+        registry
+            .register(Box::new(MockPlugin::new("plugin2")))
+            .unwrap();
         assert_eq!(registry.len(), 2);
 
         registry.unregister("plugin1").unwrap();
@@ -323,7 +344,9 @@ mod tests {
         let mut registry = PluginRegistry::new();
         assert!(registry.is_empty());
 
-        registry.register(Box::new(MockPlugin::new("test"))).unwrap();
+        registry
+            .register(Box::new(MockPlugin::new("test")))
+            .unwrap();
         assert!(!registry.is_empty());
 
         registry.unregister("test").unwrap();

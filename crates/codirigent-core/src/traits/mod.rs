@@ -26,8 +26,8 @@
 //!
 //! - [`ProjectType`]: Known project types for auto-detection
 
-mod services;
 pub mod ralph_controller;
+mod services;
 pub mod skill_manager;
 pub mod verifier;
 

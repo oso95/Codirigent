@@ -315,7 +315,11 @@ impl Learning {
     /// * `category` - The type of learning
     /// * `content` - The learning content
     /// * `suggested_for_claude_md` - Whether to suggest adding to CLAUDE.md
-    pub fn new(category: LearningCategory, content: impl Into<String>, suggested_for_claude_md: bool) -> Self {
+    pub fn new(
+        category: LearningCategory,
+        content: impl Into<String>,
+        suggested_for_claude_md: bool,
+    ) -> Self {
         Self {
             category,
             content: content.into(),
@@ -614,10 +618,19 @@ mod tests {
     // CompletionStatus tests
     #[test]
     fn test_completion_status_variants() {
-        assert!(matches!(CompletionStatus::Completed, CompletionStatus::Completed));
+        assert!(matches!(
+            CompletionStatus::Completed,
+            CompletionStatus::Completed
+        ));
         assert!(matches!(CompletionStatus::Failed, CompletionStatus::Failed));
-        assert!(matches!(CompletionStatus::Blocked, CompletionStatus::Blocked));
-        assert!(matches!(CompletionStatus::Stopped, CompletionStatus::Stopped));
+        assert!(matches!(
+            CompletionStatus::Blocked,
+            CompletionStatus::Blocked
+        ));
+        assert!(matches!(
+            CompletionStatus::Stopped,
+            CompletionStatus::Stopped
+        ));
     }
 
     #[test]
@@ -801,7 +814,10 @@ mod tests {
         )
         .with_summary("This task refactored the auth module.".to_string());
 
-        assert_eq!(note.summary, Some("This task refactored the auth module.".to_string()));
+        assert_eq!(
+            note.summary,
+            Some("This task refactored the auth module.".to_string())
+        );
     }
 
     #[test]
@@ -833,7 +849,11 @@ mod tests {
             change_summary: None,
             verification: None,
             summary: Some("Summary text".to_string()),
-            learnings: vec![Learning::new(LearningCategory::Pattern, "Test pattern", true)],
+            learnings: vec![Learning::new(
+                LearningCategory::Pattern,
+                "Test pattern",
+                true,
+            )],
             generated_at: chrono::Utc::now(),
         };
 

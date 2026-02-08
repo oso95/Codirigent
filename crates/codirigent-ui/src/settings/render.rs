@@ -5,16 +5,15 @@
 
 use super::page::{SettingsCategory, SettingsPage};
 use crate::theme::CodirigentTheme;
-use gpui::{div, px, IntoElement, InteractiveElement, ParentElement, StatefulInteractiveElement, Styled};
+use gpui::{
+    div, px, InteractiveElement, IntoElement, ParentElement, StatefulInteractiveElement, Styled,
+};
 
 /// Width of the category sidebar in pixels.
 const SIDEBAR_WIDTH: f32 = 220.0;
 
 /// Render the full settings page layout.
-pub fn render_settings_page(
-    page: &SettingsPage,
-    theme: &CodirigentTheme,
-) -> impl IntoElement {
+pub fn render_settings_page(page: &SettingsPage, theme: &CodirigentTheme) -> impl IntoElement {
     let bg: gpui::Hsla = theme.background.into();
     let panel_bg: gpui::Hsla = theme.panel_background.into();
     let fg: gpui::Hsla = theme.foreground.into();
@@ -54,9 +53,7 @@ pub fn render_settings_page(
     );
 
     // Separator
-    sidebar = sidebar.child(
-        div().h(px(1.0)).mx_3().my_2().bg(border),
-    );
+    sidebar = sidebar.child(div().h(px(1.0)).mx_3().my_2().bg(border));
 
     // Category items
     for cat in SettingsCategory::ALL {
@@ -71,7 +68,10 @@ pub fn render_settings_page(
 
         sidebar = sidebar.child(
             div()
-                .id(gpui::SharedString::from(format!("settings-cat-{}", cat.label())))
+                .id(gpui::SharedString::from(format!(
+                    "settings-cat-{}",
+                    cat.label()
+                )))
                 .flex()
                 .flex_row()
                 .items_center()
@@ -122,10 +122,7 @@ pub fn render_settings_page(
 }
 
 /// Render the content for the active category.
-pub fn render_category_content(
-    page: &SettingsPage,
-    theme: &CodirigentTheme,
-) -> impl IntoElement {
+pub fn render_category_content(page: &SettingsPage, theme: &CodirigentTheme) -> impl IntoElement {
     match page.active_category() {
         SettingsCategory::General => {
             super::general::render_general_panel(page, theme).into_any_element()

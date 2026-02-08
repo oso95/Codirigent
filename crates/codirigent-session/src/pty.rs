@@ -76,7 +76,12 @@ impl PtyHandle {
     /// let pty = PtyHandle::spawn(Path::new("/tmp"), 24, 80, &[]).unwrap();
     /// assert!(pty.child_pid() > 0);
     /// ```
-    pub fn spawn(working_dir: &Path, rows: u16, cols: u16, env_vars: &[(&str, &str)]) -> Result<Self> {
+    pub fn spawn(
+        working_dir: &Path,
+        rows: u16,
+        cols: u16,
+        env_vars: &[(&str, &str)],
+    ) -> Result<Self> {
         let shell = detect_shell_command();
         let args: Vec<&str> = shell.args.iter().map(|arg| arg.as_str()).collect();
         Self::spawn_command(working_dir, &shell.program, &args, rows, cols, env_vars)
@@ -318,7 +323,10 @@ fn detect_shell_command() -> ShellCommand {
             .ok()
             .map(|value| split_shell_args(&value))
             .unwrap_or_default();
-        return ShellCommand { program: shell, args };
+        return ShellCommand {
+            program: shell,
+            args,
+        };
     }
 
     #[cfg(unix)]
@@ -341,18 +349,18 @@ fn detect_shell_command() -> ShellCommand {
             "[Console]::OutputEncoding=[System.Text.Encoding]::UTF8; ",
             "$OutputEncoding=[System.Text.Encoding]::UTF8; ",
             "function prompt { ",
-                // All assignments first (before the return expression)
-                "$gle = $global:LASTEXITCODE; ",
-                "if ($null -eq $gle) { $gle = 0 }; ",
-                "$p = $executionContext.SessionState.Path.CurrentLocation.ProviderPath; ",
-                "$h = [System.Net.Dns]::GetHostName(); ",
-                "$u = $p.Replace('\\','/'); ",
-                // Single return expression: 133;D + 133;A + OSC7 + prompt + 133;B
-                "\"$([char]27)]133;D;$gle$([char]7)\" + ",
-                "\"$([char]27)]133;A$([char]7)\" + ",
-                "\"$([char]27)]7;file://$h/$u$([char]27)\\\" + ",
-                "\"PS $($executionContext.SessionState.Path.CurrentLocation)> \" + ",
-                "\"$([char]27)]133;B$([char]7)\" ",
+            // All assignments first (before the return expression)
+            "$gle = $global:LASTEXITCODE; ",
+            "if ($null -eq $gle) { $gle = 0 }; ",
+            "$p = $executionContext.SessionState.Path.CurrentLocation.ProviderPath; ",
+            "$h = [System.Net.Dns]::GetHostName(); ",
+            "$u = $p.Replace('\\','/'); ",
+            // Single return expression: 133;D + 133;A + OSC7 + prompt + 133;B
+            "\"$([char]27)]133;D;$gle$([char]7)\" + ",
+            "\"$([char]27)]133;A$([char]7)\" + ",
+            "\"$([char]27)]7;file://$h/$u$([char]27)\\\" + ",
+            "\"PS $($executionContext.SessionState.Path.CurrentLocation)> \" + ",
+            "\"$([char]27)]133;B$([char]7)\" ",
             "}",
         );
 
@@ -370,7 +378,12 @@ fn detect_shell_command() -> ShellCommand {
             };
         }
         // Try Windows PowerShell
-        if Command::new("powershell.exe").arg("-Command").arg("exit").output().is_ok() {
+        if Command::new("powershell.exe")
+            .arg("-Command")
+            .arg("exit")
+            .output()
+            .is_ok()
+        {
             return ShellCommand {
                 program: "powershell.exe".to_string(),
                 args: vec![
@@ -405,10 +418,7 @@ fn detect_shell_command() -> ShellCommand {
 /// This is intentionally simple; if callers need quoting, they can provide
 /// a wrapper script via `CODIRIGENT_SHELL`.
 fn split_shell_args(value: &str) -> Vec<String> {
-    value
-        .split_whitespace()
-        .map(str::to_string)
-        .collect()
+    value.split_whitespace().map(str::to_string).collect()
 }
 
 /// Buffer size for reading PTY output.
@@ -537,9 +547,7 @@ impl OutputReader {
 
     /// Check if the reader thread is still running.
     pub fn is_running(&self) -> bool {
-        self.join_handle
-            .as_ref()
-            .is_some_and(|h| !h.is_finished())
+        self.join_handle.as_ref().is_some_and(|h| !h.is_finished())
     }
 
     /// Consume self and return just the receiver.
@@ -723,7 +731,14 @@ mod tests {
         let pty = PtyHandle::spawn_command(temp.path(), "echo", &["hello", "world"], 24, 80, &[]);
 
         #[cfg(windows)]
-        let pty = PtyHandle::spawn_command(temp.path(), "cmd.exe", &["/c", "echo", "hello"], 24, 80, &[]);
+        let pty = PtyHandle::spawn_command(
+            temp.path(),
+            "cmd.exe",
+            &["/c", "echo", "hello"],
+            24,
+            80,
+            &[],
+        );
 
         assert!(pty.is_ok());
     }
@@ -829,15 +844,16 @@ mod tests {
         // Wait for output (with timeout)
         let mut found = false;
         for _ in 0..50 {
-            if let Ok(data) =
-                tokio::time::timeout(std::time::Duration::from_millis(100), rx.recv()).await
+            if let Some(bytes) =
+                tokio::time::timeout(std::time::Duration::from_millis(100), rx.recv())
+                    .await
+                    .ok()
+                    .flatten()
             {
-                if let Some(bytes) = data {
-                    let output = String::from_utf8_lossy(&bytes);
-                    if output.contains("test_output_12345") {
-                        found = true;
-                        break;
-                    }
+                let output = String::from_utf8_lossy(&bytes);
+                if output.contains("test_output_12345") {
+                    found = true;
+                    break;
                 }
             }
         }
@@ -869,22 +885,23 @@ mod tests {
         let mut all_output = String::new();
 
         for _ in 0..100 {
-            if let Ok(data) =
-                tokio::time::timeout(std::time::Duration::from_millis(50), rx.recv()).await
+            if let Some(bytes) =
+                tokio::time::timeout(std::time::Duration::from_millis(50), rx.recv())
+                    .await
+                    .ok()
+                    .flatten()
             {
-                if let Some(bytes) = data {
-                    let output = String::from_utf8_lossy(&bytes);
-                    all_output.push_str(&output);
+                let output = String::from_utf8_lossy(&bytes);
+                all_output.push_str(&output);
 
-                    for i in 0..3 {
-                        if all_output.contains(&format!("chunk_{}", i)) {
-                            chunks_found |= 1 << i;
-                        }
+                for i in 0..3 {
+                    if all_output.contains(&format!("chunk_{}", i)) {
+                        chunks_found |= 1 << i;
                     }
+                }
 
-                    if chunks_found == 0b111 {
-                        break;
-                    }
+                if chunks_found == 0b111 {
+                    break;
                 }
             }
         }
@@ -964,16 +981,16 @@ mod tests {
         // Wait for output (with timeout)
         let mut found = false;
         for _ in 0..50 {
-            if let Ok(data) =
+            if let Some(bytes) =
                 tokio::time::timeout(std::time::Duration::from_millis(100), output_reader.recv())
                     .await
+                    .ok()
+                    .flatten()
             {
-                if let Some(bytes) = data {
-                    let output = String::from_utf8_lossy(&bytes);
-                    if output.contains("output_reader_test") {
-                        found = true;
-                        break;
-                    }
+                let output = String::from_utf8_lossy(&bytes);
+                if output.contains("output_reader_test") {
+                    found = true;
+                    break;
                 }
             }
         }
@@ -1072,14 +1089,14 @@ mod tests {
         let mut all_output = String::new();
 
         for _ in 0..100 {
-            if let Ok(data) =
+            if let Some(bytes) =
                 tokio::time::timeout(std::time::Duration::from_millis(50), output_reader.recv())
                     .await
+                    .ok()
+                    .flatten()
             {
-                if let Some(bytes) = data {
-                    let output = String::from_utf8_lossy(&bytes);
-                    all_output.push_str(&output);
-                }
+                let output = String::from_utf8_lossy(&bytes);
+                all_output.push_str(&output);
             }
 
             // Check if we got all chunks

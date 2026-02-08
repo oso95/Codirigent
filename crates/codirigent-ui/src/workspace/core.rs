@@ -358,7 +358,8 @@ impl Workspace {
         };
 
         let width = if self.show_sidebar {
-            (self.bounds.size.width - self.sidebar_width - self.right_panel_width - grid_padding_h).max(0.0)
+            (self.bounds.size.width - self.sidebar_width - self.right_panel_width - grid_padding_h)
+                .max(0.0)
         } else {
             (self.bounds.size.width - self.right_panel_width - grid_padding_h).max(0.0)
         };
@@ -492,4 +493,3 @@ pub struct CellInfo {
     /// Whether this cell is focused.
     pub is_focused: bool,
 }
-

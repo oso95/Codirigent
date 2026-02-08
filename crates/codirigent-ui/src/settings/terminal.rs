@@ -10,10 +10,7 @@ use crate::theme::CodirigentTheme;
 use gpui::{div, IntoElement, ParentElement, Styled};
 
 /// Render the Terminal settings panel.
-pub fn render_terminal_panel(
-    page: &SettingsPage,
-    theme: &CodirigentTheme,
-) -> impl IntoElement {
+pub fn render_terminal_panel(page: &SettingsPage, theme: &CodirigentTheme) -> impl IntoElement {
     let terminal = &page.user_settings.terminal;
 
     div()

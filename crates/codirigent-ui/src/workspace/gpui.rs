@@ -26,33 +26,35 @@ use crate::terminal::Terminal;
 use crate::terminal_view::TerminalView;
 // Imports from feature branch (UI components)
 use crate::empty_session::{EmptySessionEvent, EmptySessionPool};
-use crate::sidebar::{FileTreeEntryData, FileTreePanel, FileTreeEvent, WorktreePanel, WorktreeEvent};
+use crate::layout::LayoutProfile;
+use crate::sidebar::{
+    FileTreeEntryData, FileTreeEvent, FileTreePanel, WorktreeEvent, WorktreePanel,
+};
 use crate::task_board::TaskBoardPanel;
 use crate::terminal_header::TerminalHeader;
 use crate::theme::CodirigentTheme;
 use crate::toolbar::CustomLayoutPicker;
-use crate::layout::LayoutProfile;
 // Core imports (combined)
-use codirigent_core::{
-    AssignmentAction, CodirigentEvent, DefaultEventBus, EventBus, GridPosition, ProcessMonitor,
-    Session, SessionId, SessionManager, SessionStatus, TaskManager, TaskManagerConfig, Task, TaskId,
-    FileStorageService, WorktreeCreateOptions,
-};
-use codirigent_core::config_service::{ConfigService, DefaultConfigService};
-use codirigent_filetree::FileTree;
-use codirigent_detector::InputDetector;
-use codirigent_session::DefaultSessionManager;
 use crate::app::{
     CloseSession, Copy, FocusSession1, FocusSession2, FocusSession3, FocusSession4, FocusSession5,
     FocusSession6, FocusSession7, FocusSession8, FocusSession9, NewSession, NextLayout,
     OpenSettings, Paste, ToggleSidebar,
 };
-use crate::settings::SettingsPage;
 use crate::clipboard;
 use crate::clipboard_preview::ClipboardPreview;
+use crate::settings::SettingsPage;
 use crate::smart_clipboard::SmartClipboardProvider;
+use codirigent_core::config_service::{ConfigService, DefaultConfigService};
 use codirigent_core::ClipboardContent;
+use codirigent_core::{
+    AssignmentAction, CodirigentEvent, DefaultEventBus, EventBus, FileStorageService, GridPosition,
+    ProcessMonitor, Session, SessionId, SessionManager, SessionStatus, Task, TaskId, TaskManager,
+    TaskManagerConfig, WorktreeCreateOptions,
+};
+use codirigent_detector::InputDetector;
+use codirigent_filetree::FileTree;
 use codirigent_session::clipboard_service::{ClipboardService, DefaultClipboardService};
+use codirigent_session::DefaultSessionManager;
 use gpui::{
     div, px, App, AppContext, Context, Entity, FocusHandle, Focusable, InteractiveElement,
     IntoElement, KeyDownEvent, ParentElement, Render, Styled, Window,
@@ -268,7 +270,10 @@ impl WorkspaceView {
         // Initialize task manager with file storage
         let storage = if let Ok(cwd) = std::env::current_dir() {
             Arc::new(FileStorageService::new(&cwd).unwrap_or_else(|e| {
-                warn!("Failed to create file storage: {}, using in-memory fallback", e);
+                warn!(
+                    "Failed to create file storage: {}, using in-memory fallback",
+                    e
+                );
                 // Fallback: create in temp directory
                 let temp_dir = std::env::temp_dir().join("codirigent-fallback");
                 FileStorageService::new(&temp_dir).expect("Failed to create fallback storage")
@@ -496,7 +501,8 @@ impl WorkspaceView {
                 if let Some(cli_type) = Self::detect_cli_from_output(&data) {
                     let current = self.clipboard_service.get_session_cli_type(session_id);
                     if current == codirigent_core::CliType::GenericShell {
-                        self.clipboard_service.set_session_cli_type(session_id, cli_type);
+                        self.clipboard_service
+                            .set_session_cli_type(session_id, cli_type);
                         info!(?session_id, ?cli_type, "Detected CLI type from output");
                     }
                 }
@@ -561,7 +567,10 @@ impl WorkspaceView {
             // Update session status from detector
             let (status, idle_time) = {
                 let detector = self.detector.lock().unwrap();
-                (detector.get_status(session_id), detector.get_idle_time(session_id))
+                (
+                    detector.get_status(session_id),
+                    detector.get_idle_time(session_id),
+                )
             };
             if let Some(status) = status {
                 // DEBUG: log status + idle time every ~2 seconds
@@ -618,8 +627,7 @@ impl WorkspaceView {
                             .save_image(image_data)
                             .unwrap_or_default();
                         let file_size = image_data.bytes.len() as u64;
-                        let preview =
-                            ClipboardPreview::create_preview(image_data, path, file_size);
+                        let preview = ClipboardPreview::create_preview(image_data, path, file_size);
                         self.clipboard_preview.show(preview);
                         self.clipboard_preview_shown_at = Some(std::time::Instant::now());
                         any_dirty = true;
@@ -814,9 +822,9 @@ impl WorkspaceView {
         // Get session from manager (has git_info populated during creation)
         let session = {
             let manager = self.session_manager.lock().unwrap();
-            manager.get_session(session_id).unwrap_or_else(|| {
-                Session::new(session_id, name.clone(), working_dir)
-            })
+            manager
+                .get_session(session_id)
+                .unwrap_or_else(|| Session::new(session_id, name.clone(), working_dir))
         };
 
         if self.workspace.add_session(session.clone()) {
@@ -890,11 +898,8 @@ impl WorkspaceView {
             // Restore group/color
             if saved.group.is_some() || saved.color.is_some() {
                 let manager = self.session_manager.lock().unwrap();
-                let _ = manager.set_session_group(
-                    session_id,
-                    saved.group.clone(),
-                    saved.color.clone(),
-                );
+                let _ =
+                    manager.set_session_group(session_id, saved.group.clone(), saved.color.clone());
             }
 
             // Start monitoring
@@ -916,9 +921,9 @@ impl WorkspaceView {
             // Get session from manager (has git_info)
             let session = {
                 let manager = self.session_manager.lock().unwrap();
-                manager.get_session(session_id).unwrap_or_else(|| {
-                    Session::new(session_id, saved.name.clone(), working_dir)
-                })
+                manager
+                    .get_session(session_id)
+                    .unwrap_or_else(|| Session::new(session_id, saved.name.clone(), working_dir))
             };
 
             if self.workspace.add_session(session.clone()) {
@@ -1021,7 +1026,8 @@ impl WorkspaceView {
 
         // Remove from workspace
         self.workspace.remove_session(id);
-        self.event_bus.publish(CodirigentEvent::SessionClosed { id });
+        self.event_bus
+            .publish(CodirigentEvent::SessionClosed { id });
         info!(?id, "Closed session");
         self.save_state_to_disk();
         cx.notify();
@@ -1046,7 +1052,8 @@ impl WorkspaceView {
     pub fn focus_session_number(&mut self, number: usize, cx: &mut Context<Self>) {
         if self.workspace.focus_session_number(number) {
             if let Some(id) = self.workspace.focused_session_id() {
-                self.event_bus.publish(CodirigentEvent::SessionFocused { id });
+                self.event_bus
+                    .publish(CodirigentEvent::SessionFocused { id });
             }
             self.sync_file_tree_to_focused_session();
             cx.notify();
@@ -1062,7 +1069,11 @@ impl WorkspaceView {
         let sessions = self.workspace.sessions();
         let focused_id = self.workspace.focused_session_id();
         for session in sessions {
-            if let Some((_, header)) = self.terminal_headers.iter_mut().find(|(id, _)| *id == session.id) {
+            if let Some((_, header)) = self
+                .terminal_headers
+                .iter_mut()
+                .find(|(id, _)| *id == session.id)
+            {
                 header.session_name = session.name.clone();
                 header.status = session.status;
                 header.context_usage = session.context_usage;
@@ -1073,7 +1084,10 @@ impl WorkspaceView {
                 }
                 if let Some(task_id) = &session.current_task {
                     // Show task title instead of raw ID
-                    let title = self.task_manager.lock().ok()
+                    let title = self
+                        .task_manager
+                        .lock()
+                        .ok()
                         .and_then(|mgr| mgr.get_task(task_id).map(|t| t.title.clone()));
                     header.task = Some(title.unwrap_or_else(|| task_id.0.clone()));
                 } else {
@@ -1084,7 +1098,9 @@ impl WorkspaceView {
 
         // Update empty cells pool
         let (rows, cols) = self.workspace.layout_profile().dimensions();
-        let occupied: Vec<GridPosition> = self.workspace.sessions()
+        let occupied: Vec<GridPosition> = self
+            .workspace
+            .sessions()
             .iter()
             .enumerate()
             .map(|(i, _)| {
@@ -1099,22 +1115,40 @@ impl WorkspaceView {
         if let Ok(manager) = self.task_manager.lock() {
             let all_tasks = manager.list_tasks();
 
-            let queue_count = all_tasks.iter()
-                .filter(|t| matches!(t.status,
-                    codirigent_core::TaskStatus::Queued | codirigent_core::TaskStatus::Blocked))
+            let queue_count = all_tasks
+                .iter()
+                .filter(|t| {
+                    matches!(
+                        t.status,
+                        codirigent_core::TaskStatus::Queued | codirigent_core::TaskStatus::Blocked
+                    )
+                })
                 .count();
 
-            let in_progress_count = all_tasks.iter()
-                .filter(|t| matches!(t.status,
-                    codirigent_core::TaskStatus::Assigned | codirigent_core::TaskStatus::Working))
+            let in_progress_count = all_tasks
+                .iter()
+                .filter(|t| {
+                    matches!(
+                        t.status,
+                        codirigent_core::TaskStatus::Assigned
+                            | codirigent_core::TaskStatus::Working
+                    )
+                })
                 .count();
 
-            let review_count = all_tasks.iter()
-                .filter(|t| matches!(t.status,
-                    codirigent_core::TaskStatus::Verifying | codirigent_core::TaskStatus::Review))
+            let review_count = all_tasks
+                .iter()
+                .filter(|t| {
+                    matches!(
+                        t.status,
+                        codirigent_core::TaskStatus::Verifying
+                            | codirigent_core::TaskStatus::Review
+                    )
+                })
                 .count();
 
-            let done_count = all_tasks.iter()
+            let done_count = all_tasks
+                .iter()
                 .filter(|t| t.status == codirigent_core::TaskStatus::Done)
                 .count();
 
@@ -1122,7 +1156,7 @@ impl WorkspaceView {
                 queue_count,
                 in_progress_count,
                 review_count,
-                done_count
+                done_count,
             );
         }
     }
@@ -1144,7 +1178,12 @@ impl WorkspaceView {
     }
 
     /// Update a session's terminal header.
-    pub fn update_session_header(&mut self, id: SessionId, status: SessionStatus, context_usage: Option<f32>) {
+    pub fn update_session_header(
+        &mut self,
+        id: SessionId,
+        status: SessionStatus,
+        context_usage: Option<f32>,
+    ) {
         if let Some((_, header)) = self.terminal_headers.iter_mut().find(|(sid, _)| *sid == id) {
             header.status = status;
             header.context_usage = context_usage;
@@ -1245,7 +1284,9 @@ impl WorkspaceView {
 
             // Filter keybindings: only keep actions that exist in defaults
             let default_keys = codirigent_core::config::UserSettings::default_keybindings();
-            user_settings.keybindings.retain(|k, _| default_keys.contains_key(k));
+            user_settings
+                .keybindings
+                .retain(|k, _| default_keys.contains_key(k));
             // Add any new default keybindings that aren't in the saved settings
             for (k, v) in &default_keys {
                 user_settings
@@ -1319,7 +1360,11 @@ impl WorkspaceView {
     }
 
     /// Handle task board events.
-    pub(super) fn handle_task_board_event(&mut self, event: crate::task_board::TaskBoardEvent, cx: &mut Context<Self>) {
+    pub(super) fn handle_task_board_event(
+        &mut self,
+        event: crate::task_board::TaskBoardEvent,
+        cx: &mut Context<Self>,
+    ) {
         use crate::task_board::TaskAction;
 
         match event {
@@ -1451,21 +1496,18 @@ impl WorkspaceView {
                                 match manager.direct_assign(&task_id, session.id) {
                                     Ok(prompt) => {
                                         // Check CLI type to decide how to send the prompt
-                                        let cli_type = self.clipboard_service
-                                            .get_session_cli_type(session.id);
+                                        let cli_type =
+                                            self.clipboard_service.get_session_cli_type(session.id);
 
                                         // Release task_manager before session_manager
                                         drop(manager);
 
                                         // Build the command to send to the PTY
-                                        let input = Self::format_task_input(
-                                            &prompt, cli_type,
-                                        );
+                                        let input = Self::format_task_input(&prompt, cli_type);
 
                                         if let Ok(mgr) = self.session_manager.lock() {
                                             mgr.with_session_state_mut(session.id, |state| {
-                                                state.session.current_task =
-                                                    Some(task_id.clone());
+                                                state.session.current_task = Some(task_id.clone());
                                             });
                                             if let Err(e) =
                                                 mgr.send_input(session.id, input.as_bytes())
@@ -1625,7 +1667,10 @@ impl WorkspaceView {
                     }
                 }
             }
-            WorktreeEvent::BindSession { worktree_path, session_id } => {
+            WorktreeEvent::BindSession {
+                worktree_path,
+                session_id,
+            } => {
                 info!(?worktree_path, ?session_id, "Bind session to worktree");
                 if let Some(ref manager) = self.worktree_manager {
                     if let Ok(mut mgr) = manager.lock() {
@@ -1671,7 +1716,10 @@ impl WorkspaceView {
                     }
                 }
             }
-            WorktreeEvent::ConfirmCreate { branch, base_branch } => {
+            WorktreeEvent::ConfirmCreate {
+                branch,
+                base_branch,
+            } => {
                 info!(?branch, ?base_branch, "Confirm create worktree");
                 if let Some(ref manager) = self.worktree_manager {
                     if let Ok(mut mgr) = manager.lock() {
@@ -1917,7 +1965,9 @@ impl WorkspaceView {
             SessionActionKind::AssignGroup => {
                 let color = self.next_group_color();
                 if let Ok(manager) = self.session_manager.lock() {
-                    if let Err(e) = manager.set_session_group(modal.session_id, Some(value), Some(color)) {
+                    if let Err(e) =
+                        manager.set_session_group(modal.session_id, Some(value), Some(color))
+                    {
                         warn!("Failed to set session group: {}", e);
                     }
                 }
@@ -1926,7 +1976,8 @@ impl WorkspaceView {
 
         // Sync workspace cache immediately so the UI reflects the change
         if let Ok(manager) = self.session_manager.lock() {
-            self.workspace.sync_sessions_from_manager(&manager.list_sessions());
+            self.workspace
+                .sync_sessions_from_manager(&manager.list_sessions());
         }
         self.save_state_to_disk();
         self.close_session_action_modal();
@@ -1961,11 +2012,7 @@ impl WorkspaceView {
                     .and_then(|s| s.color.clone())
                     .unwrap_or_else(|| self.next_group_color());
                 if let Ok(manager) = self.session_manager.lock() {
-                    let _ = manager.set_session_group(
-                        session_id,
-                        Some(group_name),
-                        Some(color),
-                    );
+                    let _ = manager.set_session_group(session_id, Some(group_name), Some(color));
                 }
                 self.close_session_menu(cx);
             }
@@ -1987,7 +2034,8 @@ impl WorkspaceView {
         }
         // Sync workspace cache immediately so the UI reflects the change
         if let Ok(manager) = self.session_manager.lock() {
-            self.workspace.sync_sessions_from_manager(&manager.list_sessions());
+            self.workspace
+                .sync_sessions_from_manager(&manager.list_sessions());
         }
         self.save_state_to_disk();
         cx.notify();
@@ -2195,7 +2243,10 @@ impl WorkspaceView {
 
                         let manager = self.session_manager.lock().unwrap();
                         if let Err(e) = manager.send_input(session_id, &bytes) {
-                            warn!("Failed to paste image path to session {}: {}", session_id, e);
+                            warn!(
+                                "Failed to paste image path to session {}: {}",
+                                session_id, e
+                            );
                         }
 
                         // Hide clipboard preview on paste
@@ -2291,12 +2342,7 @@ impl WorkspaceView {
     /// - If a text selection is active in the focused terminal, copies the
     ///   selected text to the system clipboard and clears the selection.
     /// - If no selection is active, sends Ctrl+C (interrupt, `\x03`) to the PTY.
-    fn handle_copy(
-        &mut self,
-        _action: &Copy,
-        _window: &mut Window,
-        cx: &mut Context<Self>,
-    ) {
+    fn handle_copy(&mut self, _action: &Copy, _window: &mut Window, cx: &mut Context<Self>) {
         let Some(session_id) = self.workspace.focused_session_id() else {
             return;
         };
@@ -2358,7 +2404,9 @@ impl WorkspaceView {
 
         if lower.windows(10).any(|w| w == b"claude cod")
             || lower.windows(7).any(|w| w == b"claude>")
-            || lower.windows(15).any(|w| w == "\u{256d}\u{2500} claude code".as_bytes())
+            || lower
+                .windows(15)
+                .any(|w| w == "\u{256d}\u{2500} claude code".as_bytes())
         {
             return Some(codirigent_core::CliType::ClaudeCode);
         }
@@ -2367,9 +2415,7 @@ impl WorkspaceView {
         {
             return Some(codirigent_core::CliType::GeminiCli);
         }
-        if lower.windows(5).any(|w| w == b"codex")
-            || lower.windows(6).any(|w| w == b"codex>")
-        {
+        if lower.windows(5).any(|w| w == b"codex") || lower.windows(6).any(|w| w == b"codex>") {
             return Some(codirigent_core::CliType::CodexCli);
         }
 
@@ -2443,8 +2489,11 @@ impl WorkspaceView {
                 //   - padding: canvas prepaint offsets by TERMINAL_CONTENT_PADDING
                 //   - header: 32px header bar above terminal content
                 let padding2 = TERMINAL_CONTENT_PADDING * 2.0;
-                let available_width = (info.bounds.size.width - CELL_BORDER_WIDTH - padding2).max(0.0);
-                let available_height = (info.bounds.size.height - CELL_BORDER_WIDTH - HEADER_HEIGHT - padding2).max(0.0);
+                let available_width =
+                    (info.bounds.size.width - CELL_BORDER_WIDTH - padding2).max(0.0);
+                let available_height =
+                    (info.bounds.size.height - CELL_BORDER_WIDTH - HEADER_HEIGHT - padding2)
+                        .max(0.0);
 
                 // Resize terminal emulator to fit the remaining space
                 terminal_view.resize_to_fit(available_width, available_height);
@@ -2457,7 +2506,10 @@ impl WorkspaceView {
                 if last != Some(&(rows, cols)) {
                     let manager = self.session_manager.lock().unwrap();
                     if let Err(e) = manager.resize(info.session_id, rows, cols) {
-                        warn!("Failed to resize PTY for session {}: {}", info.session_id, e);
+                        warn!(
+                            "Failed to resize PTY for session {}: {}",
+                            info.session_id, e
+                        );
                     }
                     drop(manager);
                     self.pty_sizes.insert(info.session_id, (rows, cols));
@@ -2598,7 +2650,11 @@ impl WorkspaceView {
         false
     }
 
-    fn handle_session_action_key_down(&mut self, event: &KeyDownEvent, cx: &mut Context<Self>) -> bool {
+    fn handle_session_action_key_down(
+        &mut self,
+        event: &KeyDownEvent,
+        cx: &mut Context<Self>,
+    ) -> bool {
         let Some(modal) = self.session_action_modal.as_mut() else {
             return false;
         };
@@ -2629,9 +2685,7 @@ impl WorkspaceView {
         }
 
         // Ctrl+A selects all (clears input for easy replacement)
-        if (event.keystroke.modifiers.control || event.keystroke.modifiers.platform)
-            && key == "a"
-        {
+        if (event.keystroke.modifiers.control || event.keystroke.modifiers.platform) && key == "a" {
             modal.input.clear();
             cx.notify();
             return true;
@@ -2657,7 +2711,11 @@ impl WorkspaceView {
         true
     }
 
-    fn handle_task_creation_key_down(&mut self, event: &KeyDownEvent, cx: &mut Context<Self>) -> bool {
+    fn handle_task_creation_key_down(
+        &mut self,
+        event: &KeyDownEvent,
+        cx: &mut Context<Self>,
+    ) -> bool {
         let Some(modal) = self.task_creation_modal.as_mut() else {
             return false;
         };
@@ -2687,9 +2745,15 @@ impl WorkspaceView {
             }
             "backspace" => {
                 match modal.focused_field {
-                    0 => { modal.title.pop(); }
-                    1 => { modal.description.pop(); }
-                    2 => { modal.plan_file.pop(); }
+                    0 => {
+                        modal.title.pop();
+                    }
+                    1 => {
+                        modal.description.pop();
+                    }
+                    2 => {
+                        modal.plan_file.pop();
+                    }
                     _ => {}
                 }
                 modal.error = None;
@@ -2711,9 +2775,7 @@ impl WorkspaceView {
         }
 
         // Ctrl+A selects all (clears focused field for easy replacement)
-        if (event.keystroke.modifiers.control || event.keystroke.modifiers.platform)
-            && key == "a"
-        {
+        if (event.keystroke.modifiers.control || event.keystroke.modifiers.platform) && key == "a" {
             match modal.focused_field {
                 0 => modal.title.clear(),
                 1 => modal.description.clear(),
@@ -2726,9 +2788,7 @@ impl WorkspaceView {
         }
 
         // Ctrl+V / Cmd+V — paste from system clipboard
-        if (event.keystroke.modifiers.control || event.keystroke.modifiers.platform)
-            && key == "v"
-        {
+        if (event.keystroke.modifiers.control || event.keystroke.modifiers.platform) && key == "v" {
             if let Ok(content) = self.smart_clipboard.read_content() {
                 if let codirigent_core::ClipboardContent::Text(text) = content {
                     match modal.focused_field {
@@ -2770,7 +2830,11 @@ impl WorkspaceView {
         true
     }
 
-    fn handle_custom_layout_key_down(&mut self, event: &KeyDownEvent, cx: &mut Context<Self>) -> bool {
+    fn handle_custom_layout_key_down(
+        &mut self,
+        event: &KeyDownEvent,
+        cx: &mut Context<Self>,
+    ) -> bool {
         if !self.custom_picker.is_open {
             return false;
         }
@@ -2903,16 +2967,18 @@ impl Render for WorkspaceView {
         // Update workspace bounds from window size
         // GPUI automatically re-renders when window resizes, so we update bounds here
         let window_size = window.viewport_size();
-        let window_bounds = crate::layout::Bounds::from_size(
-            window_size.width.into(),
-            window_size.height.into(),
-        );
+        let window_bounds =
+            crate::layout::Bounds::from_size(window_size.width.into(), window_size.height.into());
         self.workspace.set_bounds(window_bounds);
 
         // Update sidebar width to match actual icon rail + drawer state
         // so grid_bounds() calculates correct cell dimensions
         let actual_sidebar_width = crate::icon_rail::IconRail::WIDTH
-            + if self.drawer.is_open() { self.drawer.width() } else { 0.0 };
+            + if self.drawer.is_open() {
+                self.drawer.width()
+            } else {
+                0.0
+            };
         self.workspace.set_sidebar_width(actual_sidebar_width);
 
         // Account for right panel width when open
@@ -3026,7 +3092,7 @@ impl Render for WorkspaceView {
             .flex()
             .flex_row()
             .overflow_hidden()
-            .min_h(px(0.0));  // Allow flex shrinking
+            .min_h(px(0.0)); // Allow flex shrinking
 
         // Icon rail (always visible, 56px)
         main_content = main_content.child(self.render_icon_rail(cx));
@@ -3042,16 +3108,16 @@ impl Render for WorkspaceView {
             .flex_1()
             .flex()
             .flex_col()
-            .overflow_hidden()  // Prevent overflow
-            .min_h(px(0.0))     // Allow flex shrinking
+            .overflow_hidden() // Prevent overflow
+            .min_h(px(0.0)) // Allow flex shrinking
             // Session grid (fills remaining space)
             .child(
                 div()
                     .id("session-grid-container")
                     .flex_1()
                     .p(px(grid_gap))
-                    .overflow_hidden()  // Clip content
-                    .min_h(px(0.0))     // Allow shrinking
+                    .overflow_hidden() // Clip content
+                    .min_h(px(0.0)) // Allow shrinking
                     .child(self.render_grid_with_headers(cx)),
             );
 
@@ -3124,12 +3190,7 @@ impl Render for WorkspaceView {
                         .flex_col()
                         .gap_1()
                         .max_w(px(200.0))
-                        .child(
-                            div()
-                                .text_xs()
-                                .text_color(fg)
-                                .child("Image in clipboard"),
-                        )
+                        .child(div().text_xs().text_color(fg).child("Image in clipboard"))
                         .child(
                             div()
                                 .text_xs()
@@ -3143,12 +3204,7 @@ impl Render for WorkspaceView {
                                 .truncate()
                                 .child(path_text),
                         )
-                        .child(
-                            div()
-                                .text_xs()
-                                .text_color(muted)
-                                .child("Ctrl+V to paste"),
-                        ),
+                        .child(div().text_xs().text_color(muted).child("Ctrl+V to paste")),
                 );
             }
         }

@@ -556,8 +556,8 @@ impl Terminal {
 
     /// Clear the terminal screen while preserving the current line (prompt).
     pub fn clear(&mut self) {
-        use alacritty_terminal::vte::ansi::{ClearMode, Handler};
         use alacritty_terminal::index::{Column, Line};
+        use alacritty_terminal::vte::ansi::{ClearMode, Handler};
 
         self.term.clear_screen(ClearMode::Saved);
 

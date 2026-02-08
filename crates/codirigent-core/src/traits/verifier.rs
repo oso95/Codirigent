@@ -373,24 +373,23 @@ mod tests {
     fn test_mock_failure_formatter() {
         let formatter = MockFailureFormatter;
 
-        let status = VerificationStatus::new(
-            TaskId("task-001".to_string()),
-            crate::types::SessionId(1),
-        );
+        let status =
+            VerificationStatus::new(TaskId("task-001".to_string()), crate::types::SessionId(1));
         assert_eq!(formatter.format(&status), "No failures");
 
         let failure = VerificationFailure::new("test_auth", "assertion failed");
-        assert_eq!(formatter.format_failure(&failure), "test_auth: assertion failed");
+        assert_eq!(
+            formatter.format_failure(&failure),
+            "test_auth: assertion failed"
+        );
     }
 
     #[test]
     fn test_mock_failure_formatter_with_failures() {
         let formatter = MockFailureFormatter;
 
-        let mut status = VerificationStatus::new(
-            TaskId("task-001".to_string()),
-            crate::types::SessionId(1),
-        );
+        let mut status =
+            VerificationStatus::new(TaskId("task-001".to_string()), crate::types::SessionId(1));
         let failures = vec![
             VerificationFailure::new("test1", "failed"),
             VerificationFailure::new("test2", "failed"),

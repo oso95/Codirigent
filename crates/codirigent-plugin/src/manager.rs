@@ -1,9 +1,9 @@
 //! Default plugin manager implementation.
 
 use crate::registry::PluginRegistry;
+use anyhow::{anyhow, Result};
 use codirigent_core::plugin::{Plugin, PluginManager, PluginState};
 use codirigent_core::traits::EventBus;
-use anyhow::{Result, anyhow};
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
@@ -118,7 +118,10 @@ impl PluginManager for DefaultPluginManager {
     fn load_plugin(&mut self, path: &Path) -> Result<String> {
         // Phase 5: External plugin loading via dynamic library
         // For now, return error - built-in plugins use register_builtin
-        Err(anyhow!("External plugin loading not yet implemented: {:?}", path))
+        Err(anyhow!(
+            "External plugin loading not yet implemented: {:?}",
+            path
+        ))
     }
 
     fn unload_plugin(&mut self, id: &str) -> Result<()> {
@@ -130,7 +133,9 @@ impl PluginManager for DefaultPluginManager {
     }
 
     fn enable_plugin(&mut self, id: &str) -> Result<()> {
-        let plugin = self.registry.get_mut(id)
+        let plugin = self
+            .registry
+            .get_mut(id)
             .ok_or_else(|| anyhow!("Plugin '{}' not found", id))?;
         if plugin.state() == PluginState::Disabled || plugin.state() == PluginState::Loaded {
             plugin.initialize(self.event_bus.as_ref())?;
@@ -139,7 +144,9 @@ impl PluginManager for DefaultPluginManager {
     }
 
     fn disable_plugin(&mut self, id: &str) -> Result<()> {
-        let plugin = self.registry.get_mut(id)
+        let plugin = self
+            .registry
+            .get_mut(id)
             .ok_or_else(|| anyhow!("Plugin '{}' not found", id))?;
         if plugin.state() == PluginState::Active {
             plugin.shutdown()?;
@@ -262,10 +269,7 @@ mod tests {
     #[test]
     fn test_manager_new() {
         let event_bus = Arc::new(MockEventBus::new());
-        let manager = DefaultPluginManager::new(
-            PathBuf::from("/tmp/plugins"),
-            event_bus,
-        );
+        let manager = DefaultPluginManager::new(PathBuf::from("/tmp/plugins"), event_bus);
 
         assert!(manager.list_plugins().is_empty());
         assert_eq!(manager.plugins_dir(), Path::new("/tmp/plugins"));
@@ -274,10 +278,7 @@ mod tests {
     #[test]
     fn test_manager_register_builtin() {
         let event_bus = Arc::new(MockEventBus::new());
-        let mut manager = DefaultPluginManager::new(
-            PathBuf::from("/tmp/plugins"),
-            event_bus,
-        );
+        let mut manager = DefaultPluginManager::new(PathBuf::from("/tmp/plugins"), event_bus);
 
         let plugin = MockPlugin::new("test");
         assert!(manager.register_builtin(Box::new(plugin)).is_ok());
@@ -287,10 +288,7 @@ mod tests {
     #[test]
     fn test_manager_register_builtin_duplicate() {
         let event_bus = Arc::new(MockEventBus::new());
-        let mut manager = DefaultPluginManager::new(
-            PathBuf::from("/tmp/plugins"),
-            event_bus,
-        );
+        let mut manager = DefaultPluginManager::new(PathBuf::from("/tmp/plugins"), event_bus);
 
         let plugin1 = MockPlugin::new("test");
         let plugin2 = MockPlugin::new("test");
@@ -303,13 +301,14 @@ mod tests {
     #[test]
     fn test_manager_initialize_all() {
         let event_bus = Arc::new(MockEventBus::new());
-        let mut manager = DefaultPluginManager::new(
-            PathBuf::from("/tmp/plugins"),
-            event_bus,
-        );
+        let mut manager = DefaultPluginManager::new(PathBuf::from("/tmp/plugins"), event_bus);
 
-        manager.register_builtin(Box::new(MockPlugin::new("plugin1"))).unwrap();
-        manager.register_builtin(Box::new(MockPlugin::new("plugin2"))).unwrap();
+        manager
+            .register_builtin(Box::new(MockPlugin::new("plugin1")))
+            .unwrap();
+        manager
+            .register_builtin(Box::new(MockPlugin::new("plugin2")))
+            .unwrap();
 
         assert!(manager.initialize_all().is_ok());
 
@@ -322,13 +321,14 @@ mod tests {
     #[test]
     fn test_manager_shutdown_all() {
         let event_bus = Arc::new(MockEventBus::new());
-        let mut manager = DefaultPluginManager::new(
-            PathBuf::from("/tmp/plugins"),
-            event_bus,
-        );
+        let mut manager = DefaultPluginManager::new(PathBuf::from("/tmp/plugins"), event_bus);
 
-        manager.register_builtin(Box::new(MockPlugin::new("plugin1"))).unwrap();
-        manager.register_builtin(Box::new(MockPlugin::new("plugin2"))).unwrap();
+        manager
+            .register_builtin(Box::new(MockPlugin::new("plugin1")))
+            .unwrap();
+        manager
+            .register_builtin(Box::new(MockPlugin::new("plugin2")))
+            .unwrap();
         manager.initialize_all().unwrap();
 
         assert!(manager.shutdown_all().is_ok());
@@ -342,25 +342,24 @@ mod tests {
     #[test]
     fn test_manager_load_plugin_not_implemented() {
         let event_bus = Arc::new(MockEventBus::new());
-        let mut manager = DefaultPluginManager::new(
-            PathBuf::from("/tmp/plugins"),
-            event_bus,
-        );
+        let mut manager = DefaultPluginManager::new(PathBuf::from("/tmp/plugins"), event_bus);
 
         let result = manager.load_plugin(Path::new("/path/to/plugin.so"));
         assert!(result.is_err());
-        assert!(result.unwrap_err().to_string().contains("not yet implemented"));
+        assert!(result
+            .unwrap_err()
+            .to_string()
+            .contains("not yet implemented"));
     }
 
     #[test]
     fn test_manager_unload_plugin() {
         let event_bus = Arc::new(MockEventBus::new());
-        let mut manager = DefaultPluginManager::new(
-            PathBuf::from("/tmp/plugins"),
-            event_bus,
-        );
+        let mut manager = DefaultPluginManager::new(PathBuf::from("/tmp/plugins"), event_bus);
 
-        manager.register_builtin(Box::new(MockPlugin::new("test"))).unwrap();
+        manager
+            .register_builtin(Box::new(MockPlugin::new("test")))
+            .unwrap();
         manager.initialize_all().unwrap();
 
         assert!(manager.unload_plugin("test").is_ok());
@@ -370,10 +369,7 @@ mod tests {
     #[test]
     fn test_manager_unload_plugin_not_found() {
         let event_bus = Arc::new(MockEventBus::new());
-        let mut manager = DefaultPluginManager::new(
-            PathBuf::from("/tmp/plugins"),
-            event_bus,
-        );
+        let mut manager = DefaultPluginManager::new(PathBuf::from("/tmp/plugins"), event_bus);
 
         let result = manager.unload_plugin("nonexistent");
         assert!(result.is_err());
@@ -383,24 +379,23 @@ mod tests {
     #[test]
     fn test_manager_enable_plugin() {
         let event_bus = Arc::new(MockEventBus::new());
-        let mut manager = DefaultPluginManager::new(
-            PathBuf::from("/tmp/plugins"),
-            event_bus,
-        );
+        let mut manager = DefaultPluginManager::new(PathBuf::from("/tmp/plugins"), event_bus);
 
-        manager.register_builtin(Box::new(MockPlugin::new("test"))).unwrap();
+        manager
+            .register_builtin(Box::new(MockPlugin::new("test")))
+            .unwrap();
 
         assert!(manager.enable_plugin("test").is_ok());
-        assert_eq!(manager.get_plugin("test").unwrap().state(), PluginState::Active);
+        assert_eq!(
+            manager.get_plugin("test").unwrap().state(),
+            PluginState::Active
+        );
     }
 
     #[test]
     fn test_manager_enable_plugin_not_found() {
         let event_bus = Arc::new(MockEventBus::new());
-        let mut manager = DefaultPluginManager::new(
-            PathBuf::from("/tmp/plugins"),
-            event_bus,
-        );
+        let mut manager = DefaultPluginManager::new(PathBuf::from("/tmp/plugins"), event_bus);
 
         let result = manager.enable_plugin("nonexistent");
         assert!(result.is_err());
@@ -410,25 +405,24 @@ mod tests {
     #[test]
     fn test_manager_disable_plugin() {
         let event_bus = Arc::new(MockEventBus::new());
-        let mut manager = DefaultPluginManager::new(
-            PathBuf::from("/tmp/plugins"),
-            event_bus,
-        );
+        let mut manager = DefaultPluginManager::new(PathBuf::from("/tmp/plugins"), event_bus);
 
-        manager.register_builtin(Box::new(MockPlugin::new("test"))).unwrap();
+        manager
+            .register_builtin(Box::new(MockPlugin::new("test")))
+            .unwrap();
         manager.enable_plugin("test").unwrap();
 
         assert!(manager.disable_plugin("test").is_ok());
-        assert_eq!(manager.get_plugin("test").unwrap().state(), PluginState::Disabled);
+        assert_eq!(
+            manager.get_plugin("test").unwrap().state(),
+            PluginState::Disabled
+        );
     }
 
     #[test]
     fn test_manager_disable_plugin_not_found() {
         let event_bus = Arc::new(MockEventBus::new());
-        let mut manager = DefaultPluginManager::new(
-            PathBuf::from("/tmp/plugins"),
-            event_bus,
-        );
+        let mut manager = DefaultPluginManager::new(PathBuf::from("/tmp/plugins"), event_bus);
 
         let result = manager.disable_plugin("nonexistent");
         assert!(result.is_err());
@@ -438,12 +432,11 @@ mod tests {
     #[test]
     fn test_manager_get_plugin() {
         let event_bus = Arc::new(MockEventBus::new());
-        let mut manager = DefaultPluginManager::new(
-            PathBuf::from("/tmp/plugins"),
-            event_bus,
-        );
+        let mut manager = DefaultPluginManager::new(PathBuf::from("/tmp/plugins"), event_bus);
 
-        manager.register_builtin(Box::new(MockPlugin::new("test"))).unwrap();
+        manager
+            .register_builtin(Box::new(MockPlugin::new("test")))
+            .unwrap();
 
         assert!(manager.get_plugin("test").is_some());
         assert!(manager.get_plugin("nonexistent").is_none());
@@ -452,12 +445,11 @@ mod tests {
     #[test]
     fn test_manager_get_plugin_mut() {
         let event_bus = Arc::new(MockEventBus::new());
-        let mut manager = DefaultPluginManager::new(
-            PathBuf::from("/tmp/plugins"),
-            event_bus,
-        );
+        let mut manager = DefaultPluginManager::new(PathBuf::from("/tmp/plugins"), event_bus);
 
-        manager.register_builtin(Box::new(MockPlugin::new("test"))).unwrap();
+        manager
+            .register_builtin(Box::new(MockPlugin::new("test")))
+            .unwrap();
 
         assert!(manager.get_plugin_mut("test").is_some());
         assert!(manager.get_plugin_mut("nonexistent").is_none());
@@ -466,15 +458,16 @@ mod tests {
     #[test]
     fn test_manager_list_plugins() {
         let event_bus = Arc::new(MockEventBus::new());
-        let mut manager = DefaultPluginManager::new(
-            PathBuf::from("/tmp/plugins"),
-            event_bus,
-        );
+        let mut manager = DefaultPluginManager::new(PathBuf::from("/tmp/plugins"), event_bus);
 
         assert!(manager.list_plugins().is_empty());
 
-        manager.register_builtin(Box::new(MockPlugin::new("plugin1"))).unwrap();
-        manager.register_builtin(Box::new(MockPlugin::new("plugin2"))).unwrap();
+        manager
+            .register_builtin(Box::new(MockPlugin::new("plugin1")))
+            .unwrap();
+        manager
+            .register_builtin(Box::new(MockPlugin::new("plugin2")))
+            .unwrap();
 
         let plugins = manager.list_plugins();
         assert_eq!(plugins.len(), 2);
@@ -483,23 +476,23 @@ mod tests {
     #[test]
     fn test_manager_plugins_dir() {
         let event_bus = Arc::new(MockEventBus::new());
-        let manager = DefaultPluginManager::new(
-            PathBuf::from("/home/user/.codirigent/plugins"),
-            event_bus,
-        );
+        let manager =
+            DefaultPluginManager::new(PathBuf::from("/home/user/.codirigent/plugins"), event_bus);
 
-        assert_eq!(manager.plugins_dir(), Path::new("/home/user/.codirigent/plugins"));
+        assert_eq!(
+            manager.plugins_dir(),
+            Path::new("/home/user/.codirigent/plugins")
+        );
     }
 
     #[test]
     fn test_manager_registry_access() {
         let event_bus = Arc::new(MockEventBus::new());
-        let mut manager = DefaultPluginManager::new(
-            PathBuf::from("/tmp/plugins"),
-            event_bus,
-        );
+        let mut manager = DefaultPluginManager::new(PathBuf::from("/tmp/plugins"), event_bus);
 
-        manager.register_builtin(Box::new(MockPlugin::new("test"))).unwrap();
+        manager
+            .register_builtin(Box::new(MockPlugin::new("test")))
+            .unwrap();
 
         assert!(manager.registry().contains("test"));
         assert!(manager.registry_mut().contains("test"));

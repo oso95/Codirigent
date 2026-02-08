@@ -1,6 +1,6 @@
 //! Reusable text input rendering helpers.
 
-use gpui::{div, px, SharedString, Styled, ParentElement};
+use gpui::{div, px, ParentElement, SharedString, Styled};
 
 /// Styling for a text input field.
 #[derive(Debug, Clone, Copy)]

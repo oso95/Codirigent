@@ -178,9 +178,7 @@ pub fn sanitize_paste(text: &str) -> String {
     text.chars()
         .filter(|c| {
             // Allow printable characters, newlines, and tabs
-            c.is_ascii_graphic()
-                || c.is_ascii_whitespace()
-                || !c.is_ascii() // Allow non-ASCII (unicode)
+            c.is_ascii_graphic() || c.is_ascii_whitespace() || !c.is_ascii() // Allow non-ASCII (unicode)
         })
         .collect()
 }

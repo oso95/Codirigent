@@ -285,11 +285,7 @@ impl Verifier for VerificationGate {
             exec_result.duration.as_millis() as u64,
         );
 
-        debug!(
-            ?check_type,
-            passed = result.passed,
-            "Check completed"
-        );
+        debug!(?check_type, passed = result.passed, "Check completed");
 
         Ok(result)
     }
@@ -383,9 +379,11 @@ mod tests {
 
     #[test]
     fn test_verification_gate_with_config() {
-        let mut config = VerificationConfig::default();
-        config.max_retries = 10;
-        config.auto_detect = false;
+        let config = VerificationConfig {
+            max_retries: 10,
+            auto_detect: false,
+            ..Default::default()
+        };
 
         let gate = VerificationGate::with_config(config);
         assert_eq!(gate.config.max_retries, 10);
@@ -478,9 +476,14 @@ mod tests {
 
     #[test]
     fn test_get_commands_from_config() {
-        let mut config = VerificationConfig::default();
-        config.auto_detect = false;
-        config.commands.unit = Some("npm test".to_string());
+        let config = VerificationConfig {
+            auto_detect: false,
+            commands: VerificationCommands {
+                unit: Some("npm test".to_string()),
+                ..Default::default()
+            },
+            ..Default::default()
+        };
 
         let gate = VerificationGate::with_config(config);
         let temp = TempDir::new().unwrap();
@@ -635,8 +638,10 @@ mod tests {
 
     #[tokio::test]
     async fn test_retry_max_exceeded() {
-        let mut config = VerificationConfig::default();
-        config.max_retries = 0;
+        let config = VerificationConfig {
+            max_retries: 0,
+            ..Default::default()
+        };
         let mut gate = VerificationGate::with_config(config);
         let temp = TempDir::new().unwrap();
 
@@ -653,9 +658,14 @@ mod tests {
     #[cfg(unix)]
     #[tokio::test]
     async fn test_verify_with_passing_command() {
-        let mut config = VerificationConfig::default();
-        config.auto_detect = false;
-        config.commands.unit = Some("echo test".to_string());
+        let config = VerificationConfig {
+            auto_detect: false,
+            commands: VerificationCommands {
+                unit: Some("echo test".to_string()),
+                ..Default::default()
+            },
+            ..Default::default()
+        };
 
         let gate = VerificationGate::with_config(config);
         let temp = TempDir::new().unwrap();
@@ -671,9 +681,14 @@ mod tests {
     #[cfg(unix)]
     #[tokio::test]
     async fn test_verify_with_failing_command() {
-        let mut config = VerificationConfig::default();
-        config.auto_detect = false;
-        config.commands.unit = Some("false".to_string());
+        let config = VerificationConfig {
+            auto_detect: false,
+            commands: VerificationCommands {
+                unit: Some("false".to_string()),
+                ..Default::default()
+            },
+            ..Default::default()
+        };
 
         let gate = VerificationGate::with_config(config);
         let temp = TempDir::new().unwrap();
@@ -689,10 +704,15 @@ mod tests {
     #[cfg(unix)]
     #[tokio::test]
     async fn test_verify_multiple_checks() {
-        let mut config = VerificationConfig::default();
-        config.auto_detect = false;
-        config.commands.unit = Some("echo test".to_string());
-        config.commands.lint = Some("echo lint".to_string());
+        let config = VerificationConfig {
+            auto_detect: false,
+            commands: VerificationCommands {
+                unit: Some("echo test".to_string()),
+                lint: Some("echo lint".to_string()),
+                ..Default::default()
+            },
+            ..Default::default()
+        };
 
         let gate = VerificationGate::with_config(config);
         let temp = TempDir::new().unwrap();
@@ -707,10 +727,15 @@ mod tests {
     #[cfg(unix)]
     #[tokio::test]
     async fn test_verify_partial_failure() {
-        let mut config = VerificationConfig::default();
-        config.auto_detect = false;
-        config.commands.unit = Some("echo test".to_string());
-        config.commands.lint = Some("false".to_string());
+        let config = VerificationConfig {
+            auto_detect: false,
+            commands: VerificationCommands {
+                unit: Some("echo test".to_string()),
+                lint: Some("false".to_string()),
+                ..Default::default()
+            },
+            ..Default::default()
+        };
 
         let gate = VerificationGate::with_config(config);
         let temp = TempDir::new().unwrap();

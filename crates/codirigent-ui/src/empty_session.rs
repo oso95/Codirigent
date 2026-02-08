@@ -67,9 +67,10 @@ impl EmptySessionCell {
 
     /// Handle click - triggers session creation.
     pub fn click(&mut self) {
-        self.pending_events.push(EmptySessionEvent::CreateSessionClicked {
-            position: self.position,
-        });
+        self.pending_events
+            .push(EmptySessionEvent::CreateSessionClicked {
+                position: self.position,
+            });
     }
 
     /// Take pending events.
@@ -336,7 +337,10 @@ mod tests {
     fn test_constants() {
         assert_eq!(EmptySessionCell::PLUS_ICON, "+");
         assert_eq!(EmptySessionCell::IDLE_TEXT, "Idle - Ready for next task");
-        assert!(EmptySessionCell::DEFAULT_HEIGHT > 0.0);
+        // Verify DEFAULT_HEIGHT is positive; use a let-binding to avoid
+        // clippy::assertions_on_constants (the check guards against future edits).
+        let height = EmptySessionCell::DEFAULT_HEIGHT;
+        assert!(height > 0.0);
     }
 
     // === Pool Tests ===

@@ -186,7 +186,9 @@ impl std::fmt::Display for ChangeType {
 /// assert!(RiskLevel::Medium < RiskLevel::High);
 /// assert_eq!(RiskLevel::default(), RiskLevel::Medium);
 /// ```
-#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
+#[derive(
+    Debug, Clone, Copy, Default, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize,
+)]
 pub enum RiskLevel {
     /// Low risk - tests, docs, UI-only changes.
     Low,

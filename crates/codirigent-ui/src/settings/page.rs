@@ -179,7 +179,10 @@ mod tests {
         assert_eq!(SettingsCategory::General.label(), "General");
         assert_eq!(SettingsCategory::Appearance.label(), "Appearance");
         assert_eq!(SettingsCategory::Terminal.label(), "Terminal");
-        assert_eq!(SettingsCategory::KeyboardShortcuts.label(), "Keyboard Shortcuts");
+        assert_eq!(
+            SettingsCategory::KeyboardShortcuts.label(),
+            "Keyboard Shortcuts"
+        );
         assert_eq!(SettingsCategory::Sessions.label(), "Sessions");
         assert_eq!(SettingsCategory::Advanced.label(), "Advanced");
     }

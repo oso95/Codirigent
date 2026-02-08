@@ -10,17 +10,17 @@ use crate::terminal_view::CursorShape;
 // Imports from feature branch (UI components)
 use crate::components::text_input::{text_input, TextInputStyle};
 use crate::empty_session::EmptySessionRenderHints;
-use crate::terminal_header::TerminalHeaderRenderHints;
-use crate::theme::CodirigentTheme;
-use codirigent_core::{Session, SessionId};
 use crate::icons;
 use crate::layout::LayoutProfile;
+use crate::terminal_header::TerminalHeaderRenderHints;
+use crate::theme::CodirigentTheme;
 use crate::title_bar::TitleBar;
+use codirigent_core::{Session, SessionId};
 use gpui::{
-    div, px, ClickEvent, Context, FontWeight, Image, ImageFormat, InteractiveElement, IntoElement,
-    ObjectFit, ParentElement, Window, WindowControlArea, prelude::FluentBuilder, SharedString,
-    StatefulInteractiveElement, Styled, StyledImage, MouseButton, ScrollWheelEvent,
-    MouseDownEvent, MouseMoveEvent, MouseUpEvent,
+    div, prelude::FluentBuilder, px, ClickEvent, Context, FontWeight, Image, ImageFormat,
+    InteractiveElement, IntoElement, MouseButton, MouseDownEvent, MouseMoveEvent, MouseUpEvent,
+    ObjectFit, ParentElement, ScrollWheelEvent, SharedString, StatefulInteractiveElement, Styled,
+    StyledImage, Window, WindowControlArea,
 };
 use std::cell::Cell;
 use std::rc::Rc;
@@ -160,20 +160,15 @@ impl WorkspaceView {
                 icon_y_offset,
             ))
             .child(
-                div()
-                    .h(px(row_height))
-                    .flex()
-                    .items_center()
-                    .child(
-                        div()
-                            .text_size(px(label_size))
-                            .font_weight(label_weight)
-                            .text_color(label_color)
-                            .child(label.into()),
-                    ),
+                div().h(px(row_height)).flex().items_center().child(
+                    div()
+                        .text_size(px(label_size))
+                        .font_weight(label_weight)
+                        .text_color(label_color)
+                        .child(label.into()),
+                ),
             )
     }
-
 
     /// Render the grid of session panes.
     pub(super) fn render_grid(&mut self) -> impl IntoElement {
@@ -223,13 +218,7 @@ impl WorkspaceView {
                                 .flex()
                                 .items_center()
                                 .gap_2()
-                                .child(
-                                    div()
-                                        .w(px(8.0))
-                                        .h(px(8.0))
-                                        .rounded_full()
-                                        .bg(status_color),
-                                )
+                                .child(div().w(px(8.0)).h(px(8.0)).rounded_full().bg(status_color))
                                 .child(
                                     div()
                                         .text_xs()
@@ -306,7 +295,13 @@ impl WorkspaceView {
                     .flex()
                     .items_center()
                     .justify_center()
-                    .child(div().text_base().text_color(terminal_fg).font_family(icons::LUCIDE_FONT_FAMILY).child(icons::terminal()))
+                    .child(
+                        div()
+                            .text_base()
+                            .text_color(terminal_fg)
+                            .font_family(icons::LUCIDE_FONT_FAMILY)
+                            .child(icons::terminal()),
+                    )
                     .into_any_element(),
                 canvas_origin,
             );
@@ -345,7 +340,8 @@ impl WorkspaceView {
             (c, color)
         });
 
-        let font_family: gpui::SharedString = crate::terminal_view::default_terminal_font_family().into();
+        let font_family: gpui::SharedString =
+            crate::terminal_view::default_terminal_font_family().into();
 
         // Clone Rc for capture into the canvas prepaint closure
         let canvas_origin_for_prepaint = Rc::clone(&canvas_origin);
@@ -378,7 +374,8 @@ impl WorkspaceView {
                 };
 
                 // Shape text for each run (prepaint phase)
-                let mut shaped_runs: Vec<(usize, usize, gpui::ShapedLine)> = Vec::with_capacity(text_runs.len());
+                let mut shaped_runs: Vec<(usize, usize, gpui::ShapedLine)> =
+                    Vec::with_capacity(text_runs.len());
                 let font_size_px = px(font_size);
 
                 for (run, fg_color) in &text_runs {
@@ -430,30 +427,38 @@ impl WorkspaceView {
                         strikethrough,
                     };
 
-                    let shaped = window
-                        .text_system()
-                        .shape_line(text, font_size_px, &[text_run], None);
+                    let shaped =
+                        window
+                            .text_system()
+                            .shape_line(text, font_size_px, &[text_run], None);
 
                     shaped_runs.push((run.row, run.start_col, shaped));
                 }
 
-                (ox, oy, bg_rects, shaped_runs, cursor_data, cell_width, cell_height)
+                (
+                    ox,
+                    oy,
+                    bg_rects,
+                    shaped_runs,
+                    cursor_data,
+                    cell_width,
+                    cell_height,
+                )
             },
             // Paint: draw backgrounds, text, and cursor
             move |_bounds: gpui::Bounds<gpui::Pixels>,
                   prepaint_data: (
-                      f32,
-                      f32,
-                      Vec<(usize, usize, usize, gpui::Hsla)>,
-                      Vec<(usize, usize, gpui::ShapedLine)>,
-                      Option<(crate::terminal_view::CursorRect, gpui::Hsla)>,
-                      f32,
-                      f32,
-                  ),
+                f32,
+                f32,
+                Vec<(usize, usize, usize, gpui::Hsla)>,
+                Vec<(usize, usize, gpui::ShapedLine)>,
+                Option<(crate::terminal_view::CursorRect, gpui::Hsla)>,
+                f32,
+                f32,
+            ),
                   window: &mut gpui::Window,
                   cx: &mut gpui::App| {
-                let (ox, oy, bg_rects, shaped_runs, cursor_data, cell_w, cell_h) =
-                    prepaint_data;
+                let (ox, oy, bg_rects, shaped_runs, cursor_data, cell_w, cell_h) = prepaint_data;
 
                 // 1. Paint background rectangles
                 for (row, start_col, end_col, bg_color) in &bg_rects {
@@ -461,8 +466,14 @@ impl WorkspaceView {
                     let rect_y = oy + *row as f32 * cell_h;
                     let rect_w = (*end_col - *start_col) as f32 * cell_w;
                     let rect_bounds = gpui::Bounds {
-                        origin: gpui::Point { x: px(rect_x), y: px(rect_y) },
-                        size: gpui::Size { width: px(rect_w), height: px(cell_h) },
+                        origin: gpui::Point {
+                            x: px(rect_x),
+                            y: px(rect_y),
+                        },
+                        size: gpui::Size {
+                            width: px(rect_w),
+                            height: px(cell_h),
+                        },
                     };
                     window.paint_quad(gpui::fill(rect_bounds, *bg_color));
                 }
@@ -471,13 +482,11 @@ impl WorkspaceView {
                 for (row, start_col, shaped_line) in &shaped_runs {
                     let text_x = ox + *start_col as f32 * cell_w;
                     let text_y = oy + *row as f32 * cell_h;
-                    let text_origin = gpui::Point { x: px(text_x), y: px(text_y) };
-                    let _ = shaped_line.paint(
-                        text_origin,
-                        px(cell_h),
-                        window,
-                        cx,
-                    );
+                    let text_origin = gpui::Point {
+                        x: px(text_x),
+                        y: px(text_y),
+                    };
+                    let _ = shaped_line.paint(text_origin, px(cell_h), window, cx);
                 }
 
                 // 3. Paint cursor
@@ -488,18 +497,27 @@ impl WorkspaceView {
                     match cursor.shape {
                         CursorShape::Block => {
                             let cursor_bounds = gpui::Bounds {
-                                origin: gpui::Point { x: px(cx_pos), y: px(cy_pos) },
-                                size: gpui::Size { width: px(cell_w), height: px(cell_h) },
+                                origin: gpui::Point {
+                                    x: px(cx_pos),
+                                    y: px(cy_pos),
+                                },
+                                size: gpui::Size {
+                                    width: px(cell_w),
+                                    height: px(cell_h),
+                                },
                             };
-                            window.paint_quad(gpui::fill(
-                                cursor_bounds,
-                                cursor_color.opacity(0.7),
-                            ));
+                            window.paint_quad(gpui::fill(cursor_bounds, cursor_color.opacity(0.7)));
                         }
                         CursorShape::HollowBlock => {
                             let cursor_bounds = gpui::Bounds {
-                                origin: gpui::Point { x: px(cx_pos), y: px(cy_pos) },
-                                size: gpui::Size { width: px(cell_w), height: px(cell_h) },
+                                origin: gpui::Point {
+                                    x: px(cx_pos),
+                                    y: px(cy_pos),
+                                },
+                                size: gpui::Size {
+                                    width: px(cell_w),
+                                    height: px(cell_h),
+                                },
                             };
                             window.paint_quad(gpui::quad(
                                 cursor_bounds,
@@ -512,8 +530,14 @@ impl WorkspaceView {
                         }
                         CursorShape::Beam => {
                             let cursor_bounds = gpui::Bounds {
-                                origin: gpui::Point { x: px(cx_pos), y: px(cy_pos) },
-                                size: gpui::Size { width: px(2.0), height: px(cell_h) },
+                                origin: gpui::Point {
+                                    x: px(cx_pos),
+                                    y: px(cy_pos),
+                                },
+                                size: gpui::Size {
+                                    width: px(2.0),
+                                    height: px(cell_h),
+                                },
                             };
                             window.paint_quad(gpui::fill(cursor_bounds, *cursor_color));
                         }
@@ -523,7 +547,10 @@ impl WorkspaceView {
                                     x: px(cx_pos),
                                     y: px(cy_pos + cell_h - 2.0),
                                 },
-                                size: gpui::Size { width: px(cell_w), height: px(2.0) },
+                                size: gpui::Size {
+                                    width: px(cell_w),
+                                    height: px(2.0),
+                                },
                             };
                             window.paint_quad(gpui::fill(cursor_bounds, *cursor_color));
                         }
@@ -549,7 +576,11 @@ impl WorkspaceView {
     ///
     /// This is a 32px bar with the logo on the left and native window controls
     /// on the right. The entire bar is a drag region for moving the window.
-    pub(super) fn render_title_bar(&mut self, window: &mut Window, _cx: &mut Context<Self>) -> impl IntoElement {
+    pub(super) fn render_title_bar(
+        &mut self,
+        window: &mut Window,
+        _cx: &mut Context<Self>,
+    ) -> impl IntoElement {
         let theme = self.workspace().theme();
         let bg: gpui::Hsla = theme.panel_background.into();
         let border_color: gpui::Hsla = theme.border.into();
@@ -596,13 +627,9 @@ impl WorkspaceView {
         #[cfg(target_os = "windows")]
         {
             use raw_window_handle::HasWindowHandle;
-            let raw_handle = window.window_handle().ok().map(|h| {
-                match h.as_raw() {
-                    raw_window_handle::RawWindowHandle::Win32(win32) => {
-                        win32.hwnd.get() as isize
-                    }
-                    _ => 0,
-                }
+            let raw_handle = window.window_handle().ok().map(|h| match h.as_raw() {
+                raw_window_handle::RawWindowHandle::Win32(win32) => win32.hwnd.get() as isize,
+                _ => 0,
             });
             if let Some(hwnd) = raw_handle {
                 bar = bar.on_mouse_down(MouseButton::Left, move |_event, _window, _cx| {
@@ -612,12 +639,7 @@ impl WorkspaceView {
         }
 
         // Logo (3x3 grid matching logo-primary-dark.svg)
-        bar = bar.child(
-            div()
-                .flex_shrink_0()
-                .ml_2()
-                .child(self.render_logo_small()),
-        );
+        bar = bar.child(div().flex_shrink_0().ml_2().child(self.render_logo_small()));
         bar = bar.child(
             div()
                 .text_sm()
@@ -641,7 +663,8 @@ impl WorkspaceView {
                 g: 17.0 / 255.0,
                 b: 32.0 / 255.0,
                 a: 1.0,
-            }.into();
+            }
+            .into();
 
             let maximize_icon = if window.is_maximized() {
                 "\u{e923}" // Restore
@@ -701,7 +724,11 @@ impl WorkspaceView {
                         .text_color(fg)
                         .occlude()
                         .hover(|style| style.bg(close_hover_bg).text_color(gpui::Hsla::white()))
-                        .active(|style| style.bg(close_hover_bg.opacity(0.8)).text_color(gpui::Hsla::white().opacity(0.8)))
+                        .active(|style| {
+                            style
+                                .bg(close_hover_bg.opacity(0.8))
+                                .text_color(gpui::Hsla::white().opacity(0.8))
+                        })
                         .window_control_area(WindowControlArea::Close)
                         .child("\u{e8bb}"),
                 );
@@ -734,11 +761,12 @@ impl WorkspaceView {
             .collect();
         let right_panel_open = self.top_bar.is_right_panel_open();
         let is_custom_layout = self.workspace.layout_profile().is_custom();
-        let custom_label = if let LayoutProfile::Custom { rows, cols } = self.workspace.layout_profile() {
-            format!("{}x{}", rows, cols)
-        } else {
-            "Custom".to_string()
-        };
+        let custom_label =
+            if let LayoutProfile::Custom { rows, cols } = self.workspace.layout_profile() {
+                format!("{}x{}", rows, cols)
+            } else {
+                "Custom".to_string()
+            };
 
         let mut bar = div()
             .id("top-bar")
@@ -877,7 +905,10 @@ impl WorkspaceView {
         };
 
         let mut header = div()
-            .id(SharedString::from(format!("terminal-header-{}", session_id.0)))
+            .id(SharedString::from(format!(
+                "terminal-header-{}",
+                session_id.0
+            )))
             .h(px(hints.height))
             .w_full()
             .bg(bg)
@@ -900,13 +931,7 @@ impl WorkspaceView {
 
         // Status dot
         let status_color: gpui::Hsla = hints.status.color.into();
-        header = header.child(
-            div()
-                .w(px(8.0))
-                .h(px(8.0))
-                .rounded_full()
-                .bg(status_color),
-        );
+        header = header.child(div().w(px(8.0)).h(px(8.0)).rounded_full().bg(status_color));
 
         // Session name
         header = header.child(
@@ -999,19 +1024,8 @@ impl WorkspaceView {
                     .flex_shrink_0()
                     .items_center()
                     .gap_1()
-                    .child(
-                        div()
-                            .w(px(6.0))
-                            .h(px(6.0))
-                            .rounded_full()
-                            .bg(group_color),
-                    )
-                    .child(
-                        div()
-                            .text_xs()
-                            .text_color(group_color)
-                            .child(group_label),
-                    ),
+                    .child(div().w(px(6.0)).h(px(6.0)).rounded_full().bg(group_color))
+                    .child(div().text_xs().text_color(group_color).child(group_label)),
             );
         }
 
@@ -1066,7 +1080,10 @@ impl WorkspaceView {
         let position = hints.position;
 
         div()
-            .id(SharedString::from(format!("empty-cell-{}-{}", position.row, position.col)))
+            .id(SharedString::from(format!(
+                "empty-cell-{}-{}",
+                position.row, position.col
+            )))
             .flex_1()
             .bg(bg)
             .border_1()
@@ -1084,18 +1101,8 @@ impl WorkspaceView {
                 this.empty_cells.click(position);
                 cx.notify();
             }))
-            .child(
-                div()
-                    .text_xl()
-                    .text_color(icon_color)
-                    .child(hints.icon),
-            )
-            .child(
-                div()
-                    .text_xs()
-                    .text_color(text_color)
-                    .child(hints.message),
-            )
+            .child(div().text_xl().text_color(icon_color).child(hints.icon))
+            .child(div().text_xs().text_color(text_color).child(hints.message))
     }
 
     /// This is the updated grid renderer that uses TerminalHeader for sessions
@@ -1118,15 +1125,11 @@ impl WorkspaceView {
         let layout = self.grid_layout_with_task_board();
         let cell_height = layout.cell_size().height;
 
-        let mut grid = div()
-            .flex_1()
-            .flex()
-            .flex_col()
-            .gap(px(grid_gap));
+        let mut grid = div().flex_1().flex().flex_col().gap(px(grid_gap));
 
         for row in 0..rows {
             let mut row_div = div()
-                .flex_1()  // Equal row heights via flex distribution
+                .flex_1() // Equal row heights via flex distribution
                 .flex()
                 .flex_row()
                 .gap(px(grid_gap));
@@ -1144,14 +1147,15 @@ impl WorkspaceView {
                     };
 
                     // Get or create terminal header hints
-                    let header_hints = if let Some(header) = self.get_terminal_header(info.session_id) {
-                        header.render_hints()
-                    } else {
-                        // Create default hints from cell info
-                        crate::terminal_header::TerminalHeader::new(&info.name, info.status)
-                            .with_focused(info.is_focused)
-                            .render_hints()
-                    };
+                    let header_hints =
+                        if let Some(header) = self.get_terminal_header(info.session_id) {
+                            header.render_hints()
+                        } else {
+                            // Create default hints from cell info
+                            crate::terminal_header::TerminalHeader::new(&info.name, info.status)
+                                .with_focused(info.is_focused)
+                                .render_hints()
+                        };
 
                     // Render session cell with actual terminal content
                     self.render_session_cell_with_terminal(
@@ -1166,17 +1170,19 @@ impl WorkspaceView {
                     )
                 } else {
                     // Empty cell - render inline
-                    self.render_empty_cell_inline_with_colors(position, panel_bg, border_color, muted, cell_height, cx)
+                    self.render_empty_cell_inline_with_colors(
+                        position,
+                        panel_bg,
+                        border_color,
+                        muted,
+                        cell_height,
+                        cx,
+                    )
                 };
 
                 // Let flex distribute equal widths; use size_full so
                 // the child fills the flex-allocated area
-                row_div = row_div.child(
-                    div()
-                        .flex_1()
-                        .size_full()
-                        .child(cell_div)
-                );
+                row_div = row_div.child(div().flex_1().size_full().child(cell_div));
             }
 
             grid = grid.child(row_div);
@@ -1212,7 +1218,10 @@ impl WorkspaceView {
         let status_color: gpui::Hsla = hints.status.color.into();
 
         let mut header = div()
-            .id(SharedString::from(format!("terminal-header-{}", session_id.0)))
+            .id(SharedString::from(format!(
+                "terminal-header-{}",
+                session_id.0
+            )))
             .h(px(hints.height))
             .w_full()
             .bg(panel_bg)
@@ -1229,13 +1238,7 @@ impl WorkspaceView {
                     .rounded_sm()
                     .bg(color_indicator),
             )
-            .child(
-                div()
-                    .w(px(8.0))
-                    .h(px(8.0))
-                    .rounded_full()
-                    .bg(status_color),
-            )
+            .child(div().w(px(8.0)).h(px(8.0)).rounded_full().bg(status_color))
             .child(
                 div()
                     .text_xs()
@@ -1355,88 +1358,109 @@ impl WorkspaceView {
             .flex_col()
             .overflow_hidden()
             .cursor_pointer()
-            .on_mouse_down(MouseButton::Left, cx.listener(move |this, _, _, cx| {
-                this.select_session(session_id);
-                cx.notify();
-            }))
+            .on_mouse_down(
+                MouseButton::Left,
+                cx.listener(move |this, _, _, cx| {
+                    this.select_session(session_id);
+                    cx.notify();
+                }),
+            )
             .child(header)
             .child(
                 div()
-                    .id(SharedString::from(format!("terminal-area-{}", session_id.0)))
+                    .id(SharedString::from(format!(
+                        "terminal-area-{}",
+                        session_id.0
+                    )))
                     .w_full()
                     .h(px(terminal_height))
                     .overflow_hidden()
-                    .on_scroll_wheel(cx.listener(move |this, event: &ScrollWheelEvent, _window, cx| {
-                        if let Some(tv) = this.terminals_mut().get_mut(&session_id) {
-                            let cell_h: f32 = tv.cell_height();
-                            let delta_y: f32 = event.delta.pixel_delta(px(cell_h)).y.into();
-                            // GPUI on Windows: positive y = finger/wheel up = show older content
-                            if delta_y > 0.0 {
-                                let lines = (delta_y / cell_h).ceil().max(1.0) as usize;
-                                tv.scroll_up(lines);
-                            } else if delta_y < 0.0 {
-                                let lines = (-delta_y / cell_h).ceil().max(1.0) as usize;
-                                tv.scroll_down(lines);
-                            }
-                            cx.notify();
-                        }
-                    }))
-                    // Mouse down: start text selection
-                    .on_mouse_down(MouseButton::Left, cx.listener(move |this, event: &MouseDownEvent, _window, cx| {
-                        let (ox, oy) = origin_for_down.get();
-                        let mouse_x: f32 = event.position.x.into();
-                        let mouse_y: f32 = event.position.y.into();
-                        let rel_x = mouse_x - ox;
-                        let rel_y = mouse_y - oy;
-
-                        if let Some(tv) = this.terminals_mut().get_mut(&session_id) {
-                            let cell_pos: Option<(usize, usize)> = tv.pixel_to_cell(rel_x, rel_y);
-                            if let Some((row, col)) = cell_pos {
-                                tv.start_selection(row, col);
-                                this.is_selecting = true;
-                                this.selecting_session_id = Some(session_id);
-                                cx.notify();
-                            }
-                        }
-                    }))
-                    // Mouse move: update selection during drag
-                    .on_mouse_move(cx.listener(move |this, event: &MouseMoveEvent, _window, cx| {
-                        if !this.is_selecting {
-                            return;
-                        }
-                        if this.selecting_session_id != Some(session_id) {
-                            return;
-                        }
-
-                        let (ox, oy) = origin_for_move.get();
-                        let mouse_x: f32 = event.position.x.into();
-                        let mouse_y: f32 = event.position.y.into();
-                        let rel_x = mouse_x - ox;
-                        let rel_y = mouse_y - oy;
-
-                        if let Some(tv) = this.terminals_mut().get_mut(&session_id) {
-                            let cell_pos: Option<(usize, usize)> = tv.pixel_to_cell(rel_x, rel_y);
-                            if let Some((row, col)) = cell_pos {
-                                tv.update_selection(row, col);
-                                cx.notify();
-                            }
-                        }
-                    }))
-                    // Right-click: paste from clipboard (standard terminal behavior)
-                    .on_mouse_down(MouseButton::Right, cx.listener(move |this, _event: &MouseDownEvent, window, cx| {
-                        this.handle_paste(&crate::app::Paste, window, cx);
-                    }))
-                    // Mouse up: end selection
-                    .on_mouse_up(MouseButton::Left, cx.listener(move |this, _event: &MouseUpEvent, _window, cx| {
-                        if this.is_selecting && this.selecting_session_id == Some(session_id) {
+                    .on_scroll_wheel(cx.listener(
+                        move |this, event: &ScrollWheelEvent, _window, cx| {
                             if let Some(tv) = this.terminals_mut().get_mut(&session_id) {
-                                tv.end_selection();
+                                let cell_h: f32 = tv.cell_height();
+                                let delta_y: f32 = event.delta.pixel_delta(px(cell_h)).y.into();
+                                // GPUI on Windows: positive y = finger/wheel up = show older content
+                                if delta_y > 0.0 {
+                                    let lines = (delta_y / cell_h).ceil().max(1.0) as usize;
+                                    tv.scroll_up(lines);
+                                } else if delta_y < 0.0 {
+                                    let lines = (-delta_y / cell_h).ceil().max(1.0) as usize;
+                                    tv.scroll_down(lines);
+                                }
+                                cx.notify();
                             }
-                            this.is_selecting = false;
-                            this.selecting_session_id = None;
-                            cx.notify();
-                        }
-                    }))
+                        },
+                    ))
+                    // Mouse down: start text selection
+                    .on_mouse_down(
+                        MouseButton::Left,
+                        cx.listener(move |this, event: &MouseDownEvent, _window, cx| {
+                            let (ox, oy) = origin_for_down.get();
+                            let mouse_x: f32 = event.position.x.into();
+                            let mouse_y: f32 = event.position.y.into();
+                            let rel_x = mouse_x - ox;
+                            let rel_y = mouse_y - oy;
+
+                            if let Some(tv) = this.terminals_mut().get_mut(&session_id) {
+                                let cell_pos: Option<(usize, usize)> =
+                                    tv.pixel_to_cell(rel_x, rel_y);
+                                if let Some((row, col)) = cell_pos {
+                                    tv.start_selection(row, col);
+                                    this.is_selecting = true;
+                                    this.selecting_session_id = Some(session_id);
+                                    cx.notify();
+                                }
+                            }
+                        }),
+                    )
+                    // Mouse move: update selection during drag
+                    .on_mouse_move(
+                        cx.listener(move |this, event: &MouseMoveEvent, _window, cx| {
+                            if !this.is_selecting {
+                                return;
+                            }
+                            if this.selecting_session_id != Some(session_id) {
+                                return;
+                            }
+
+                            let (ox, oy) = origin_for_move.get();
+                            let mouse_x: f32 = event.position.x.into();
+                            let mouse_y: f32 = event.position.y.into();
+                            let rel_x = mouse_x - ox;
+                            let rel_y = mouse_y - oy;
+
+                            if let Some(tv) = this.terminals_mut().get_mut(&session_id) {
+                                let cell_pos: Option<(usize, usize)> =
+                                    tv.pixel_to_cell(rel_x, rel_y);
+                                if let Some((row, col)) = cell_pos {
+                                    tv.update_selection(row, col);
+                                    cx.notify();
+                                }
+                            }
+                        }),
+                    )
+                    // Right-click: paste from clipboard (standard terminal behavior)
+                    .on_mouse_down(
+                        MouseButton::Right,
+                        cx.listener(move |this, _event: &MouseDownEvent, window, cx| {
+                            this.handle_paste(&crate::app::Paste, window, cx);
+                        }),
+                    )
+                    // Mouse up: end selection
+                    .on_mouse_up(
+                        MouseButton::Left,
+                        cx.listener(move |this, _event: &MouseUpEvent, _window, cx| {
+                            if this.is_selecting && this.selecting_session_id == Some(session_id) {
+                                if let Some(tv) = this.terminals_mut().get_mut(&session_id) {
+                                    tv.end_selection();
+                                }
+                                this.is_selecting = false;
+                                this.selecting_session_id = None;
+                                cx.notify();
+                            }
+                        }),
+                    )
                     .child(terminal_content),
             )
     }
@@ -1460,7 +1484,10 @@ impl WorkspaceView {
         };
 
         let mut header = div()
-            .id(SharedString::from(format!("terminal-header-{}", session_id.0)))
+            .id(SharedString::from(format!(
+                "terminal-header-{}",
+                session_id.0
+            )))
             .h(px(hints.height))
             .w_full()
             .bg(bg)
@@ -1483,13 +1510,7 @@ impl WorkspaceView {
 
         // Status dot
         let status_color: gpui::Hsla = hints.status.color.into();
-        header = header.child(
-            div()
-                .w(px(8.0))
-                .h(px(8.0))
-                .rounded_full()
-                .bg(status_color),
-        );
+        header = header.child(div().w(px(8.0)).h(px(8.0)).rounded_full().bg(status_color));
 
         // Session name
         header = header.child(
@@ -1582,19 +1603,8 @@ impl WorkspaceView {
                     .flex_shrink_0()
                     .items_center()
                     .gap_1()
-                    .child(
-                        div()
-                            .w(px(6.0))
-                            .h(px(6.0))
-                            .rounded_full()
-                            .bg(group_color),
-                    )
-                    .child(
-                        div()
-                            .text_xs()
-                            .text_color(group_color)
-                            .child(group_label),
-                    ),
+                    .child(div().w(px(6.0)).h(px(6.0)).rounded_full().bg(group_color))
+                    .child(div().text_xs().text_color(group_color).child(group_label)),
             );
         }
 
@@ -1644,7 +1654,10 @@ impl WorkspaceView {
         cx: &mut Context<Self>,
     ) -> gpui::Stateful<gpui::Div> {
         div()
-            .id(SharedString::from(format!("empty-cell-{}-{}", position.row, position.col)))
+            .id(SharedString::from(format!(
+                "empty-cell-{}-{}",
+                position.row, position.col
+            )))
             .w_full()
             .h(px(cell_height))
             .bg(panel_bg)
@@ -1692,14 +1705,24 @@ impl WorkspaceView {
         let layout = self.grid_layout_with_task_board();
         let cell_height = layout.cell_size().height;
 
-        self.render_empty_cell_inline_with_colors(position, panel_bg, border_color, muted, cell_height, cx)
+        self.render_empty_cell_inline_with_colors(
+            position,
+            panel_bg,
+            border_color,
+            muted,
+            cell_height,
+            cx,
+        )
     }
 
     /// Render the custom layout picker modal.
     ///
     /// Displays a modal overlay with input fields for rows and columns when the
     /// custom layout picker is open.
-    pub(super) fn render_custom_layout_modal(&mut self, cx: &mut Context<Self>) -> Option<impl IntoElement> {
+    pub(super) fn render_custom_layout_modal(
+        &mut self,
+        cx: &mut Context<Self>,
+    ) -> Option<impl IntoElement> {
         let picker = &self.custom_picker;
 
         if !picker.is_open {
@@ -1765,19 +1788,17 @@ impl WorkspaceView {
                                 .border_color(border_color)
                                 .flex()
                                 .items_center()
-                                .child(
-                                    self.aligned_icon_label_row(
-                                        icons::layout_grid(),
-                                        fg,
-                                        16.0,
-                                        "Custom Grid Layout",
-                                        fg,
-                                        16.0,
-                                        FontWeight::SEMIBOLD,
-                                        20.0,
-                                        8.0,
-                                    ),
-                                ),
+                                .child(self.aligned_icon_label_row(
+                                    icons::layout_grid(),
+                                    fg,
+                                    16.0,
+                                    "Custom Grid Layout",
+                                    fg,
+                                    16.0,
+                                    FontWeight::SEMIBOLD,
+                                    20.0,
+                                    8.0,
+                                )),
                         )
                         // Content
                         .child(
@@ -1793,32 +1814,32 @@ impl WorkspaceView {
                                         .flex_col()
                                         .gap_2()
                                         .child(
-                                            div()
-                                                .text_sm()
-                                                .text_color(muted)
-                                                .child("Rows (1-10):"),
+                                            div().text_sm().text_color(muted).child("Rows (1-10):"),
                                         )
-                                          .child({
-                                              let is_focused = focused_input == Some(0);
-                                              let display_value = if is_focused {
-                                                  format!("{}|", rows_value.clone())
-                                              } else {
-                                                  rows_value.clone()
-                                              };
+                                        .child({
+                                            let is_focused = focused_input == Some(0);
+                                            let display_value = if is_focused {
+                                                format!("{}|", rows_value.clone())
+                                            } else {
+                                                rows_value.clone()
+                                            };
 
-                                              text_input(
-                                                  "rows-input",
-                                                  display_value,
-                                                  is_focused,
-                                                  has_error,
-                                                  &input_style,
-                                              )
-                                              .cursor_pointer()
-                                              .on_mouse_down(MouseButton::Left, cx.listener(|this, _event, _window, cx| {
-                                                  this.custom_picker.set_focus(0);
-                                                  cx.notify();
-                                              }))
-                                          }),
+                                            text_input(
+                                                "rows-input",
+                                                display_value,
+                                                is_focused,
+                                                has_error,
+                                                &input_style,
+                                            )
+                                            .cursor_pointer()
+                                            .on_mouse_down(
+                                                MouseButton::Left,
+                                                cx.listener(|this, _event, _window, cx| {
+                                                    this.custom_picker.set_focus(0);
+                                                    cx.notify();
+                                                }),
+                                            )
+                                        }),
                                 )
                                 // Columns input
                                 .child(
@@ -1832,36 +1853,34 @@ impl WorkspaceView {
                                                 .text_color(muted)
                                                 .child("Columns (1-10):"),
                                         )
-                                          .child({
-                                              let is_focused = focused_input == Some(1);
-                                              let display_value = if is_focused {
-                                                  format!("{}|", cols_value.clone())
-                                              } else {
-                                                  cols_value.clone()
-                                              };
+                                        .child({
+                                            let is_focused = focused_input == Some(1);
+                                            let display_value = if is_focused {
+                                                format!("{}|", cols_value.clone())
+                                            } else {
+                                                cols_value.clone()
+                                            };
 
-                                              text_input(
-                                                  "cols-input",
-                                                  display_value,
-                                                  is_focused,
-                                                  has_error,
-                                                  &input_style,
-                                              )
-                                              .cursor_pointer()
-                                              .on_mouse_down(MouseButton::Left, cx.listener(|this, _event, _window, cx| {
-                                                  this.custom_picker.set_focus(1);
-                                                  cx.notify();
-                                              }))
-                                          }),
+                                            text_input(
+                                                "cols-input",
+                                                display_value,
+                                                is_focused,
+                                                has_error,
+                                                &input_style,
+                                            )
+                                            .cursor_pointer()
+                                            .on_mouse_down(
+                                                MouseButton::Left,
+                                                cx.listener(|this, _event, _window, cx| {
+                                                    this.custom_picker.set_focus(1);
+                                                    cx.notify();
+                                                }),
+                                            )
+                                        }),
                                 )
                                 // Error message
                                 .when_some(picker.error.clone(), |this, error| {
-                                    this.child(
-                                        div()
-                                            .text_sm()
-                                            .text_color(error_color)
-                                            .child(error),
-                                    )
+                                    this.child(div().text_sm().text_color(error_color).child(error))
                                 })
                                 // Preview grid
                                 .child(
@@ -1869,13 +1888,12 @@ impl WorkspaceView {
                                         .flex()
                                         .flex_col()
                                         .gap_2()
-                                        .child(
-                                            div()
-                                                .text_sm()
-                                                .text_color(muted)
-                                                .child("Preview:"),
-                                        )
-                                        .child(self.render_grid_preview(&rows_value, &cols_value, theme)),
+                                        .child(div().text_sm().text_color(muted).child("Preview:"))
+                                        .child(self.render_grid_preview(
+                                            &rows_value,
+                                            &cols_value,
+                                            theme,
+                                        )),
                                 ),
                         )
                         // Footer with buttons
@@ -1902,10 +1920,12 @@ impl WorkspaceView {
                                         .text_color(fg)
                                         .cursor_pointer()
                                         .hover(|style| style.bg(border_color.opacity(0.1)))
-                                        .on_click(cx.listener(|this, _: &ClickEvent, _window, cx| {
-                                            this.custom_picker.close();
-                                            cx.notify();
-                                        }))
+                                        .on_click(cx.listener(
+                                            |this, _: &ClickEvent, _window, cx| {
+                                                this.custom_picker.close();
+                                                cx.notify();
+                                            },
+                                        ))
                                         .child(self.aligned_icon_label_row(
                                             icons::x(),
                                             fg,
@@ -1930,16 +1950,24 @@ impl WorkspaceView {
                                         .text_color(gpui::Hsla::white())
                                         .cursor_pointer()
                                         .hover(|style| style.bg(primary.opacity(0.8)))
-                                        .on_click(cx.listener(|this, _: &ClickEvent, _window, cx| {
-                                            if let Some((rows, cols)) = this.custom_picker.validate() {
-                                                this.custom_picker.close();
-                                                let profile = crate::layout::LayoutProfile::Custom { rows, cols };
-                                                this.workspace.set_layout(profile);
-                                                cx.notify();
-                                            } else {
-                                                cx.notify();
-                                            }
-                                        }))
+                                        .on_click(cx.listener(
+                                            |this, _: &ClickEvent, _window, cx| {
+                                                if let Some((rows, cols)) =
+                                                    this.custom_picker.validate()
+                                                {
+                                                    this.custom_picker.close();
+                                                    let profile =
+                                                        crate::layout::LayoutProfile::Custom {
+                                                            rows,
+                                                            cols,
+                                                        };
+                                                    this.workspace.set_layout(profile);
+                                                    cx.notify();
+                                                } else {
+                                                    cx.notify();
+                                                }
+                                            },
+                                        ))
                                         .child(self.aligned_icon_label_row(
                                             icons::check(),
                                             gpui::Hsla::white(),
@@ -1958,7 +1986,12 @@ impl WorkspaceView {
     }
 
     /// Render a preview of the grid layout.
-    fn render_grid_preview(&self, rows_str: &str, cols_str: &str, theme: &crate::theme::CodirigentTheme) -> impl IntoElement {
+    fn render_grid_preview(
+        &self,
+        rows_str: &str,
+        cols_str: &str,
+        theme: &crate::theme::CodirigentTheme,
+    ) -> impl IntoElement {
         let border_color: gpui::Hsla = theme.border.into();
         let preview_bg: gpui::Hsla = theme.terminal_background.into();
 
@@ -1969,16 +2002,10 @@ impl WorkspaceView {
         let cell_size = 30.0;
         let gap = 4.0;
 
-        let mut grid = div()
-            .flex()
-            .flex_col()
-            .gap(px(gap));
+        let mut grid = div().flex().flex_col().gap(px(gap));
 
         for _ in 0..rows {
-            let mut row = div()
-                .flex()
-                .flex_row()
-                .gap(px(gap));
+            let mut row = div().flex().flex_row().gap(px(gap));
 
             for _ in 0..cols {
                 row = row.child(
@@ -2001,7 +2028,10 @@ impl WorkspaceView {
     /// Render the worktree create modal.
     ///
     /// Displays a modal overlay with inputs for creating a new git worktree.
-    pub(super) fn render_worktree_modal(&mut self, cx: &mut Context<Self>) -> Option<impl IntoElement> {
+    pub(super) fn render_worktree_modal(
+        &mut self,
+        cx: &mut Context<Self>,
+    ) -> Option<impl IntoElement> {
         if !self.worktree_panel.is_create_modal_open() {
             return None;
         }
@@ -2023,7 +2053,10 @@ impl WorkspaceView {
             error_border: border_color,
             text: fg,
         };
-        let placeholder_style = TextInputStyle { text: muted, ..input_style };
+        let placeholder_style = TextInputStyle {
+            text: muted,
+            ..input_style
+        };
 
         let branch_value = self.worktree_panel.branch_input().to_string();
         let base_branch_value = self.worktree_panel.base_branch_input().to_string();
@@ -2449,20 +2482,63 @@ impl WorkspaceView {
     /// Parse a group color string into Hsla.
     fn parse_group_color(&self, color: &str) -> Option<gpui::Hsla> {
         match color.to_lowercase().as_str() {
-            "teal" | "blue-green" => Some(gpui::Hsla { h: 0.52, s: 0.70, l: 0.60, a: 1.0 }),
-            "coral" | "orange-red" => Some(gpui::Hsla { h: 0.03, s: 0.80, l: 0.62, a: 1.0 }),
-            "orange" => Some(gpui::Hsla { h: 0.08, s: 0.90, l: 0.60, a: 1.0 }),
-            "blue" => Some(gpui::Hsla { h: 0.60, s: 0.70, l: 0.60, a: 1.0 }),
-            "purple" => Some(gpui::Hsla { h: 0.75, s: 0.60, l: 0.65, a: 1.0 }),
-            "green" => Some(gpui::Hsla { h: 0.33, s: 0.60, l: 0.55, a: 1.0 }),
-            "yellow" => Some(gpui::Hsla { h: 0.15, s: 0.80, l: 0.65, a: 1.0 }),
-            "red" => Some(gpui::Hsla { h: 0.0, s: 0.80, l: 0.60, a: 1.0 }),
+            "teal" | "blue-green" => Some(gpui::Hsla {
+                h: 0.52,
+                s: 0.70,
+                l: 0.60,
+                a: 1.0,
+            }),
+            "coral" | "orange-red" => Some(gpui::Hsla {
+                h: 0.03,
+                s: 0.80,
+                l: 0.62,
+                a: 1.0,
+            }),
+            "orange" => Some(gpui::Hsla {
+                h: 0.08,
+                s: 0.90,
+                l: 0.60,
+                a: 1.0,
+            }),
+            "blue" => Some(gpui::Hsla {
+                h: 0.60,
+                s: 0.70,
+                l: 0.60,
+                a: 1.0,
+            }),
+            "purple" => Some(gpui::Hsla {
+                h: 0.75,
+                s: 0.60,
+                l: 0.65,
+                a: 1.0,
+            }),
+            "green" => Some(gpui::Hsla {
+                h: 0.33,
+                s: 0.60,
+                l: 0.55,
+                a: 1.0,
+            }),
+            "yellow" => Some(gpui::Hsla {
+                h: 0.15,
+                s: 0.80,
+                l: 0.65,
+                a: 1.0,
+            }),
+            "red" => Some(gpui::Hsla {
+                h: 0.0,
+                s: 0.80,
+                l: 0.60,
+                a: 1.0,
+            }),
             _ => None,
         }
     }
 
     /// Render session context menu (dropdown near the trigger button).
-    pub(super) fn render_session_menu(&mut self, cx: &mut Context<Self>) -> Option<impl IntoElement> {
+    pub(super) fn render_session_menu(
+        &mut self,
+        cx: &mut Context<Self>,
+    ) -> Option<impl IntoElement> {
         let session_id = self.session_menu_open?;
 
         let theme = self.workspace().theme().clone();
@@ -2471,7 +2547,12 @@ impl WorkspaceView {
         let fg: gpui::Hsla = theme.foreground.into();
         let muted: gpui::Hsla = theme.muted.into();
         let hover_bg: gpui::Hsla = theme.active.into();
-        let destructive = gpui::Hsla { h: 0.0, s: 0.7, l: 0.55, a: 1.0 };
+        let destructive = gpui::Hsla {
+            h: 0.0,
+            s: 0.7,
+            l: 0.55,
+            a: 1.0,
+        };
 
         // Check if this session has a group
         let session_group = self
@@ -2542,15 +2623,17 @@ impl WorkspaceView {
         ));
 
         // Separator before groups section
-        dropdown = dropdown.child(
-            div().h(px(1.0)).mx_2().my_1().bg(border_color),
-        );
+        dropdown = dropdown.child(div().h(px(1.0)).mx_2().my_1().bg(border_color));
 
         // Existing groups as direct-click options
         if !existing_groups.is_empty() {
             dropdown = dropdown.child(
-                div().px_3().pt_1().pb(px(2.0))
-                    .child(div().text_xs().text_color(muted.opacity(0.6)).child("GROUPS")),
+                div().px_3().pt_1().pb(px(2.0)).child(
+                    div()
+                        .text_xs()
+                        .text_color(muted.opacity(0.6))
+                        .child("GROUPS"),
+                ),
             );
             for group_name in &existing_groups {
                 let is_current = session_group.as_deref() == Some(group_name.as_str());
@@ -2596,9 +2679,7 @@ impl WorkspaceView {
         }
 
         // Separator before destructive action
-        dropdown = dropdown.child(
-            div().h(px(1.0)).mx_2().my_1().bg(border_color),
-        );
+        dropdown = dropdown.child(div().h(px(1.0)).mx_2().my_1().bg(border_color));
 
         // End Session (destructive, clearly labeled)
         dropdown = dropdown.child(self.render_menu_item(
@@ -2631,7 +2712,10 @@ impl WorkspaceView {
     }
 
     /// Render the session action modal for rename/group.
-    pub(super) fn render_session_action_modal(&mut self, cx: &mut Context<Self>) -> Option<impl IntoElement> {
+    pub(super) fn render_session_action_modal(
+        &mut self,
+        cx: &mut Context<Self>,
+    ) -> Option<impl IntoElement> {
         let modal = self.session_action_modal.clone()?;
 
         let theme = self.workspace().theme();
@@ -2708,20 +2792,18 @@ impl WorkspaceView {
                                 .border_color(border_color)
                                 .flex()
                                 .items_center()
-                                .child(
-                                    self.aligned_icon_label_row_with_offset(
-                                        title_icon,
-                                        fg,
-                                        16.0,
-                                        title,
-                                        fg,
-                                        16.0,
-                                        FontWeight::SEMIBOLD,
-                                        20.0,
-                                        8.0,
-                                        3.0,
-                                    ),
-                                ),
+                                .child(self.aligned_icon_label_row_with_offset(
+                                    title_icon,
+                                    fg,
+                                    16.0,
+                                    title,
+                                    fg,
+                                    16.0,
+                                    FontWeight::SEMIBOLD,
+                                    20.0,
+                                    8.0,
+                                    3.0,
+                                )),
                         )
                         // Content
                         .child(
@@ -2730,29 +2812,25 @@ impl WorkspaceView {
                                 .flex()
                                 .flex_col()
                                 .gap_3()
+                                .child(div().text_sm().text_color(muted).child(label))
                                 .child(
-                                    div()
-                                        .text_sm()
-                                        .text_color(muted)
-                                        .child(label),
-                                )
-                                .child(text_input(
-                                    "session-action-input",
-                                    input_value,
-                                    true,  // Always focused in modal
-                                    modal.error.is_some(),
-                                    &input_style,
-                                ).on_mouse_down(MouseButton::Left, cx.listener(|_this, _event, _window, cx| {
-                                    // Input is always focused in this modal
-                                    cx.stop_propagation();
-                                })))
-                                .when_some(modal.error.clone(), |this, error| {
-                                    this.child(
-                                        div()
-                                            .text_sm()
-                                            .text_color(error_color)
-                                            .child(error),
+                                    text_input(
+                                        "session-action-input",
+                                        input_value,
+                                        true, // Always focused in modal
+                                        modal.error.is_some(),
+                                        &input_style,
                                     )
+                                    .on_mouse_down(
+                                        MouseButton::Left,
+                                        cx.listener(|_this, _event, _window, cx| {
+                                            // Input is always focused in this modal
+                                            cx.stop_propagation();
+                                        }),
+                                    ),
+                                )
+                                .when_some(modal.error.clone(), |this, error| {
+                                    this.child(div().text_sm().text_color(error_color).child(error))
                                 }),
                         )
                         // Footer
@@ -2778,10 +2856,12 @@ impl WorkspaceView {
                                         .text_color(fg)
                                         .cursor_pointer()
                                         .hover(|style| style.bg(border_color.opacity(0.1)))
-                                        .on_click(cx.listener(|this, _: &ClickEvent, _window, cx| {
-                                            this.close_session_action_modal();
-                                            cx.notify();
-                                        }))
+                                        .on_click(cx.listener(
+                                            |this, _: &ClickEvent, _window, cx| {
+                                                this.close_session_action_modal();
+                                                cx.notify();
+                                            },
+                                        ))
                                         .child(self.aligned_icon_label_row_with_offset(
                                             icons::x(),
                                             fg,
@@ -2806,9 +2886,11 @@ impl WorkspaceView {
                                         .text_color(gpui::Hsla::white())
                                         .cursor_pointer()
                                         .hover(|style| style.bg(primary.opacity(0.8)))
-                                        .on_click(cx.listener(|this, _: &ClickEvent, _window, cx| {
-                                            this.apply_session_action_modal(cx);
-                                        }))
+                                        .on_click(cx.listener(
+                                            |this, _: &ClickEvent, _window, cx| {
+                                                this.apply_session_action_modal(cx);
+                                            },
+                                        ))
                                         .child(self.aligned_icon_label_row_with_offset(
                                             icons::check(),
                                             gpui::Hsla::white(),
@@ -2828,7 +2910,10 @@ impl WorkspaceView {
     }
 
     /// Render the task creation modal.
-    pub(super) fn render_task_creation_modal(&mut self, cx: &mut Context<Self>) -> Option<impl IntoElement> {
+    pub(super) fn render_task_creation_modal(
+        &mut self,
+        cx: &mut Context<Self>,
+    ) -> Option<impl IntoElement> {
         let modal = self.task_creation_modal.clone()?;
         let is_editing = modal.editing_task_id.is_some();
 
@@ -3255,7 +3340,10 @@ impl WorkspaceView {
             other => format!("{:?}", other),
         };
         div()
-            .id(SharedString::from(format!("menu-{}-{}", id_suffix, session_id.0)))
+            .id(SharedString::from(format!(
+                "menu-{}-{}",
+                id_suffix, session_id.0
+            )))
             .h(px(30.0))
             .px_3()
             .flex()
@@ -3307,7 +3395,11 @@ impl WorkspaceView {
             // Sessions button
             .child({
                 let is_active = active_panel == Some(crate::icon_rail::DrawerPanel::Sessions);
-                let btn_bg = if is_active { active_bg } else { gpui::Hsla::transparent_black() };
+                let btn_bg = if is_active {
+                    active_bg
+                } else {
+                    gpui::Hsla::transparent_black()
+                };
                 let btn_fg = if is_active { fg } else { muted };
                 div()
                     .id("rail-sessions")
@@ -3319,17 +3411,31 @@ impl WorkspaceView {
                     .items_center()
                     .justify_center()
                     .cursor_pointer()
-                    .on_mouse_down(MouseButton::Left, cx.listener(|this, _, _, cx| {
-                        this.icon_rail.toggle_panel(crate::icon_rail::DrawerPanel::Sessions);
-                        this.process_icon_rail_events();
-                        cx.notify();
-                    }))
-                    .child(div().text_size(px(20.0)).text_color(btn_fg).font_family(icons::LUCIDE_FONT_FAMILY).child(icons::terminal()))
+                    .on_mouse_down(
+                        MouseButton::Left,
+                        cx.listener(|this, _, _, cx| {
+                            this.icon_rail
+                                .toggle_panel(crate::icon_rail::DrawerPanel::Sessions);
+                            this.process_icon_rail_events();
+                            cx.notify();
+                        }),
+                    )
+                    .child(
+                        div()
+                            .text_size(px(20.0))
+                            .text_color(btn_fg)
+                            .font_family(icons::LUCIDE_FONT_FAMILY)
+                            .child(icons::terminal()),
+                    )
             })
             // Files button
             .child({
                 let is_active = active_panel == Some(crate::icon_rail::DrawerPanel::Files);
-                let btn_bg = if is_active { active_bg } else { gpui::Hsla::transparent_black() };
+                let btn_bg = if is_active {
+                    active_bg
+                } else {
+                    gpui::Hsla::transparent_black()
+                };
                 let btn_fg = if is_active { fg } else { muted };
                 div()
                     .id("rail-files")
@@ -3341,17 +3447,31 @@ impl WorkspaceView {
                     .items_center()
                     .justify_center()
                     .cursor_pointer()
-                    .on_mouse_down(MouseButton::Left, cx.listener(|this, _, _, cx| {
-                        this.icon_rail.toggle_panel(crate::icon_rail::DrawerPanel::Files);
-                        this.process_icon_rail_events();
-                        cx.notify();
-                    }))
-                    .child(div().text_size(px(20.0)).text_color(btn_fg).font_family(icons::LUCIDE_FONT_FAMILY).child(icons::folder_tree()))
+                    .on_mouse_down(
+                        MouseButton::Left,
+                        cx.listener(|this, _, _, cx| {
+                            this.icon_rail
+                                .toggle_panel(crate::icon_rail::DrawerPanel::Files);
+                            this.process_icon_rail_events();
+                            cx.notify();
+                        }),
+                    )
+                    .child(
+                        div()
+                            .text_size(px(20.0))
+                            .text_color(btn_fg)
+                            .font_family(icons::LUCIDE_FONT_FAMILY)
+                            .child(icons::folder_tree()),
+                    )
             })
             // Worktrees button
             .child({
                 let is_active = active_panel == Some(crate::icon_rail::DrawerPanel::Worktrees);
-                let btn_bg = if is_active { active_bg } else { gpui::Hsla::transparent_black() };
+                let btn_bg = if is_active {
+                    active_bg
+                } else {
+                    gpui::Hsla::transparent_black()
+                };
                 let btn_fg = if is_active { fg } else { muted };
                 div()
                     .id("rail-worktrees")
@@ -3363,12 +3483,22 @@ impl WorkspaceView {
                     .items_center()
                     .justify_center()
                     .cursor_pointer()
-                    .on_mouse_down(MouseButton::Left, cx.listener(|this, _, _, cx| {
-                        this.icon_rail.toggle_panel(crate::icon_rail::DrawerPanel::Worktrees);
-                        this.process_icon_rail_events();
-                        cx.notify();
-                    }))
-                    .child(div().text_size(px(20.0)).text_color(btn_fg).font_family(icons::LUCIDE_FONT_FAMILY).child(icons::git_branch()))
+                    .on_mouse_down(
+                        MouseButton::Left,
+                        cx.listener(|this, _, _, cx| {
+                            this.icon_rail
+                                .toggle_panel(crate::icon_rail::DrawerPanel::Worktrees);
+                            this.process_icon_rail_events();
+                            cx.notify();
+                        }),
+                    )
+                    .child(
+                        div()
+                            .text_size(px(20.0))
+                            .text_color(btn_fg)
+                            .font_family(icons::LUCIDE_FONT_FAMILY)
+                            .child(icons::git_branch()),
+                    )
             })
             // Spacer
             .child(div().flex_1())
@@ -3383,11 +3513,20 @@ impl WorkspaceView {
                     .items_center()
                     .justify_center()
                     .cursor_pointer()
-                    .on_mouse_down(MouseButton::Left, cx.listener(|this, _, _, cx| {
-                        this.open_settings();
-                        cx.notify();
-                    }))
-                    .child(div().text_size(px(20.0)).text_color(muted).font_family(icons::LUCIDE_FONT_FAMILY).child(icons::settings()))
+                    .on_mouse_down(
+                        MouseButton::Left,
+                        cx.listener(|this, _, _, cx| {
+                            this.open_settings();
+                            cx.notify();
+                        }),
+                    )
+                    .child(
+                        div()
+                            .text_size(px(20.0))
+                            .text_color(muted)
+                            .font_family(icons::LUCIDE_FONT_FAMILY)
+                            .child(icons::settings()),
+                    ),
             )
     }
 
@@ -3455,7 +3594,9 @@ impl WorkspaceView {
                     .justify_between()
                     .px_3()
                     .child(
-                        div().text_xs().font_weight(FontWeight::BOLD)
+                        div()
+                            .text_xs()
+                            .font_weight(FontWeight::BOLD)
                             .text_color(muted)
                             .child(panel_title),
                     )
@@ -3463,12 +3604,21 @@ impl WorkspaceView {
                         div()
                             .id("drawer-close")
                             .cursor_pointer()
-                            .on_mouse_down(MouseButton::Left, cx.listener(|this, _, _, cx| {
-                                this.icon_rail.close_drawer();
-                                this.process_icon_rail_events();
-                                cx.notify();
-                            }))
-                            .child(div().text_xs().text_color(muted).font_family(icons::LUCIDE_FONT_FAMILY).child(icons::x())),
+                            .on_mouse_down(
+                                MouseButton::Left,
+                                cx.listener(|this, _, _, cx| {
+                                    this.icon_rail.close_drawer();
+                                    this.process_icon_rail_events();
+                                    cx.notify();
+                                }),
+                            )
+                            .child(
+                                div()
+                                    .text_xs()
+                                    .text_color(muted)
+                                    .font_family(icons::LUCIDE_FONT_FAMILY)
+                                    .child(icons::x()),
+                            ),
                     ),
             )
             // Content
@@ -3489,7 +3639,8 @@ impl WorkspaceView {
 
         // Separate ungrouped and grouped sessions
         let mut ungrouped: Vec<&Session> = Vec::new();
-        let mut groups: std::collections::BTreeMap<String, Vec<&Session>> = std::collections::BTreeMap::new();
+        let mut groups: std::collections::BTreeMap<String, Vec<&Session>> =
+            std::collections::BTreeMap::new();
         for session in &sessions {
             match &session.group {
                 Some(group) if !group.is_empty() => {
@@ -3499,11 +3650,7 @@ impl WorkspaceView {
             }
         }
 
-        let mut content = div()
-            .flex_1()
-            .overflow_hidden()
-            .flex()
-            .flex_col();
+        let mut content = div().flex_1().overflow_hidden().flex().flex_col();
 
         // Render ungrouped sessions first
         for session in &ungrouped {
@@ -3527,7 +3674,8 @@ impl WorkspaceView {
 
             if expanded {
                 for session in group_sessions {
-                    content = content.child(self.render_session_row(session, focused_id, &theme, cx));
+                    content =
+                        content.child(self.render_session_row(session, focused_id, &theme, cx));
                 }
             }
         }
@@ -3549,10 +3697,11 @@ impl WorkspaceView {
                     .flex()
                     .justify_between()
                     .items_center()
-                    .child(
-                        div().text_xs().text_color(muted)
-                            .child(format!("{} session{}", session_count, if session_count == 1 { "" } else { "s" })),
-                    )
+                    .child(div().text_xs().text_color(muted).child(format!(
+                        "{} session{}",
+                        session_count,
+                        if session_count == 1 { "" } else { "s" }
+                    )))
                     .child(
                         div()
                             .id("drawer-new-session")
@@ -3560,10 +3709,16 @@ impl WorkspaceView {
                             .py(px(4.0))
                             .rounded_md()
                             .cursor_pointer()
-                            .hover(|style| { let c: gpui::Hsla = theme.active.into(); style.bg(c) })
-                            .on_mouse_down(MouseButton::Left, cx.listener(|this, _, _, cx| {
-                                this.create_session(cx);
-                            }))
+                            .hover(|style| {
+                                let c: gpui::Hsla = theme.active.into();
+                                style.bg(c)
+                            })
+                            .on_mouse_down(
+                                MouseButton::Left,
+                                cx.listener(|this, _, _, cx| {
+                                    this.create_session(cx);
+                                }),
+                            )
                             .child(self.aligned_icon_label_row(
                                 icons::plus(),
                                 fg,
@@ -3586,10 +3741,30 @@ impl WorkspaceView {
         let fg: gpui::Hsla = theme.foreground.into();
         let border_color: gpui::Hsla = theme.border.into();
         let header_bg: gpui::Hsla = theme.header_background.into();
-        let green = gpui::Hsla { h: 0.35, s: 0.6, l: 0.5, a: 1.0 };
-        let orange = gpui::Hsla { h: 0.1, s: 0.8, l: 0.6, a: 1.0 };
-        let red = gpui::Hsla { h: 0.0, s: 0.7, l: 0.55, a: 1.0 };
-        let blue = gpui::Hsla { h: 0.58, s: 0.5, l: 0.6, a: 1.0 };
+        let green = gpui::Hsla {
+            h: 0.35,
+            s: 0.6,
+            l: 0.5,
+            a: 1.0,
+        };
+        let orange = gpui::Hsla {
+            h: 0.1,
+            s: 0.8,
+            l: 0.6,
+            a: 1.0,
+        };
+        let red = gpui::Hsla {
+            h: 0.0,
+            s: 0.7,
+            l: 0.55,
+            a: 1.0,
+        };
+        let blue = gpui::Hsla {
+            h: 0.58,
+            s: 0.5,
+            l: 0.6,
+            a: 1.0,
+        };
 
         // Show focused session git info, or first session if none focused
         let focused_id = self.workspace().focused_session_id();
@@ -3646,10 +3821,12 @@ impl WorkspaceView {
                         ),
                 )
                 .child(
-                    div()
-                        .flex_1()
-                        .p_2()
-                        .child(div().text_xs().text_color(muted).child("Select a session to view git worktrees")),
+                    div().flex_1().p_2().child(
+                        div()
+                            .text_xs()
+                            .text_color(muted)
+                            .child("Select a session to view git worktrees"),
+                    ),
                 );
         }
 
@@ -3685,29 +3862,49 @@ impl WorkspaceView {
                             ),
                     )
                     .child(
-                        div()
-                            .flex_1()
-                            .p_2()
-                            .child(div().text_xs().text_color(muted.opacity(0.5)).child("Not a git repository")),
+                        div().flex_1().p_2().child(
+                            div()
+                                .text_xs()
+                                .text_color(muted.opacity(0.5))
+                                .child("Not a git repository"),
+                        ),
                     );
             }
         };
 
         // Branch + HEAD
-        let branch_color = gpui::Hsla { h: 0.0, s: 0.0, l: 0.75, a: 1.0 };
+        let branch_color = gpui::Hsla {
+            h: 0.0,
+            s: 0.0,
+            l: 0.75,
+            a: 1.0,
+        };
         content = content.child(
             div()
                 .flex()
                 .items_center()
                 .gap_1()
                 .child(
-                    div().text_xs().text_color(branch_color)
+                    div()
+                        .text_xs()
+                        .text_color(branch_color)
                         .font_family(icons::LUCIDE_FONT_FAMILY)
                         .child(icons::git_branch()),
                 )
-                .child(div().text_xs().font_weight(FontWeight::MEDIUM).text_color(fg).child(gi.branch.clone()))
+                .child(
+                    div()
+                        .text_xs()
+                        .font_weight(FontWeight::MEDIUM)
+                        .text_color(fg)
+                        .child(gi.branch.clone()),
+                )
                 .when_some(gi.head_sha.as_ref(), |el, sha| {
-                    el.child(div().text_xs().text_color(muted.opacity(0.5)).child(sha.clone()))
+                    el.child(
+                        div()
+                            .text_xs()
+                            .text_color(muted.opacity(0.5))
+                            .child(sha.clone()),
+                    )
                 }),
         );
 
@@ -3729,8 +3926,21 @@ impl WorkspaceView {
                         .flex()
                         .items_center()
                         .gap_1()
-                        .child(div().text_xs().font_weight(FontWeight::BOLD).text_color(color).child(label))
-                        .child(div().text_xs().text_color(fg.opacity(0.8)).overflow_hidden().text_ellipsis().child(file.path.clone())),
+                        .child(
+                            div()
+                                .text_xs()
+                                .font_weight(FontWeight::BOLD)
+                                .text_color(color)
+                                .child(label),
+                        )
+                        .child(
+                            div()
+                                .text_xs()
+                                .text_color(fg.opacity(0.8))
+                                .overflow_hidden()
+                                .text_ellipsis()
+                                .child(file.path.clone()),
+                        ),
                 );
             }
         }
@@ -3753,8 +3963,21 @@ impl WorkspaceView {
                         .flex()
                         .items_center()
                         .gap_1()
-                        .child(div().text_xs().font_weight(FontWeight::BOLD).text_color(color).child(label))
-                        .child(div().text_xs().text_color(fg.opacity(0.8)).overflow_hidden().text_ellipsis().child(file.path.clone())),
+                        .child(
+                            div()
+                                .text_xs()
+                                .font_weight(FontWeight::BOLD)
+                                .text_color(color)
+                                .child(label),
+                        )
+                        .child(
+                            div()
+                                .text_xs()
+                                .text_color(fg.opacity(0.8))
+                                .overflow_hidden()
+                                .text_ellipsis()
+                                .child(file.path.clone()),
+                        ),
                 );
             }
         }
@@ -3762,7 +3985,11 @@ impl WorkspaceView {
         // Clean state
         if gi.staged_files.is_empty() && gi.unstaged_files.is_empty() {
             content = content.child(
-                div().mt_1().text_xs().text_color(green).child("Working tree clean"),
+                div()
+                    .mt_1()
+                    .text_xs()
+                    .text_color(green)
+                    .child("Working tree clean"),
             );
         }
 
@@ -3846,8 +4073,7 @@ impl WorkspaceView {
             .flex_col();
 
         for (idx, item) in items.iter().enumerate() {
-            tree_content =
-                tree_content.child(self.render_file_tree_row(idx, item, &theme, cx));
+            tree_content = tree_content.child(self.render_file_tree_row(idx, item, &theme, cx));
         }
 
         // Eye icon: show/hide hidden files
@@ -3884,7 +4110,10 @@ impl WorkspaceView {
                             .child(root_name),
                     )
                     .child(
-                        div().flex().items_center().gap_1()
+                        div()
+                            .flex()
+                            .items_center()
+                            .gap_1()
                             // Eye toggle
                             .child(
                                 div()
@@ -3963,13 +4192,11 @@ impl WorkspaceView {
                     .border_t_1()
                     .border_color(border_color)
                     .bg(header_bg)
-                    .child(
-                        div().text_xs().text_color(muted).child(format!(
-                            "{} item{}",
-                            item_count,
-                            if item_count == 1 { "" } else { "s" }
-                        )),
-                    ),
+                    .child(div().text_xs().text_color(muted).child(format!(
+                        "{} item{}",
+                        item_count,
+                        if item_count == 1 { "" } else { "s" }
+                    ))),
             )
     }
 
@@ -4050,33 +4277,27 @@ impl WorkspaceView {
             .on_click(cx.listener(move |this, event: &ClickEvent, _window, cx| {
                 if event.click_count() >= 2 && !is_dir {
                     // Double-click on file -> activate (insert path)
-                    let ev = crate::sidebar::FileTreeEvent::FileActivated(
-                        path_for_dbl.clone(),
-                    );
+                    let ev = crate::sidebar::FileTreeEvent::FileActivated(path_for_dbl.clone());
                     this.handle_file_tree_event(ev, cx);
                 } else if is_dir {
                     // Click on directory -> toggle
-                    let ev = crate::sidebar::FileTreeEvent::DirectoryToggled(
-                        path_for_click.clone(),
-                    );
+                    let ev =
+                        crate::sidebar::FileTreeEvent::DirectoryToggled(path_for_click.clone());
                     this.handle_file_tree_event(ev, cx);
                 } else {
                     // Single click on file -> select
-                    let ev = crate::sidebar::FileTreeEvent::FileSelected(
-                        path_for_click.clone(),
-                    );
+                    let ev = crate::sidebar::FileTreeEvent::FileSelected(path_for_click.clone());
                     this.handle_file_tree_event(ev, cx);
                 }
                 cx.notify();
             }))
             // Right-click -> context menu
-            .on_mouse_down(MouseButton::Right, cx.listener(move |this, event: &gpui::MouseDownEvent, _window, cx| {
-                this.open_file_tree_context_menu(
-                    path_for_ctx.clone(),
-                    event.position,
-                    cx,
-                );
-            }))
+            .on_mouse_down(
+                MouseButton::Right,
+                cx.listener(move |this, event: &gpui::MouseDownEvent, _window, cx| {
+                    this.open_file_tree_context_menu(path_for_ctx.clone(), event.position, cx);
+                }),
+            )
             // Chevron
             .child(chevron)
             // Icon
@@ -4127,17 +4348,15 @@ impl WorkspaceView {
             .gap_2()
             .cursor_pointer()
             .hover(move |style| style.bg(hover_bg))
-            .on_mouse_down(MouseButton::Left, cx.listener(move |this, _, _, cx| {
-                let path = path_for_insert.clone();
-                this.insert_path_to_terminal(&path);
-                this.close_file_tree_context_menu(cx);
-            }))
-            .child(
-                div()
-                    .text_xs()
-                    .text_color(fg)
-                    .child("Insert path"),
-            );
+            .on_mouse_down(
+                MouseButton::Left,
+                cx.listener(move |this, _, _, cx| {
+                    let path = path_for_insert.clone();
+                    this.insert_path_to_terminal(&path);
+                    this.close_file_tree_context_menu(cx);
+                }),
+            )
+            .child(div().text_xs().text_color(fg).child("Insert path"));
 
         let copy_item = div()
             .id("ctx-copy-path")
@@ -4148,17 +4367,15 @@ impl WorkspaceView {
             .gap_2()
             .cursor_pointer()
             .hover(move |style| style.bg(hover_bg))
-            .on_mouse_down(MouseButton::Left, cx.listener(move |this, _, _, cx| {
-                let path = path_for_copy.clone();
-                this.copy_path_to_clipboard(&path);
-                this.close_file_tree_context_menu(cx);
-            }))
-            .child(
-                div()
-                    .text_xs()
-                    .text_color(fg)
-                    .child("Copy path"),
-            );
+            .on_mouse_down(
+                MouseButton::Left,
+                cx.listener(move |this, _, _, cx| {
+                    let path = path_for_copy.clone();
+                    this.copy_path_to_clipboard(&path);
+                    this.close_file_tree_context_menu(cx);
+                }),
+            )
+            .child(div().text_xs().text_color(fg).child("Copy path"));
 
         let dropdown = div()
             .w(px(140.0))
@@ -4225,10 +4442,13 @@ impl WorkspaceView {
             .bg(row_bg)
             .cursor_pointer()
             .hover(move |style| style.bg(hover_bg))
-            .on_mouse_down(MouseButton::Left, cx.listener(move |this, _, _, cx| {
-                this.select_session(session_id);
-                cx.notify();
-            }))
+            .on_mouse_down(
+                MouseButton::Left,
+                cx.listener(move |this, _, _, cx| {
+                    this.select_session(session_id);
+                    cx.notify();
+                }),
+            )
             // Status dot
             .child(
                 div()
@@ -4278,7 +4498,10 @@ impl WorkspaceView {
             })
             // Context percentage (if available) with threshold-based coloring
             .when_some(context_pct, |el, pct| {
-                let context_color: gpui::Hsla = crate::terminal_header::ContextLevel::from_percentage(pct).color().into();
+                let context_color: gpui::Hsla =
+                    crate::terminal_header::ContextLevel::from_percentage(pct)
+                        .color()
+                        .into();
                 el.child(
                     div()
                         .text_xs()
@@ -4299,12 +4522,25 @@ impl WorkspaceView {
                     .justify_center()
                     .flex_shrink_0()
                     .cursor_pointer()
-                    .hover(|style| style.bg(gpui::Hsla { h: 0.0, s: 0.0, l: 1.0, a: 0.1 }))
-                    .on_mouse_down(MouseButton::Left, cx.listener(move |this, _, _, cx| {
-                        this.open_session_menu(session_id, cx);
-                    }))
+                    .hover(|style| {
+                        style.bg(gpui::Hsla {
+                            h: 0.0,
+                            s: 0.0,
+                            l: 1.0,
+                            a: 0.1,
+                        })
+                    })
+                    .on_mouse_down(
+                        MouseButton::Left,
+                        cx.listener(move |this, _, _, cx| {
+                            this.open_session_menu(session_id, cx);
+                        }),
+                    )
                     .child(
-                        div().text_xs().text_color(muted).font_family(icons::LUCIDE_FONT_FAMILY)
+                        div()
+                            .text_xs()
+                            .text_color(muted)
+                            .font_family(icons::LUCIDE_FONT_FAMILY)
                             .child(icons::more_horizontal()),
                     ),
             )
@@ -4352,7 +4588,10 @@ impl WorkspaceView {
         let toggle_key = group_name_owned.clone();
 
         div()
-            .id(SharedString::from(format!("group-header-{}", group_name_owned)))
+            .id(SharedString::from(format!(
+                "group-header-{}",
+                group_name_owned
+            )))
             .h(px(28.0))
             .w_full()
             .px_3()
@@ -4360,11 +4599,19 @@ impl WorkspaceView {
             .items_center()
             .gap(px(6.0))
             .cursor_pointer()
-            .on_mouse_down(MouseButton::Left, cx.listener(move |this, _, _, cx| {
-                let current = this.drawer_group_expanded.get(&toggle_key).copied().unwrap_or(true);
-                this.drawer_group_expanded.insert(toggle_key.clone(), !current);
-                cx.notify();
-            }))
+            .on_mouse_down(
+                MouseButton::Left,
+                cx.listener(move |this, _, _, cx| {
+                    let current = this
+                        .drawer_group_expanded
+                        .get(&toggle_key)
+                        .copied()
+                        .unwrap_or(true);
+                    this.drawer_group_expanded
+                        .insert(toggle_key.clone(), !current);
+                    cx.notify();
+                }),
+            )
             // Color bar
             .child(
                 div()
@@ -4421,8 +4668,18 @@ impl WorkspaceView {
             }))
             // Row 1: priority dot + title
             .child(
-                div().flex().items_center().gap(px(6.0))
-                    .child(div().w(px(6.0)).h(px(6.0)).rounded_full().bg(priority_color).flex_shrink_0())
+                div()
+                    .flex()
+                    .items_center()
+                    .gap(px(6.0))
+                    .child(
+                        div()
+                            .w(px(6.0))
+                            .h(px(6.0))
+                            .rounded_full()
+                            .bg(priority_color)
+                            .flex_shrink_0(),
+                    )
                     .child(
                         div()
                             .text_size(px(12.0))
@@ -4434,7 +4691,11 @@ impl WorkspaceView {
             )
             // Row 2: status badge + assigned session
             .child(
-                div().flex().items_center().gap(px(4.0)).mt(px(4.0))
+                div()
+                    .flex()
+                    .items_center()
+                    .gap(px(4.0))
+                    .mt(px(4.0))
                     .child(
                         div()
                             .px(px(6.0))
@@ -4461,26 +4722,49 @@ impl WorkspaceView {
         // Row 3: action buttons from available_actions()
         let actions = item.available_actions();
         if !actions.is_empty() {
-            let mut action_row = div().flex().flex_wrap().items_center().gap(px(6.0)).mt(px(6.0));
+            let mut action_row = div()
+                .flex()
+                .flex_wrap()
+                .items_center()
+                .gap(px(6.0))
+                .mt(px(6.0));
             for action in actions {
                 let (label, board_action, btn_bg) = match action {
-                    TaskItemAction::Assign => ("Assign", TaskAction::Assign,
-                        gpui::hsla(0.48, 0.6, 0.55, 0.2)), // teal
+                    TaskItemAction::Assign => (
+                        "Assign",
+                        TaskAction::Assign,
+                        gpui::hsla(0.48, 0.6, 0.55, 0.2),
+                    ), // teal
                     TaskItemAction::Edit => ("Edit", TaskAction::Edit, active_bg),
-                    TaskItemAction::Delete => ("Delete", TaskAction::Delete,
-                        gpui::hsla(0.0, 0.7, 0.56, 0.15)), // red
-                    TaskItemAction::MarkForReview => ("Review", TaskAction::Review,
-                        gpui::hsla(0.11, 0.9, 0.6, 0.2)), // orange
-                    TaskItemAction::Approve => ("Approve", TaskAction::Complete,
-                        gpui::hsla(0.44, 0.7, 0.45, 0.2)), // green
-                    TaskItemAction::Reject => ("Reject", TaskAction::Delete,
-                        gpui::hsla(0.0, 0.7, 0.56, 0.15)), // red
+                    TaskItemAction::Delete => (
+                        "Delete",
+                        TaskAction::Delete,
+                        gpui::hsla(0.0, 0.7, 0.56, 0.15),
+                    ), // red
+                    TaskItemAction::MarkForReview => (
+                        "Review",
+                        TaskAction::Review,
+                        gpui::hsla(0.11, 0.9, 0.6, 0.2),
+                    ), // orange
+                    TaskItemAction::Approve => (
+                        "Approve",
+                        TaskAction::Complete,
+                        gpui::hsla(0.44, 0.7, 0.45, 0.2),
+                    ), // green
+                    TaskItemAction::Reject => (
+                        "Reject",
+                        TaskAction::Delete,
+                        gpui::hsla(0.0, 0.7, 0.56, 0.15),
+                    ), // red
                     TaskItemAction::Reopen => ("Start", TaskAction::Start, active_bg),
                 };
                 let action_task_id = task_id.clone();
                 action_row = action_row.child(
                     div()
-                        .id(SharedString::from(format!("task-action-{}-{}", task_id, label)))
+                        .id(SharedString::from(format!(
+                            "task-action-{}-{}",
+                            task_id, label
+                        )))
                         .px(px(8.0))
                         .py(px(3.0))
                         .min_w(px(48.0))
@@ -4491,11 +4775,10 @@ impl WorkspaceView {
                         .cursor_pointer()
                         .hover(|style| style.bg(active_bg.opacity(0.8)))
                         .on_click(cx.listener(move |this, _: &ClickEvent, _window, _cx| {
-                            this.task_board.trigger_task_action(action_task_id.clone(), board_action);
+                            this.task_board
+                                .trigger_task_action(action_task_id.clone(), board_action);
                         }))
-                        .child(
-                            div().text_size(px(11.0)).text_color(fg).child(label),
-                        ),
+                        .child(div().text_size(px(11.0)).text_color(fg).child(label)),
                 );
             }
             card = card.child(action_row);
@@ -4519,41 +4802,66 @@ impl WorkspaceView {
         let panel_icon_y_offset = 1.0;
 
         // Fetch real task data from TaskManager
-        let (running_items, queued_items, review_items, done_items, auto_assign_enabled) = if let Ok(manager) = self.task_manager.lock() {
-            let all_tasks = manager.list_tasks();
+        let (running_items, queued_items, review_items, done_items, auto_assign_enabled) =
+            if let Ok(manager) = self.task_manager.lock() {
+                let all_tasks = manager.list_tasks();
 
-            let running: Vec<_> = all_tasks.iter()
-                .filter(|t| matches!(t.status,
-                    codirigent_core::TaskStatus::Assigned | codirigent_core::TaskStatus::Working))
-                .map(|t| self.core_task_to_ui_item(t))
-                .collect();
-            let queued: Vec<_> = all_tasks.iter()
-                .filter(|t| matches!(t.status,
-                    codirigent_core::TaskStatus::Queued | codirigent_core::TaskStatus::Blocked))
-                .map(|t| self.core_task_to_ui_item(t))
-                .collect();
-            let review: Vec<_> = all_tasks.iter()
-                .filter(|t| matches!(t.status,
-                    codirigent_core::TaskStatus::Verifying | codirigent_core::TaskStatus::Review))
-                .map(|t| self.core_task_to_ui_item(t))
-                .collect();
-            let done: Vec<_> = all_tasks.iter()
-                .filter(|t| t.status == codirigent_core::TaskStatus::Done)
-                .map(|t| self.core_task_to_ui_item(t))
-                .collect();
-            let auto_assign = manager.assignment().config().auto_assign;
+                let running: Vec<_> = all_tasks
+                    .iter()
+                    .filter(|t| {
+                        matches!(
+                            t.status,
+                            codirigent_core::TaskStatus::Assigned
+                                | codirigent_core::TaskStatus::Working
+                        )
+                    })
+                    .map(|t| self.core_task_to_ui_item(t))
+                    .collect();
+                let queued: Vec<_> = all_tasks
+                    .iter()
+                    .filter(|t| {
+                        matches!(
+                            t.status,
+                            codirigent_core::TaskStatus::Queued
+                                | codirigent_core::TaskStatus::Blocked
+                        )
+                    })
+                    .map(|t| self.core_task_to_ui_item(t))
+                    .collect();
+                let review: Vec<_> = all_tasks
+                    .iter()
+                    .filter(|t| {
+                        matches!(
+                            t.status,
+                            codirigent_core::TaskStatus::Verifying
+                                | codirigent_core::TaskStatus::Review
+                        )
+                    })
+                    .map(|t| self.core_task_to_ui_item(t))
+                    .collect();
+                let done: Vec<_> = all_tasks
+                    .iter()
+                    .filter(|t| t.status == codirigent_core::TaskStatus::Done)
+                    .map(|t| self.core_task_to_ui_item(t))
+                    .collect();
+                let auto_assign = manager.assignment().config().auto_assign;
 
-            let queue_count = queued.len();
-            let in_progress_count = running.len();
-            let review_count = review.len();
-            let done_count = done.len();
-            drop(manager);
-            self.task_board.set_task_counts(queue_count, in_progress_count, review_count, done_count);
+                let queue_count = queued.len();
+                let in_progress_count = running.len();
+                let review_count = review.len();
+                let done_count = done.len();
+                drop(manager);
+                self.task_board.set_task_counts(
+                    queue_count,
+                    in_progress_count,
+                    review_count,
+                    done_count,
+                );
 
-            (running, queued, review, done, auto_assign)
-        } else {
-            (Vec::new(), Vec::new(), Vec::new(), Vec::new(), true)
-        };
+                (running, queued, review, done, auto_assign)
+            } else {
+                (Vec::new(), Vec::new(), Vec::new(), Vec::new(), true)
+            };
 
         let running_count = running_items.len();
         let queued_count = queued_items.len();
@@ -4561,7 +4869,11 @@ impl WorkspaceView {
         let done_count = done_items.len();
 
         // Auto-assign badge colors
-        let auto_dot_color = if auto_assign_enabled { primary } else { muted.opacity(0.4) };
+        let auto_dot_color = if auto_assign_enabled {
+            primary
+        } else {
+            muted.opacity(0.4)
+        };
         let auto_text_opacity = if auto_assign_enabled { 0.8 } else { 0.4 };
         let auto_bg_opacity = if auto_assign_enabled { 0.1 } else { 0.05 };
         let auto_border_opacity = if auto_assign_enabled { 0.2 } else { 0.1 };
@@ -4610,8 +4922,16 @@ impl WorkspaceView {
                     .justify_between()
                     .px_4()
                     .child(
-                        div().flex().items_center().gap_2()
-                            .child(self.centered_lucide_icon_with_offset(icons::list_todo(), muted, panel_label_size, panel_icon_y_offset))
+                        div()
+                            .flex()
+                            .items_center()
+                            .gap_2()
+                            .child(self.centered_lucide_icon_with_offset(
+                                icons::list_todo(),
+                                muted,
+                                panel_label_size,
+                                panel_icon_y_offset,
+                            ))
                             .child(
                                 div()
                                     .h(px(panel_label_row_height))
@@ -4629,7 +4949,9 @@ impl WorkspaceView {
                     .child(
                         div()
                             .id("auto-assign-toggle")
-                            .flex().items_center().gap(px(6.0))
+                            .flex()
+                            .items_center()
+                            .gap(px(6.0))
                             .px_2()
                             .py(px(2.0))
                             .rounded_md()
@@ -4643,7 +4965,13 @@ impl WorkspaceView {
                                     manager.assignment_mut().set_auto_assign(!current);
                                 }
                             }))
-                            .child(div().w(px(6.0)).h(px(6.0)).rounded_full().bg(auto_dot_color))
+                            .child(
+                                div()
+                                    .w(px(6.0))
+                                    .h(px(6.0))
+                                    .rounded_full()
+                                    .bg(auto_dot_color),
+                            )
                             .child(
                                 div()
                                     .h(px(panel_label_row_height))
@@ -4669,76 +4997,26 @@ impl WorkspaceView {
                     .gap_6()
                     // Running section
                     .child(
-                        div().flex().flex_col()
+                        div()
+                            .flex()
+                            .flex_col()
                             .child(
-                                div().flex().justify_between().items_center().mb_2()
-                                    .child(div().flex().items_center().gap_1()
-                                        .child(self.centered_lucide_icon_with_offset(icons::play(), muted, panel_label_size, panel_icon_y_offset))
-                                        .child(
-                                            div()
-                                                .h(px(panel_label_row_height))
-                                                .flex()
-                                                .items_center()
-                                                .child(
-                                                    div()
-                                                        .text_size(px(panel_label_size))
-                                                        .font_weight(FontWeight::BOLD)
-                                                        .text_color(muted)
-                                                        .child("RUNNING"),
-                                                ),
-                                        ))
-                                    .child(div().px(px(6.0)).rounded_full().bg(active_bg)
-                                        .child(div().text_xs().text_color(muted).child(format!("{}", running_count)))),
-                            )
-                            .when(running_count == 0, |this| {
-                                this.child(
-                                    div().text_xs().text_color(muted.opacity(0.5)).child("No running tasks"),
-                                )
-                            })
-                            .when(running_count > 0, |this| {
-                                this.child(running_section)
-                            }),
-                    )
-                    // Queue section
-                    .child(
-                        div().flex().flex_col()
-                            .child(
-                                div().flex().justify_between().items_center().mb_2()
-                                    .child(div().flex().items_center().gap_1()
-                                        .child(self.centered_lucide_icon_with_offset(icons::clock(), muted, panel_label_size, panel_icon_y_offset))
-                                        .child(
-                                            div()
-                                                .h(px(panel_label_row_height))
-                                                .flex()
-                                                .items_center()
-                                                .child(
-                                                    div()
-                                                        .text_size(px(panel_label_size))
-                                                        .font_weight(FontWeight::BOLD)
-                                                        .text_color(muted)
-                                                        .child("QUEUE"),
-                                                ),
-                                        ))
-                                    .child(div().px(px(6.0)).rounded_full().bg(active_bg)
-                                        .child(div().text_xs().text_color(muted).child(format!("{}", queued_count)))),
-                            )
-                            .when(queued_count == 0, |this| {
-                                this.child(
-                                    div().text_xs().text_color(muted.opacity(0.5)).child("No queued tasks"),
-                                )
-                            })
-                            .when(queued_count > 0, |this| {
-                                this.child(queued_section)
-                            }),
-                    )
-                    // Review section
-                    .when(review_count > 0, |this| {
-                        this.child(
-                            div().flex().flex_col()
-                                .child(
-                                    div().flex().justify_between().items_center().mb_2()
-                                        .child(div().flex().items_center().gap_1()
-                                            .child(self.centered_lucide_icon_with_offset(icons::eye(), muted, panel_label_size, panel_icon_y_offset))
+                                div()
+                                    .flex()
+                                    .justify_between()
+                                    .items_center()
+                                    .mb_2()
+                                    .child(
+                                        div()
+                                            .flex()
+                                            .items_center()
+                                            .gap_1()
+                                            .child(self.centered_lucide_icon_with_offset(
+                                                icons::play(),
+                                                muted,
+                                                panel_label_size,
+                                                panel_icon_y_offset,
+                                            ))
                                             .child(
                                                 div()
                                                     .h(px(panel_label_row_height))
@@ -4749,11 +5027,129 @@ impl WorkspaceView {
                                                             .text_size(px(panel_label_size))
                                                             .font_weight(FontWeight::BOLD)
                                                             .text_color(muted)
-                                                            .child("REVIEW"),
+                                                            .child("RUNNING"),
                                                     ),
+                                            ),
+                                    )
+                                    .child(
+                                        div().px(px(6.0)).rounded_full().bg(active_bg).child(
+                                            div()
+                                                .text_xs()
+                                                .text_color(muted)
+                                                .child(format!("{}", running_count)),
+                                        ),
+                                    ),
+                            )
+                            .when(running_count == 0, |this| {
+                                this.child(
+                                    div()
+                                        .text_xs()
+                                        .text_color(muted.opacity(0.5))
+                                        .child("No running tasks"),
+                                )
+                            })
+                            .when(running_count > 0, |this| this.child(running_section)),
+                    )
+                    // Queue section
+                    .child(
+                        div()
+                            .flex()
+                            .flex_col()
+                            .child(
+                                div()
+                                    .flex()
+                                    .justify_between()
+                                    .items_center()
+                                    .mb_2()
+                                    .child(
+                                        div()
+                                            .flex()
+                                            .items_center()
+                                            .gap_1()
+                                            .child(self.centered_lucide_icon_with_offset(
+                                                icons::clock(),
+                                                muted,
+                                                panel_label_size,
+                                                panel_icon_y_offset,
                                             ))
-                                        .child(div().px(px(6.0)).rounded_full().bg(active_bg)
-                                            .child(div().text_xs().text_color(muted).child(format!("{}", review_count)))),
+                                            .child(
+                                                div()
+                                                    .h(px(panel_label_row_height))
+                                                    .flex()
+                                                    .items_center()
+                                                    .child(
+                                                        div()
+                                                            .text_size(px(panel_label_size))
+                                                            .font_weight(FontWeight::BOLD)
+                                                            .text_color(muted)
+                                                            .child("QUEUE"),
+                                                    ),
+                                            ),
+                                    )
+                                    .child(
+                                        div().px(px(6.0)).rounded_full().bg(active_bg).child(
+                                            div()
+                                                .text_xs()
+                                                .text_color(muted)
+                                                .child(format!("{}", queued_count)),
+                                        ),
+                                    ),
+                            )
+                            .when(queued_count == 0, |this| {
+                                this.child(
+                                    div()
+                                        .text_xs()
+                                        .text_color(muted.opacity(0.5))
+                                        .child("No queued tasks"),
+                                )
+                            })
+                            .when(queued_count > 0, |this| this.child(queued_section)),
+                    )
+                    // Review section
+                    .when(review_count > 0, |this| {
+                        this.child(
+                            div()
+                                .flex()
+                                .flex_col()
+                                .child(
+                                    div()
+                                        .flex()
+                                        .justify_between()
+                                        .items_center()
+                                        .mb_2()
+                                        .child(
+                                            div()
+                                                .flex()
+                                                .items_center()
+                                                .gap_1()
+                                                .child(self.centered_lucide_icon_with_offset(
+                                                    icons::eye(),
+                                                    muted,
+                                                    panel_label_size,
+                                                    panel_icon_y_offset,
+                                                ))
+                                                .child(
+                                                    div()
+                                                        .h(px(panel_label_row_height))
+                                                        .flex()
+                                                        .items_center()
+                                                        .child(
+                                                            div()
+                                                                .text_size(px(panel_label_size))
+                                                                .font_weight(FontWeight::BOLD)
+                                                                .text_color(muted)
+                                                                .child("REVIEW"),
+                                                        ),
+                                                ),
+                                        )
+                                        .child(
+                                            div().px(px(6.0)).rounded_full().bg(active_bg).child(
+                                                div()
+                                                    .text_xs()
+                                                    .text_color(muted)
+                                                    .child(format!("{}", review_count)),
+                                            ),
+                                        ),
                                 )
                                 .child(review_section),
                         )
@@ -4761,26 +5157,48 @@ impl WorkspaceView {
                     // Done section
                     .when(done_count > 0, |this| {
                         this.child(
-                            div().flex().flex_col()
+                            div()
+                                .flex()
+                                .flex_col()
                                 .child(
-                                    div().flex().justify_between().items_center().mb_2()
-                                        .child(div().flex().items_center().gap_1()
-                                            .child(self.centered_lucide_icon_with_offset(icons::check_circle(), muted, panel_label_size, panel_icon_y_offset))
-                                            .child(
+                                    div()
+                                        .flex()
+                                        .justify_between()
+                                        .items_center()
+                                        .mb_2()
+                                        .child(
+                                            div()
+                                                .flex()
+                                                .items_center()
+                                                .gap_1()
+                                                .child(self.centered_lucide_icon_with_offset(
+                                                    icons::check_circle(),
+                                                    muted,
+                                                    panel_label_size,
+                                                    panel_icon_y_offset,
+                                                ))
+                                                .child(
+                                                    div()
+                                                        .h(px(panel_label_row_height))
+                                                        .flex()
+                                                        .items_center()
+                                                        .child(
+                                                            div()
+                                                                .text_size(px(panel_label_size))
+                                                                .font_weight(FontWeight::BOLD)
+                                                                .text_color(muted)
+                                                                .child("DONE"),
+                                                        ),
+                                                ),
+                                        )
+                                        .child(
+                                            div().px(px(6.0)).rounded_full().bg(active_bg).child(
                                                 div()
-                                                    .h(px(panel_label_row_height))
-                                                    .flex()
-                                                    .items_center()
-                                                    .child(
-                                                        div()
-                                                            .text_size(px(panel_label_size))
-                                                            .font_weight(FontWeight::BOLD)
-                                                            .text_color(muted)
-                                                            .child("DONE"),
-                                                    ),
-                                            ))
-                                        .child(div().px(px(6.0)).rounded_full().bg(active_bg)
-                                            .child(div().text_xs().text_color(muted).child(format!("{}", done_count)))),
+                                                    .text_xs()
+                                                    .text_color(muted)
+                                                    .child(format!("{}", done_count)),
+                                            ),
+                                        ),
                                 )
                                 .child(done_section),
                         )
@@ -4809,8 +5227,16 @@ impl WorkspaceView {
                                 cx.notify();
                             }))
                             .child(
-                                div().flex().items_center().gap_1()
-                                    .child(self.centered_lucide_icon_with_offset(icons::plus(), fg, panel_label_size, panel_icon_y_offset))
+                                div()
+                                    .flex()
+                                    .items_center()
+                                    .gap_1()
+                                    .child(self.centered_lucide_icon_with_offset(
+                                        icons::plus(),
+                                        fg,
+                                        panel_label_size,
+                                        panel_icon_y_offset,
+                                    ))
                                     .child(
                                         div()
                                             .h(px(panel_label_row_height))

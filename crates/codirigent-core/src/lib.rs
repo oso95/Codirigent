@@ -90,6 +90,7 @@ pub mod event_bus;
 pub mod events;
 pub mod persistence;
 pub mod persistence_service;
+pub mod pipeline;
 pub mod plugin;
 pub mod ralph;
 pub mod scheduler;
@@ -97,7 +98,6 @@ pub mod session_advanced;
 pub mod session_notes;
 pub mod skill;
 pub mod storage;
-pub mod pipeline;
 pub mod task_manager;
 pub mod traits;
 pub mod types;
@@ -110,14 +110,18 @@ pub use change_summary::{
 };
 pub use config::{ProjectConfig, UserSettings};
 pub use config_service::{ConfigChange, ConfigService, DefaultConfigService, EffectiveConfig};
-pub use context::{ContextConfig, ContextPattern, ContextTracker, ContextTrackingService, ContextUsage};
+pub use context::{
+    ContextConfig, ContextPattern, ContextTracker, ContextTrackingService, ContextUsage,
+};
 pub use error::{CodirigentError, Result};
 pub use event_bus::DefaultEventBus;
 pub use events::{ClipboardContentType, CodirigentEvent};
 pub use scheduler::{SchedulerConfig, SchedulerMode, TaskQueue, TaskQueueService};
 pub use skill::{Skill, SkillPreset, SkillType, TokenBudget};
 pub use storage::{ContextFileData, FileStorageService};
-pub use traits::{EventBus, ProcessMonitor, RalphLoopController, SessionManager, SkillManager, StorageService};
+pub use traits::{
+    EventBus, ProcessMonitor, RalphLoopController, SessionManager, SkillManager, StorageService,
+};
 pub use traits::{FailureFormatter, ProjectType, VerificationDetector, Verifier};
 pub use types::*;
 
@@ -134,21 +138,23 @@ pub use persistence_service::{AutoSaveConfig, DefaultPersistenceService, Persist
 
 // Re-export assignment types
 pub use assignment::{
-    AssignmentAction, AssignmentConfig, AssignmentManager, AssignmentService,
-    PendingAssignment, DEFAULT_PROMPT_TEMPLATE,
+    AssignmentAction, AssignmentConfig, AssignmentManager, AssignmentService, PendingAssignment,
+    DEFAULT_PROMPT_TEMPLATE,
 };
 
 // Re-export session notes types
 pub use session_notes::{
-    CompletionStatus, Learning, LearningCategory, LearningsExtractor, NotesGenerator,
-    SessionNote, SessionNotesConfig, SummaryMode,
+    CompletionStatus, Learning, LearningCategory, LearningsExtractor, NotesGenerator, SessionNote,
+    SessionNotesConfig, SummaryMode,
 };
 
 // Re-export Ralph Loop types
 pub use ralph::{IterationResult, RalphLoopConfig, RalphLoopState, RalphLoopStatus};
 
 // Re-export task manager types
-pub use task_manager::{TaskCompletionResult, TaskManagementService, TaskManager, TaskManagerConfig};
+pub use task_manager::{
+    TaskCompletionResult, TaskManagementService, TaskManager, TaskManagerConfig,
+};
 
 // Re-export broadcast types
 pub use broadcast::{
@@ -159,8 +165,7 @@ pub use traits::BroadcastService;
 
 // Re-export advanced session types
 pub use session_advanced::{
-    ContextHandoff, HandoffStatus, OvernightConfig, OvernightSummary, SessionGroup,
-    SessionTemplate,
+    ContextHandoff, HandoffStatus, OvernightConfig, OvernightSummary, SessionGroup, SessionTemplate,
 };
 
 // Re-export pipeline types

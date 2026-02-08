@@ -365,7 +365,11 @@ impl ContextTracker {
     /// let event = tracker.update_usage(SessionId(1), 0.75);
     /// assert!(event.is_some());
     /// ```
-    pub fn update_usage(&mut self, session_id: SessionId, raw_usage: f32) -> Option<CodirigentEvent> {
+    pub fn update_usage(
+        &mut self,
+        session_id: SessionId,
+        raw_usage: f32,
+    ) -> Option<CodirigentEvent> {
         let effective_usage = self.calculate_effective_usage(raw_usage);
         let new_state = self.determine_threshold_state(effective_usage);
 
@@ -458,10 +462,9 @@ impl ContextTracker {
                 // Special case for ratio patterns (e.g., "1000/2000 tokens")
                 if compiled.pattern.capture_group == 0 && captures.len() >= 3 {
                     if let (Some(used), Some(total)) = (captures.get(1), captures.get(2)) {
-                        if let (Ok(used_val), Ok(total_val)) = (
-                            used.as_str().parse::<f32>(),
-                            total.as_str().parse::<f32>(),
-                        ) {
+                        if let (Ok(used_val), Ok(total_val)) =
+                            (used.as_str().parse::<f32>(), total.as_str().parse::<f32>())
+                        {
                             if total_val > 0.0 {
                                 let ratio = used_val / total_val;
                                 return self.update_usage(session_id, ratio);
@@ -647,14 +650,23 @@ mod tests {
     // ContextThresholdState tests
     #[test]
     fn test_threshold_state_default() {
-        assert_eq!(ContextThresholdState::default(), ContextThresholdState::Normal);
+        assert_eq!(
+            ContextThresholdState::default(),
+            ContextThresholdState::Normal
+        );
     }
 
     #[test]
     fn test_threshold_state_equality() {
         assert_eq!(ContextThresholdState::Normal, ContextThresholdState::Normal);
-        assert_ne!(ContextThresholdState::Normal, ContextThresholdState::Warning);
-        assert_ne!(ContextThresholdState::Warning, ContextThresholdState::Critical);
+        assert_ne!(
+            ContextThresholdState::Normal,
+            ContextThresholdState::Warning
+        );
+        assert_ne!(
+            ContextThresholdState::Warning,
+            ContextThresholdState::Critical
+        );
     }
 
     #[test]
@@ -783,8 +795,10 @@ mod tests {
 
     #[test]
     fn test_calculate_effective_usage_with_mcp() {
-        let mut config = ContextConfig::default();
-        config.mcp_overhead = 0.2; // 20% MCP overhead
+        let config = ContextConfig {
+            mcp_overhead: 0.2, // 20% MCP overhead
+            ..Default::default()
+        };
         let tracker = ContextTracker::new(config);
 
         // 50% raw with 20% MCP = 50/80 = 62.5%
@@ -794,8 +808,10 @@ mod tests {
 
     #[test]
     fn test_calculate_effective_usage_capped_at_one() {
-        let mut config = ContextConfig::default();
-        config.mcp_overhead = 0.5;
+        let config = ContextConfig {
+            mcp_overhead: 0.5,
+            ..Default::default()
+        };
         let tracker = ContextTracker::new(config);
 
         // High raw usage with high overhead should cap at 1.0
@@ -805,8 +821,10 @@ mod tests {
 
     #[test]
     fn test_calculate_effective_usage_full_overhead() {
-        let mut config = ContextConfig::default();
-        config.mcp_overhead = 1.0; // 100% overhead (edge case)
+        let config = ContextConfig {
+            mcp_overhead: 1.0, // 100% overhead (edge case)
+            ..Default::default()
+        };
         let tracker = ContextTracker::new(config);
 
         let effective = tracker.calculate_effective_usage(0.5);
@@ -1076,8 +1094,10 @@ mod tests {
 
     #[test]
     fn test_config_getter() {
-        let mut config = ContextConfig::default();
-        config.warning_threshold = 0.6;
+        let config = ContextConfig {
+            warning_threshold: 0.6,
+            ..Default::default()
+        };
         let tracker = ContextTracker::new(config);
 
         assert!((tracker.config().warning_threshold - 0.6).abs() < f32::EPSILON);
@@ -1087,8 +1107,10 @@ mod tests {
     fn test_set_config() {
         let mut tracker = ContextTracker::new(ContextConfig::default());
 
-        let mut new_config = ContextConfig::default();
-        new_config.warning_threshold = 0.5;
+        let new_config = ContextConfig {
+            warning_threshold: 0.5,
+            ..Default::default()
+        };
         tracker.set_config(new_config);
 
         assert!((tracker.config().warning_threshold - 0.5).abs() < f32::EPSILON);
@@ -1134,8 +1156,10 @@ mod tests {
 
     #[test]
     fn test_service_get_effective() {
-        let mut config = ContextConfig::default();
-        config.mcp_overhead = 0.2;
+        let config = ContextConfig {
+            mcp_overhead: 0.2,
+            ..Default::default()
+        };
         let mut tracker = ContextTracker::new(config);
         tracker.update(SessionId(1), 0.5);
 

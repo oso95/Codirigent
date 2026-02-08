@@ -725,7 +725,8 @@ mod tests {
 
     #[test]
     fn test_skill_with_token_count() {
-        let skill = Skill::new_builtin("test".to_string(), "Test".to_string()).with_token_count(500);
+        let skill =
+            Skill::new_builtin("test".to_string(), "Test".to_string()).with_token_count(500);
         assert_eq!(skill.token_count, 500);
     }
 

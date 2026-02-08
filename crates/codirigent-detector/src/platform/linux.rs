@@ -99,14 +99,18 @@ impl PlatformMonitor for LinuxMonitor {
                     children.push(child_pid);
                 }
             }
-            debug!(pid, child_count = children.len(), "Got children from /proc children file");
+            debug!(
+                pid,
+                child_count = children.len(),
+                "Got children from /proc children file"
+            );
             return Ok(children);
         }
 
         // Fallback: scan all processes and find those with this pid as parent
         debug!(pid, "Falling back to scanning all processes for children");
-        for entry in procfs::process::all_processes()
-            .with_context(|| "Failed to enumerate processes")?
+        for entry in
+            procfs::process::all_processes().with_context(|| "Failed to enumerate processes")?
         {
             if let Ok(proc) = entry {
                 if let Ok(stat) = proc.stat() {
@@ -117,7 +121,11 @@ impl PlatformMonitor for LinuxMonitor {
             }
         }
 
-        debug!(pid, child_count = children.len(), "Got children via process scan");
+        debug!(
+            pid,
+            child_count = children.len(),
+            "Got children via process scan"
+        );
         Ok(children)
     }
 
@@ -155,10 +163,7 @@ impl PlatformMonitor for LinuxMonitor {
 
         debug!(
             pid,
-            process_pgid,
-            fg_pgid,
-            is_foreground,
-            "Checking if process is waiting for input"
+            process_pgid, fg_pgid, is_foreground, "Checking if process is waiting for input"
         );
 
         Ok(is_foreground)

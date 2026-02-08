@@ -110,9 +110,7 @@ impl GitStatusService {
         match repo.head() {
             Ok(head) => {
                 if head.is_branch() {
-                    head.shorthand()
-                        .unwrap_or("unknown")
-                        .to_string()
+                    head.shorthand().unwrap_or("unknown").to_string()
                 } else {
                     "HEAD detached".to_string()
                 }
@@ -131,8 +129,7 @@ impl GitStatusService {
     /// Collect file-level status information from the repository.
     fn collect_file_statuses(repo: &Repository) -> FileStatusResult {
         let mut opts = StatusOptions::new();
-        opts.include_untracked(true)
-            .recurse_untracked_dirs(false);
+        opts.include_untracked(true).recurse_untracked_dirs(false);
 
         let statuses = match repo.statuses(Some(&mut opts)) {
             Ok(s) => s,
@@ -146,38 +143,59 @@ impl GitStatusService {
 
         for entry in statuses.iter() {
             let status = entry.status();
-            let path = entry
-                .path()
-                .unwrap_or("<invalid utf-8>")
-                .to_string();
+            let path = entry.path().unwrap_or("<invalid utf-8>").to_string();
 
             // Unstaged (working tree) changes
             if status.intersects(git2::Status::WT_MODIFIED) {
-                result.unstaged.push(GitChangedFile { path: path.clone(), change: GitChangeKind::Modified });
+                result.unstaged.push(GitChangedFile {
+                    path: path.clone(),
+                    change: GitChangeKind::Modified,
+                });
                 result.dirty_count += 1;
             } else if status.intersects(git2::Status::WT_NEW) {
-                result.unstaged.push(GitChangedFile { path: path.clone(), change: GitChangeKind::Added });
+                result.unstaged.push(GitChangedFile {
+                    path: path.clone(),
+                    change: GitChangeKind::Added,
+                });
                 result.dirty_count += 1;
             } else if status.intersects(git2::Status::WT_DELETED) {
-                result.unstaged.push(GitChangedFile { path: path.clone(), change: GitChangeKind::Deleted });
+                result.unstaged.push(GitChangedFile {
+                    path: path.clone(),
+                    change: GitChangeKind::Deleted,
+                });
                 result.dirty_count += 1;
             } else if status.intersects(git2::Status::WT_RENAMED) {
-                result.unstaged.push(GitChangedFile { path: path.clone(), change: GitChangeKind::Renamed });
+                result.unstaged.push(GitChangedFile {
+                    path: path.clone(),
+                    change: GitChangeKind::Renamed,
+                });
                 result.dirty_count += 1;
             }
 
             // Staged (index) changes
             if status.intersects(git2::Status::INDEX_MODIFIED) {
-                result.staged.push(GitChangedFile { path: path.clone(), change: GitChangeKind::Modified });
+                result.staged.push(GitChangedFile {
+                    path: path.clone(),
+                    change: GitChangeKind::Modified,
+                });
                 result.has_staged = true;
             } else if status.intersects(git2::Status::INDEX_NEW) {
-                result.staged.push(GitChangedFile { path: path.clone(), change: GitChangeKind::Added });
+                result.staged.push(GitChangedFile {
+                    path: path.clone(),
+                    change: GitChangeKind::Added,
+                });
                 result.has_staged = true;
             } else if status.intersects(git2::Status::INDEX_DELETED) {
-                result.staged.push(GitChangedFile { path: path.clone(), change: GitChangeKind::Deleted });
+                result.staged.push(GitChangedFile {
+                    path: path.clone(),
+                    change: GitChangeKind::Deleted,
+                });
                 result.has_staged = true;
             } else if status.intersects(git2::Status::INDEX_RENAMED) {
-                result.staged.push(GitChangedFile { path: path.clone(), change: GitChangeKind::Renamed });
+                result.staged.push(GitChangedFile {
+                    path: path.clone(),
+                    change: GitChangeKind::Renamed,
+                });
                 result.has_staged = true;
             }
         }
@@ -240,7 +258,10 @@ mod tests {
         let service = GitStatusService::new();
 
         let info = service.detect(dir.path()).unwrap();
-        assert_eq!(info.repo_root, dir.path());
+        assert_eq!(
+            info.repo_root.canonicalize().unwrap(),
+            dir.path().canonicalize().unwrap()
+        );
         assert!(!info.branch.is_empty());
         assert_eq!(info.dirty_count, 0);
         assert!(!info.has_staged);
@@ -314,7 +335,10 @@ mod tests {
 
         let service = GitStatusService::new();
         let info = service.detect(&subdir).unwrap();
-        assert_eq!(info.repo_root, dir.path());
+        assert_eq!(
+            info.repo_root.canonicalize().unwrap(),
+            dir.path().canonicalize().unwrap()
+        );
     }
 
     #[test]

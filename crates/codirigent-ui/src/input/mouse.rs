@@ -104,16 +104,7 @@ impl TerminalMouseEvent {
             };
             let code = button_code + modifier_code;
             let suffix = if self.pressed { 'M' } else { 'm' };
-            Some(
-                format!(
-                    "\x1b[<{};{};{}{}",
-                    code,
-                    self.col + 1,
-                    self.row + 1,
-                    suffix
-                )
-                .into_bytes(),
-            )
+            Some(format!("\x1b[<{};{};{}{}", code, self.col + 1, self.row + 1, suffix).into_bytes())
         } else {
             // For non-SGR modes (UTF-8 and normal X10), button code 3 means "release"
             let button_code = match (self.button, self.pressed) {

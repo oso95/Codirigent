@@ -520,7 +520,10 @@ mod tests {
         let loaded = Theme::from_json(&json).unwrap();
         assert_eq!(loaded.id, theme.id);
         assert_eq!(loaded.is_dark, theme.is_dark);
-        assert_eq!(loaded.colors.background_primary, theme.colors.background_primary);
+        assert_eq!(
+            loaded.colors.background_primary,
+            theme.colors.background_primary
+        );
     }
 
     #[test]
