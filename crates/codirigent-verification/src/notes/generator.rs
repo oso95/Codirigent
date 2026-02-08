@@ -292,7 +292,9 @@ impl NotesGenerator for DefaultNotesGenerator {
 mod tests {
     use super::*;
     use codirigent_core::change_summary::{FileCategory, FileChange, RiskAssessment};
+    use codirigent_core::session_notes::CompletionStatus;
     use codirigent_core::verification::{VerificationResult, VerificationState};
+    use codirigent_core::{SessionId, TaskId};
     use tempfile::TempDir;
 
     #[test]

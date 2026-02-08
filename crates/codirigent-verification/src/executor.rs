@@ -409,7 +409,7 @@ mod tests {
         #[cfg(unix)]
         {
             // Create a simple script that echoes an env var
-            let script_path = temp.path().join("test.sh");
+            let script_path = _temp.path().join("test.sh");
             std::fs::write(&script_path, "#!/bin/sh\necho $TEST_VAR").unwrap();
             std::fs::set_permissions(&script_path, std::os::unix::fs::PermissionsExt::from_mode(0o755)).unwrap();
 
@@ -434,7 +434,7 @@ mod tests {
         #[cfg(unix)]
         {
             // Create a simple script that echoes the CI env var
-            let script_path = temp.path().join("test.sh");
+            let script_path = _temp.path().join("test.sh");
             std::fs::write(&script_path, "#!/bin/sh\necho $CI").unwrap();
             std::fs::set_permissions(&script_path, std::os::unix::fs::PermissionsExt::from_mode(0o755)).unwrap();
 

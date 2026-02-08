@@ -27,7 +27,7 @@ jobs:
             ext: .exe
 
           - name: macOS Intel
-            runner: macos-13
+            runner: macos-14
             target: x86_64-apple-darwin
             archive: tar.gz
             ext: ""
@@ -82,7 +82,7 @@ jobs:
           echo "version=${VERSION}" >> "$GITHUB_OUTPUT"
           echo "archive_name=codirigent-v${GITHUB_REF_NAME#v}-${{ matrix.target }}" >> "$GITHUB_OUTPUT"
           # WiX requires x.x.x.x (integers only) — strip any prerelease suffix
-          MSI_VERSION="$(echo "$VERSION" | sed 's/-.*//')"
+          MSI_VERSION="${VERSION%%-*}"
           echo "msi_version=${MSI_VERSION}.0" >> "$GITHUB_OUTPUT"
 
       # ── Archives (all platforms) ──────────────────────────────────────
