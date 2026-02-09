@@ -25,6 +25,7 @@
 //! - [`task_manager`] - Unified task management coordinator
 //! - [`session_advanced`] - Advanced session features (templates, handoff, groups, overnight mode)
 //! - [`broadcast`] - Broadcast messaging to multiple sessions
+//! - [`compaction`] - Auto-compaction before verification
 //! - [`pipeline`] - Verification pipeline types and traits
 //! - [`error`] - Error types
 //!
@@ -82,6 +83,7 @@ pub mod auto_save;
 pub mod broadcast;
 pub mod change_summary;
 pub mod clipboard_types;
+pub mod compaction;
 pub mod config;
 pub mod config_service;
 pub mod context;
@@ -173,6 +175,9 @@ pub use pipeline::{
     FailureMessageFormatter, PipelineEvent, PipelineStage, PipelineState, ReviewDecision,
     VerificationPipeline,
 };
+
+// Re-export compaction types
+pub use compaction::{CompactionConfig, CompactionService};
 
 // Re-export clipboard types
 pub use clipboard_types::{CliType, ClipboardContent, ImageData, ImageFormat};

@@ -32,14 +32,16 @@
 
 use anyhow::{anyhow, Context, Result};
 use codirigent_core::{
-    AppState, CodirigentEvent, DefaultEventBus, EventBus, FileStorageService, ProcessMonitor,
-    Session, SessionId, SessionManager, SessionStatus, StorageService,
+    AppState, CodirigentEvent, CompactionConfig, CompactionService, DefaultEventBus, EventBus,
+    FileStorageService, ProcessMonitor, Session, SessionId, SessionManager, SessionStatus,
+    StorageService, TaskManager, TaskManagerConfig,
 };
 use codirigent_detector::{notify_input_required, DetectorConfig, InputDetector};
 use codirigent_session::DefaultSessionManager;
 use std::path::PathBuf;
 use std::sync::{Arc, Mutex, MutexGuard};
 use std::thread;
+use std::time::Duration;
 use tokio::sync::broadcast;
 use tracing::{debug, error, info, warn};
 
@@ -55,6 +57,8 @@ pub struct IntegrationConfig {
     pub auto_start_event_loop: bool,
     /// Detector configuration for input monitoring.
     pub detector_config: DetectorConfig,
+    /// Configuration for auto-compaction before verification.
+    pub compaction: CompactionConfig,
 }
 
 impl Default for IntegrationConfig {
@@ -63,6 +67,7 @@ impl Default for IntegrationConfig {
             auto_save_enabled: true,
             auto_start_event_loop: true,
             detector_config: DetectorConfig::default(),
+            compaction: CompactionConfig::default(),
         }
     }
 }
@@ -85,6 +90,10 @@ pub struct CodirigentIntegration {
     storage: Arc<FileStorageService>,
     /// Event bus for cross-module communication.
     event_bus: Arc<DefaultEventBus>,
+    /// Compaction service for auto-compacting before verification.
+    compaction: Arc<Mutex<CompactionService>>,
+    /// Task manager for unified task management.
+    task_manager: Arc<Mutex<TaskManager>>,
     /// Configuration.
     config: IntegrationConfig,
 }
@@ -138,11 +147,21 @@ impl CodirigentIntegration {
             event_bus.clone(),
         )));
 
+        let compaction = Arc::new(Mutex::new(CompactionService::new(config.compaction.clone())));
+
+        let task_manager = Arc::new(Mutex::new(TaskManager::new(
+            TaskManagerConfig::default(),
+            storage.clone(),
+            event_bus.clone(),
+        )));
+
         let integration = Self {
             session_manager,
             detector,
             storage,
             event_bus,
+            compaction,
+            task_manager,
             config,
         };
 
@@ -165,6 +184,7 @@ impl CodirigentIntegration {
         let event_bus = self.event_bus.clone();
         let session_manager = self.session_manager.clone();
         let storage = self.storage.clone();
+        let task_manager = self.task_manager.clone();
         let auto_save = self.config.auto_save_enabled;
         let notifications_enabled = self.config.detector_config.notifications_enabled;
 
@@ -187,6 +207,7 @@ impl CodirigentIntegration {
                             &event,
                             &session_manager,
                             &storage,
+                            &task_manager,
                             auto_save,
                             notifications_enabled,
                         );
@@ -210,6 +231,7 @@ impl CodirigentIntegration {
         event: &CodirigentEvent,
         session_manager: &Arc<Mutex<DefaultSessionManager>>,
         storage: &Arc<FileStorageService>,
+        task_manager: &Arc<Mutex<TaskManager>>,
         auto_save: bool,
         notifications_enabled: bool,
     ) {
@@ -224,12 +246,39 @@ impl CodirigentIntegration {
             }
             CodirigentEvent::SessionClosed { id } => {
                 info!(%id, "Session closed");
+
+                // Check if session had an active task and mark it as blocked
+                if let Ok(mut task_mgr) = task_manager.lock() {
+                    if let Some((task_id, task)) = task_mgr.find_task_by_session(*id) {
+                        if matches!(
+                            task.status,
+                            codirigent_core::TaskStatus::Working | codirigent_core::TaskStatus::Verifying
+                        ) {
+                            warn!(%id, ?task_id, "Session closed with active task, marking as blocked");
+                            if let Err(e) = task_mgr.transition_task_status(
+                                &task_id,
+                                codirigent_core::TaskStatus::Blocked,
+                                Some("Session closed unexpectedly".to_string()),
+                            ) {
+                                error!(error = %e, "Failed to block task after session close");
+                            }
+                        }
+                    }
+                }
+
                 if auto_save {
                     Self::save_state_internal(session_manager, storage);
                 }
             }
             CodirigentEvent::SessionStatusChanged { id, old, new } => {
                 debug!(%id, ?old, ?new, "Session status changed");
+
+                // Automatically sync task status based on session status
+                if let Ok(mut task_mgr) = task_manager.lock() {
+                    if let Some(updated_task_id) = task_mgr.on_session_status_changed(*id, *old, *new) {
+                        info!(%id, ?updated_task_id, "Task status automatically synced with session");
+                    }
+                }
             }
             CodirigentEvent::InputRequired {
                 session_id,
@@ -565,6 +614,187 @@ impl CodirigentIntegration {
     pub fn session_count(&self) -> Result<usize> {
         let manager = self.lock_session_manager()?;
         Ok(manager.session_count())
+    }
+
+    // --- Compaction ---
+
+    /// Check if a session is currently being compacted.
+    ///
+    /// Use this to guard idle handlers from starting verification or
+    /// assigning new work while compaction is in progress.
+    pub fn is_compacting(&self, session_id: SessionId) -> bool {
+        self.compaction
+            .lock()
+            .map(|svc| svc.is_compacting(session_id))
+            .unwrap_or(false)
+    }
+
+    /// Attempt to compact a session before verification.
+    ///
+    /// Checks context usage, and if above threshold, sends `/compact` via
+    /// PTY stdin and spawns a background thread to wait for completion.
+    ///
+    /// Returns `true` if compaction was started, `false` if skipped.
+    ///
+    /// # Arguments
+    ///
+    /// * `session_id` - The session to compact
+    /// * `context_usage` - The session's current context usage (0.0-1.0)
+    pub fn try_compact_session(
+        &self,
+        session_id: SessionId,
+        context_usage: Option<f32>,
+    ) -> bool {
+        let (should_compact, command, timeout_secs, focus) = {
+            let mut compaction = match self.compaction.lock() {
+                Ok(c) => c,
+                Err(_) => {
+                    warn!(%session_id, "Compaction lock poisoned, skipping compaction");
+                    return false;
+                }
+            };
+
+            if !compaction.should_compact(session_id, context_usage) {
+                debug!(%session_id, ?context_usage, "Skipping compaction: conditions not met");
+                return false;
+            }
+
+            if !compaction.begin_compaction(session_id) {
+                debug!(%session_id, "Skipping compaction: already compacting");
+                return false;
+            }
+
+            let command = compaction.compact_command();
+            let timeout = compaction.timeout_secs();
+            let focus = compaction.config().focus_instructions.clone();
+            (true, command, timeout, focus)
+        };
+
+        if !should_compact {
+            return false;
+        }
+
+        // Send /compact command via PTY stdin
+        if let Err(e) = self.send_input(session_id, command.as_bytes()) {
+            warn!(%session_id, error = %e, "Failed to send /compact command");
+            if let Ok(mut compaction) = self.compaction.lock() {
+                compaction.end_compaction(session_id);
+            }
+            return false;
+        }
+
+        info!(%session_id, ?focus, "Compaction started");
+
+        // Publish CompactionStarted event
+        self.event_bus.publish(CodirigentEvent::CompactionStarted {
+            session_id,
+            focus,
+        });
+
+        // Spawn background thread to wait for compaction to complete
+        let event_bus = self.event_bus.clone();
+        let compaction = self.compaction.clone();
+
+        thread::spawn(move || {
+            let rt = match tokio::runtime::Runtime::new() {
+                Ok(rt) => rt,
+                Err(e) => {
+                    error!(error = %e, "Failed to create tokio runtime for compaction waiter");
+                    if let Ok(mut svc) = compaction.lock() {
+                        svc.end_compaction(session_id);
+                    }
+                    return;
+                }
+            };
+
+            rt.block_on(async {
+                let mut rx = event_bus.subscribe();
+                let timeout = Duration::from_secs(timeout_secs);
+
+                let result = tokio::time::timeout(timeout, async {
+                    loop {
+                        match rx.recv().await {
+                            Ok(CodirigentEvent::SessionStatusChanged {
+                                id,
+                                new: SessionStatus::Idle,
+                                ..
+                            }) if id == session_id => {
+                                // Compaction complete (session returned to Idle)
+                                return true;
+                            }
+                            Ok(CodirigentEvent::SessionStatusChanged {
+                                id,
+                                new: SessionStatus::Error,
+                                ..
+                            }) if id == session_id => {
+                                // Error during compaction
+                                return false;
+                            }
+                            Ok(CodirigentEvent::SessionStatusChanged {
+                                id,
+                                new: SessionStatus::WaitingForInput,
+                                ..
+                            }) if id == session_id => {
+                                // Needs input during compaction - treat as failure
+                                return false;
+                            }
+                            Ok(CodirigentEvent::SessionClosed { id })
+                                if id == session_id =>
+                            {
+                                // Session closed during compaction
+                                if let Ok(mut svc) = compaction.lock() {
+                                    svc.end_compaction(session_id);
+                                }
+                                return false;
+                            }
+                            Err(broadcast::error::RecvError::Closed) => {
+                                return false;
+                            }
+                            Err(broadcast::error::RecvError::Lagged(_)) => {
+                                continue;
+                            }
+                            _ => continue,
+                        }
+                    }
+                })
+                .await;
+
+                let success = match result {
+                    Ok(success) => success,
+                    Err(_) => {
+                        warn!(%session_id, "Compaction timed out");
+                        false
+                    }
+                };
+
+                if let Ok(mut svc) = compaction.lock() {
+                    svc.end_compaction(session_id);
+                }
+
+                if success {
+                    info!(%session_id, "Compaction completed successfully");
+                } else {
+                    warn!(%session_id, "Compaction completed with failure");
+                }
+
+                event_bus.publish(CodirigentEvent::CompactionCompleted {
+                    session_id,
+                    success,
+                });
+            });
+        });
+
+        true
+    }
+
+    /// Get a reference to the compaction service.
+    pub fn compaction(&self) -> &Arc<Mutex<CompactionService>> {
+        &self.compaction
+    }
+
+    /// Get a reference to the task manager.
+    pub fn task_manager(&self) -> &Arc<Mutex<TaskManager>> {
+        &self.task_manager
     }
 
     // --- Internal Helpers ---
@@ -942,7 +1172,7 @@ mod tests {
         let storage = Arc::new(FileStorageService::new(temp.path()).unwrap());
 
         let event = CodirigentEvent::SessionCreated { id: SessionId(1) };
-        CodirigentIntegration::handle_event(&event, &session_manager, &storage, false, false);
+        CodirigentIntegration::handle_event(&event, &session_manager, &storage, &Arc::new(Mutex::new(TaskManager::new(TaskManagerConfig::default(), storage.clone(), event_bus.clone()))), false, false);
         // Should not panic
     }
 
@@ -954,7 +1184,7 @@ mod tests {
         let storage = Arc::new(FileStorageService::new(temp.path()).unwrap());
 
         let event = CodirigentEvent::SessionClosed { id: SessionId(1) };
-        CodirigentIntegration::handle_event(&event, &session_manager, &storage, false, false);
+        CodirigentIntegration::handle_event(&event, &session_manager, &storage, &Arc::new(Mutex::new(TaskManager::new(TaskManagerConfig::default(), storage.clone(), event_bus.clone()))), false, false);
         // Should not panic
     }
 
@@ -970,7 +1200,7 @@ mod tests {
             old: SessionStatus::Idle,
             new: SessionStatus::Working,
         };
-        CodirigentIntegration::handle_event(&event, &session_manager, &storage, false, false);
+        CodirigentIntegration::handle_event(&event, &session_manager, &storage, &Arc::new(Mutex::new(TaskManager::new(TaskManagerConfig::default(), storage.clone(), event_bus.clone()))), false, false);
         // Should not panic
     }
 
@@ -985,7 +1215,7 @@ mod tests {
             session_id: SessionId(1),
             pattern: Some("[y/n]".to_string()),
         };
-        CodirigentIntegration::handle_event(&event, &session_manager, &storage, false, false);
+        CodirigentIntegration::handle_event(&event, &session_manager, &storage, &Arc::new(Mutex::new(TaskManager::new(TaskManagerConfig::default(), storage.clone(), event_bus.clone()))), false, false);
         // Should not panic
     }
 
@@ -999,7 +1229,7 @@ mod tests {
         let event = CodirigentEvent::InputProvided {
             session_id: SessionId(1),
         };
-        CodirigentIntegration::handle_event(&event, &session_manager, &storage, false, false);
+        CodirigentIntegration::handle_event(&event, &session_manager, &storage, &Arc::new(Mutex::new(TaskManager::new(TaskManagerConfig::default(), storage.clone(), event_bus.clone()))), false, false);
         // Should not panic
     }
 
@@ -1015,7 +1245,7 @@ mod tests {
             old_name: "Old".to_string(),
             new_name: "New".to_string(),
         };
-        CodirigentIntegration::handle_event(&event, &session_manager, &storage, false, false);
+        CodirigentIntegration::handle_event(&event, &session_manager, &storage, &Arc::new(Mutex::new(TaskManager::new(TaskManagerConfig::default(), storage.clone(), event_bus.clone()))), false, false);
         // Should not panic
     }
 
@@ -1031,7 +1261,7 @@ mod tests {
             group: Some("backend".to_string()),
             color: Some("#ff0000".to_string()),
         };
-        CodirigentIntegration::handle_event(&event, &session_manager, &storage, false, false);
+        CodirigentIntegration::handle_event(&event, &session_manager, &storage, &Arc::new(Mutex::new(TaskManager::new(TaskManagerConfig::default(), storage.clone(), event_bus.clone()))), false, false);
         // Should not panic
     }
 
@@ -1069,6 +1299,7 @@ mod tests {
             &event,
             &integration.session_manager,
             &integration.storage,
+            &integration.task_manager,
             false,
             false,
         );
@@ -1087,6 +1318,134 @@ mod tests {
             &event,
             &integration.session_manager,
             &integration.storage,
+            &integration.task_manager,
+            false,
+            false,
+        );
+    }
+
+    // === Compaction Tests ===
+
+    #[test]
+    fn test_is_compacting_initially_false() {
+        let (integration, _temp) = create_test_integration();
+        assert!(!integration.is_compacting(SessionId(1)));
+    }
+
+    #[test]
+    fn test_try_compact_session_skips_when_below_threshold() {
+        let (integration, _temp) = create_test_integration();
+        let result = integration.try_compact_session(SessionId(1), Some(0.1));
+        assert!(!result);
+        assert!(!integration.is_compacting(SessionId(1)));
+    }
+
+    #[test]
+    fn test_try_compact_session_skips_when_context_unknown() {
+        let (integration, _temp) = create_test_integration();
+        let result = integration.try_compact_session(SessionId(1), None);
+        assert!(!result);
+        assert!(!integration.is_compacting(SessionId(1)));
+    }
+
+    #[test]
+    fn test_try_compact_session_skips_nonexistent_session() {
+        let (integration, _temp) = create_test_integration();
+        // Session 999 doesn't exist, so send_input will fail and compaction
+        // will clean up
+        let result = integration.try_compact_session(SessionId(999), Some(0.8));
+        assert!(!result);
+        assert!(!integration.is_compacting(SessionId(999)));
+    }
+
+    #[test]
+    fn test_try_compact_real_session() {
+        let (integration, temp) = create_test_integration();
+
+        let id = integration
+            .create_session("Compact Test".to_string(), temp.path().to_path_buf())
+            .unwrap();
+
+        // Try to compact with context above threshold
+        let result = integration.try_compact_session(id, Some(0.8));
+        assert!(result);
+        assert!(integration.is_compacting(id));
+    }
+
+    #[test]
+    fn test_try_compact_session_reentrancy_guard() {
+        let (integration, temp) = create_test_integration();
+
+        let id = integration
+            .create_session("Guard Test".to_string(), temp.path().to_path_buf())
+            .unwrap();
+
+        // First compact should succeed
+        let result1 = integration.try_compact_session(id, Some(0.8));
+        assert!(result1);
+
+        // Second compact on same session should be skipped (re-entrancy guard)
+        let result2 = integration.try_compact_session(id, Some(0.8));
+        assert!(!result2);
+    }
+
+    #[test]
+    fn test_compaction_disabled() {
+        let temp = TempDir::new().unwrap();
+        let config = IntegrationConfig {
+            auto_start_event_loop: false,
+            compaction: codirigent_core::CompactionConfig {
+                enabled: false,
+                ..Default::default()
+            },
+            ..Default::default()
+        };
+        let integration =
+            CodirigentIntegration::with_config(temp.path().to_path_buf(), config).unwrap();
+
+        let id = integration
+            .create_session("Disabled Test".to_string(), temp.path().to_path_buf())
+            .unwrap();
+
+        let result = integration.try_compact_session(id, Some(0.9));
+        assert!(!result);
+    }
+
+    #[test]
+    fn test_compaction_accessor() {
+        let (integration, _temp) = create_test_integration();
+        let compaction = integration.compaction();
+        assert!(Arc::strong_count(compaction) >= 1);
+    }
+
+    #[test]
+    fn test_handle_compaction_events() {
+        let (integration, _temp) = create_test_integration();
+
+        // CompactionStarted event should not panic
+        let event = CodirigentEvent::CompactionStarted {
+            session_id: SessionId(1),
+            focus: Some("test".to_string()),
+        };
+        CodirigentIntegration::handle_event(
+            &event,
+            &integration.session_manager,
+            &integration.storage,
+            &integration.task_manager,
+            false,
+            false,
+        );
+
+        // CompactionCompleted event should not panic
+        let event = CodirigentEvent::CompactionCompleted {
+            session_id: SessionId(1),
+            success: true,
+        };
+        CodirigentIntegration::handle_event(
+            &event,
+            &integration.session_manager,
+            &integration.storage,
+            &integration.task_manager,
             false,
             false,
         );

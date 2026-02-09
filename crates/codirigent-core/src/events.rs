@@ -164,6 +164,18 @@ pub enum CodirigentEvent {
         success: bool,
     },
 
+    /// Task status changed (automatically synced from session status).
+    TaskStatusChanged {
+        /// The task ID.
+        task_id: TaskId,
+        /// The previous status.
+        old: TaskStatus,
+        /// The new status.
+        new: TaskStatus,
+        /// Optional reason for the change.
+        reason: Option<String>,
+    },
+
     // === File Tree Events ===
     /// Path was dragged to a session.
     PathDraggedToSession {
@@ -221,6 +233,28 @@ pub enum CodirigentEvent {
         threshold: f32,
         /// The threshold state (Warning or Critical).
         state: ContextThresholdState,
+    },
+
+    // === Compaction Events ===
+    /// Auto-compaction was started for a task-board session.
+    ///
+    /// Fired when `/compact` is sent to a session before verification.
+    CompactionStarted {
+        /// The session ID being compacted.
+        session_id: SessionId,
+        /// The focus instructions sent with the compact command, if any.
+        focus: Option<String>,
+    },
+
+    /// Auto-compaction completed for a task-board session.
+    ///
+    /// Fired when the session returns to Idle after compaction,
+    /// or on timeout/error.
+    CompactionCompleted {
+        /// The session ID that was compacted.
+        session_id: SessionId,
+        /// Whether compaction completed successfully.
+        success: bool,
     },
 
     // === Skill Events ===
@@ -724,6 +758,30 @@ mod tests {
     }
 
     #[test]
+    fn test_task_status_changed_event() {
+        let event = CodirigentEvent::TaskStatusChanged {
+            task_id: TaskId("task-001".to_string()),
+            old: TaskStatus::Assigned,
+            new: TaskStatus::Working,
+            reason: Some("Session started working".to_string()),
+        };
+        if let CodirigentEvent::TaskStatusChanged {
+            task_id,
+            old,
+            new,
+            reason,
+        } = event
+        {
+            assert_eq!(task_id, TaskId("task-001".to_string()));
+            assert_eq!(old, TaskStatus::Assigned);
+            assert_eq!(new, TaskStatus::Working);
+            assert_eq!(reason, Some("Session started working".to_string()));
+        } else {
+            panic!("Wrong event type");
+        }
+    }
+
+    #[test]
     fn test_path_dragged_to_session_event() {
         let event = CodirigentEvent::PathDraggedToSession {
             session_id: SessionId(1),
@@ -1157,6 +1215,12 @@ mod tests {
                 task_id: TaskId("t".to_string()),
                 success: true,
             },
+            CodirigentEvent::TaskStatusChanged {
+                task_id: TaskId("t".to_string()),
+                old: TaskStatus::Assigned,
+                new: TaskStatus::Working,
+                reason: None,
+            },
             CodirigentEvent::PathDraggedToSession {
                 session_id: SessionId(1),
                 path: PathBuf::from("/tmp"),
@@ -1184,6 +1248,23 @@ mod tests {
                 session_id: SessionId(1),
                 threshold: 0.7,
                 state: ContextThresholdState::Warning,
+            },
+            // Compaction events
+            CodirigentEvent::CompactionStarted {
+                session_id: SessionId(1),
+                focus: Some("test focus".to_string()),
+            },
+            CodirigentEvent::CompactionStarted {
+                session_id: SessionId(2),
+                focus: None,
+            },
+            CodirigentEvent::CompactionCompleted {
+                session_id: SessionId(1),
+                success: true,
+            },
+            CodirigentEvent::CompactionCompleted {
+                session_id: SessionId(2),
+                success: false,
             },
             CodirigentEvent::SkillEnabled {
                 name: "commit".to_string(),
@@ -1662,6 +1743,72 @@ mod tests {
 
         for event in events {
             let _ = event.clone();
+        }
+    }
+
+    // === Compaction Event Tests ===
+
+    #[test]
+    fn test_compaction_started_event_with_focus() {
+        let event = CodirigentEvent::CompactionStarted {
+            session_id: SessionId(1),
+            focus: Some("Focus on implementation".to_string()),
+        };
+        if let CodirigentEvent::CompactionStarted { session_id, focus } = event {
+            assert_eq!(session_id, SessionId(1));
+            assert_eq!(focus, Some("Focus on implementation".to_string()));
+        } else {
+            panic!("Wrong event type");
+        }
+    }
+
+    #[test]
+    fn test_compaction_started_event_no_focus() {
+        let event = CodirigentEvent::CompactionStarted {
+            session_id: SessionId(2),
+            focus: None,
+        };
+        if let CodirigentEvent::CompactionStarted { session_id, focus } = event {
+            assert_eq!(session_id, SessionId(2));
+            assert!(focus.is_none());
+        } else {
+            panic!("Wrong event type");
+        }
+    }
+
+    #[test]
+    fn test_compaction_completed_event_success() {
+        let event = CodirigentEvent::CompactionCompleted {
+            session_id: SessionId(1),
+            success: true,
+        };
+        if let CodirigentEvent::CompactionCompleted {
+            session_id,
+            success,
+        } = event
+        {
+            assert_eq!(session_id, SessionId(1));
+            assert!(success);
+        } else {
+            panic!("Wrong event type");
+        }
+    }
+
+    #[test]
+    fn test_compaction_completed_event_failure() {
+        let event = CodirigentEvent::CompactionCompleted {
+            session_id: SessionId(1),
+            success: false,
+        };
+        if let CodirigentEvent::CompactionCompleted {
+            session_id,
+            success,
+        } = event
+        {
+            assert_eq!(session_id, SessionId(1));
+            assert!(!success);
+        } else {
+            panic!("Wrong event type");
         }
     }
 

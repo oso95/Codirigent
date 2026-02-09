@@ -39,7 +39,9 @@
 //! ```
 
 use crate::assignment::{AssignmentAction, AssignmentConfig, AssignmentManager};
+use crate::compaction::CompactionConfig;
 use crate::context::{ContextConfig, ContextTracker};
+use crate::events::CodirigentEvent;
 use crate::scheduler::{SchedulerConfig, TaskQueue};
 use crate::traits::{EventBus, StorageService};
 use crate::types::*;
@@ -75,6 +77,9 @@ pub struct TaskManagerConfig {
 
     /// Context tracking configuration.
     pub context: ContextConfig,
+
+    /// Compaction configuration for auto-compacting before verification.
+    pub compaction: CompactionConfig,
 }
 
 /// Central task manager coordinating all task operations.
@@ -684,6 +689,193 @@ impl TaskManager {
     /// Get a mutable reference to the context tracker.
     pub fn context_tracker_mut(&mut self) -> &mut ContextTracker {
         &mut self.context
+    }
+
+    // === Session-Task Synchronization ===
+
+    /// Find a task assigned to a specific session.
+    ///
+    /// Returns the task ID and a reference to the task.
+    pub fn find_task_by_session(&self, session_id: SessionId) -> Option<(TaskId, &Task)> {
+        self.queue
+            .all_tasks()
+            .iter()
+            .find(|(_, task)| task.assigned_session == Some(session_id))
+            .map(|(id, task)| (id.clone(), task))
+    }
+
+    /// Find a task assigned to a specific session (mutable).
+    ///
+    /// Returns the task ID of the task assigned to the session.
+    fn find_task_id_by_session(&self, session_id: SessionId) -> Option<TaskId> {
+        self.queue
+            .all_tasks()
+            .iter()
+            .find(|(_, task)| task.assigned_session == Some(session_id))
+            .map(|(id, _)| id.clone())
+    }
+
+    /// Handle session status change and automatically sync task status.
+    ///
+    /// This is the main entry point for unified task-session status tracking.
+    /// Called when a session's status changes (via SessionStatusChanged event).
+    ///
+    /// # Arguments
+    ///
+    /// * `session_id` - The session that changed status
+    /// * `old_status` - The previous session status
+    /// * `new_status` - The new session status
+    ///
+    /// # Returns
+    ///
+    /// The task ID if a task was updated, None otherwise.
+    pub fn on_session_status_changed(
+        &mut self,
+        session_id: SessionId,
+        old_status: SessionStatus,
+        new_status: SessionStatus,
+    ) -> Option<TaskId> {
+        // Find task assigned to this session
+        let task_id = self.find_task_id_by_session(session_id)?;
+
+        // Get current task status
+        let task = self.queue.get_task(&task_id)?;
+        let current_task_status = task.status;
+
+        // Determine if task status should change
+        let new_task_status = self.map_session_to_task_status(
+            old_status,
+            new_status,
+            current_task_status,
+        )?;
+
+        // Update task status
+        let reason = format!(
+            "Session {} transitioned from {:?} to {:?}",
+            session_id, old_status, new_status
+        );
+
+        if let Err(e) = self.transition_task_status(&task_id, new_task_status, Some(reason)) {
+            tracing::error!(
+                ?task_id,
+                ?session_id,
+                error = %e,
+                "Failed to transition task status"
+            );
+            return None;
+        }
+
+        Some(task_id)
+    }
+
+    /// Map session status transition to task status change.
+    ///
+    /// Implements the status mapping rules:
+    /// - Session Idle/WaitingForInput → Working (task Assigned) → Task Working
+    /// - Session Working → Idle/WaitingForInput/Done (task Working) → Task Review
+    /// - Session Error (task Working/Verifying) → Task Blocked
+    ///
+    /// # Returns
+    ///
+    /// The new task status, or None if no change is needed.
+    fn map_session_to_task_status(
+        &self,
+        old_session: SessionStatus,
+        new_session: SessionStatus,
+        current_task: TaskStatus,
+    ) -> Option<TaskStatus> {
+        match (old_session, new_session, current_task) {
+            // Session started working on an assigned task
+            (SessionStatus::Idle | SessionStatus::WaitingForInput, SessionStatus::Working, TaskStatus::Assigned) => {
+                tracing::info!("Session started working, transitioning task Assigned → Working");
+                Some(TaskStatus::Working)
+            }
+
+            // Session finished working (returned to idle/waiting)
+            (SessionStatus::Working, SessionStatus::Idle | SessionStatus::WaitingForInput | SessionStatus::Done, TaskStatus::Working) => {
+                tracing::info!("Session finished working, transitioning task Working → Review");
+                Some(TaskStatus::Review)
+            }
+
+            // Session encountered an error
+            (_, SessionStatus::Error, TaskStatus::Working | TaskStatus::Verifying) => {
+                tracing::warn!("Session encountered error, transitioning task to Blocked");
+                Some(TaskStatus::Blocked)
+            }
+
+            // Permission prompts don't change task status
+            (_, SessionStatus::NeedsPermission, _) => {
+                tracing::debug!("Session needs permission, task status unchanged");
+                None
+            }
+
+            // All other transitions don't affect task status
+            _ => None,
+        }
+    }
+
+    /// Transition a task to a new status and emit event.
+    ///
+    /// Updates task status, timestamps, persists to storage, and publishes
+    /// a TaskStatusChanged event.
+    pub fn transition_task_status(
+        &mut self,
+        task_id: &TaskId,
+        new_status: TaskStatus,
+        reason: Option<String>,
+    ) -> Result<()> {
+        let task = self
+            .queue
+            .get_task_mut(task_id)
+            .ok_or_else(|| anyhow!("Task {} not found", task_id))?;
+
+        let old_status = task.status;
+
+        // Don't transition if already in the target status
+        if old_status == new_status {
+            return Ok(());
+        }
+
+        task.status = new_status;
+
+        // Update timestamps based on status
+        match new_status {
+            TaskStatus::Working => {
+                if task.started_at.is_none() {
+                    task.started_at = Some(chrono::Utc::now());
+                }
+            }
+            TaskStatus::Done | TaskStatus::Blocked => {
+                if task.completed_at.is_none() {
+                    task.completed_at = Some(chrono::Utc::now());
+                }
+            }
+            _ => {}
+        }
+
+        // Persist to storage
+        let task_ref = self
+            .queue
+            .get_task(task_id)
+            .ok_or_else(|| anyhow!("Task {} not found after update", task_id))?;
+        self.storage.save_task(task_ref)?;
+
+        // Emit TaskStatusChanged event
+        self.event_bus.publish(CodirigentEvent::TaskStatusChanged {
+            task_id: task_id.clone(),
+            old: old_status,
+            new: new_status,
+            reason,
+        });
+
+        tracing::info!(
+            ?task_id,
+            ?old_status,
+            ?new_status,
+            "Task status transitioned"
+        );
+
+        Ok(())
     }
 }
 
@@ -1332,5 +1524,254 @@ mod tests {
             .on_task_complete(&TaskId("nonexistent".to_string()), temp.path())
             .await;
         assert!(result.is_err());
+    }
+
+    // ========== Session-Task Synchronization Tests ==========
+
+    #[test]
+    fn test_find_task_by_session() {
+        let (mut manager, _temp) = create_task_manager();
+
+        let task = Task::new(
+            TaskId("task-001".to_string()),
+            "Test".to_string(),
+            "".to_string(),
+        );
+        manager.create_task(task).unwrap();
+
+        // Assign to session
+        manager
+            .queue
+            .assign_task(&TaskId("task-001".to_string()), SessionId(42))
+            .unwrap();
+
+        // Find by session
+        let result = manager.find_task_by_session(SessionId(42));
+        assert!(result.is_some());
+        let (task_id, _task) = result.unwrap();
+        assert_eq!(task_id, TaskId("task-001".to_string()));
+
+        // Not found for different session
+        assert!(manager.find_task_by_session(SessionId(99)).is_none());
+    }
+
+    #[test]
+    fn test_session_working_transitions_assigned_to_working() {
+        let (mut manager, _temp) = create_task_manager();
+
+        // Create and assign task
+        let task = Task::new(
+            TaskId("task-001".to_string()),
+            "Test".to_string(),
+            "".to_string(),
+        );
+        manager.create_task(task).unwrap();
+        manager
+            .queue
+            .assign_task(&TaskId("task-001".to_string()), SessionId(1))
+            .unwrap();
+
+        // Simulate session starting work
+        let result = manager.on_session_status_changed(
+            SessionId(1),
+            SessionStatus::Idle,
+            SessionStatus::Working,
+        );
+
+        assert!(result.is_some());
+        assert_eq!(result.unwrap(), TaskId("task-001".to_string()));
+
+        // Verify task status changed
+        let task = manager.get_task(&TaskId("task-001".to_string())).unwrap();
+        assert_eq!(task.status, TaskStatus::Working);
+        assert!(task.started_at.is_some());
+    }
+
+    #[test]
+    fn test_session_waiting_transitions_working_to_review() {
+        let (mut manager, _temp) = create_task_manager();
+
+        // Create and assign task
+        let task = Task::new(
+            TaskId("task-001".to_string()),
+            "Test".to_string(),
+            "".to_string(),
+        );
+         // Manually set to Working
+        manager.create_task(task).unwrap();
+        manager
+            .queue
+            .assign_task(&TaskId("task-001".to_string()), SessionId(1))
+            .unwrap();
+
+        // Update task status to Working via queue
+        let task_mut = manager.queue.get_task_mut(&TaskId("task-001".to_string())).unwrap();
+        task_mut.status = TaskStatus::Working;
+
+        // Simulate session finishing work
+        let result = manager.on_session_status_changed(
+            SessionId(1),
+            SessionStatus::Working,
+            SessionStatus::WaitingForInput,
+        );
+
+        assert!(result.is_some());
+        assert_eq!(result.unwrap(), TaskId("task-001".to_string()));
+
+        // Verify task status changed
+        let task = manager.get_task(&TaskId("task-001".to_string())).unwrap();
+        assert_eq!(task.status, TaskStatus::Review);
+    }
+
+    #[test]
+    fn test_session_error_transitions_to_blocked() {
+        let (mut manager, _temp) = create_task_manager();
+
+        // Create and assign task
+        let task = Task::new(
+            TaskId("task-001".to_string()),
+            "Test".to_string(),
+            "".to_string(),
+        );
+        manager.create_task(task).unwrap();
+        manager
+            .queue
+            .assign_task(&TaskId("task-001".to_string()), SessionId(1))
+            .unwrap();
+
+        // Update task status to Working
+        let task_mut = manager.queue.get_task_mut(&TaskId("task-001".to_string())).unwrap();
+        task_mut.status = TaskStatus::Working;
+
+        // Simulate session encountering error
+        let result = manager.on_session_status_changed(
+            SessionId(1),
+            SessionStatus::Working,
+            SessionStatus::Error,
+        );
+
+        assert!(result.is_some());
+        assert_eq!(result.unwrap(), TaskId("task-001".to_string()));
+
+        // Verify task status changed
+        let task = manager.get_task(&TaskId("task-001".to_string())).unwrap();
+        assert_eq!(task.status, TaskStatus::Blocked);
+        assert!(task.completed_at.is_some());
+    }
+
+    #[test]
+    fn test_no_task_assigned_does_nothing() {
+        let (mut manager, _temp) = create_task_manager();
+
+        // No task assigned to session 99
+        let result = manager.on_session_status_changed(
+            SessionId(99),
+            SessionStatus::Idle,
+            SessionStatus::Working,
+        );
+
+        assert!(result.is_none());
+    }
+
+    #[test]
+    fn test_permission_prompt_no_status_change() {
+        let (mut manager, _temp) = create_task_manager();
+
+        // Create and assign task
+        let task = Task::new(
+            TaskId("task-001".to_string()),
+            "Test".to_string(),
+            "".to_string(),
+        );
+        manager.create_task(task).unwrap();
+        manager
+            .queue
+            .assign_task(&TaskId("task-001".to_string()), SessionId(1))
+            .unwrap();
+
+        // Simulate session needing permission
+        let result = manager.on_session_status_changed(
+            SessionId(1),
+            SessionStatus::Working,
+            SessionStatus::NeedsPermission,
+        );
+
+        // Should not change task status
+        assert!(result.is_none());
+    }
+
+    #[test]
+    fn test_transition_task_status_idempotent() {
+        let (mut manager, _temp) = create_task_manager();
+
+        let task = Task::new(
+            TaskId("task-001".to_string()),
+            "Test".to_string(),
+            "".to_string(),
+        );
+        manager.create_task(task).unwrap();
+
+        // Transition to same status should be no-op
+        let result = manager.transition_task_status(
+            &TaskId("task-001".to_string()),
+            TaskStatus::Queued,
+            None,
+        );
+        assert!(result.is_ok());
+    }
+
+    #[test]
+    fn test_map_session_to_task_status_all_cases() {
+        let (manager, _temp) = create_task_manager();
+
+        // Assigned → Working
+        assert_eq!(
+            manager.map_session_to_task_status(
+                SessionStatus::Idle,
+                SessionStatus::Working,
+                TaskStatus::Assigned
+            ),
+            Some(TaskStatus::Working)
+        );
+
+        // Working → Review
+        assert_eq!(
+            manager.map_session_to_task_status(
+                SessionStatus::Working,
+                SessionStatus::Idle,
+                TaskStatus::Working
+            ),
+            Some(TaskStatus::Review)
+        );
+
+        // Error → Blocked
+        assert_eq!(
+            manager.map_session_to_task_status(
+                SessionStatus::Working,
+                SessionStatus::Error,
+                TaskStatus::Working
+            ),
+            Some(TaskStatus::Blocked)
+        );
+
+        // Permission prompt → No change
+        assert_eq!(
+            manager.map_session_to_task_status(
+                SessionStatus::Working,
+                SessionStatus::NeedsPermission,
+                TaskStatus::Working
+            ),
+            None
+        );
+
+        // Irrelevant transitions → No change
+        assert_eq!(
+            manager.map_session_to_task_status(
+                SessionStatus::Idle,
+                SessionStatus::Idle,
+                TaskStatus::Queued
+            ),
+            None
+        );
     }
 }
