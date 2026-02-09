@@ -54,6 +54,8 @@ use codirigent_core::{
 use codirigent_detector::InputDetector;
 use codirigent_filetree::FileTree;
 use codirigent_session::claude_session_reader::{ClaudeSessionReader, ClaudeSessionStatus};
+use codirigent_session::codex_session_reader::{CodexSessionReader, CodexSessionStatus};
+use codirigent_session::gemini_session_reader::{GeminiSessionReader, GeminiSessionStatus};
 use codirigent_session::clipboard_service::{ClipboardService, DefaultClipboardService};
 use codirigent_session::DefaultSessionManager;
 use gpui::{
@@ -61,7 +63,7 @@ use gpui::{
     IntoElement, KeyDownEvent, ParentElement, Render, Styled, Window,
 };
 use std::collections::HashMap;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 use tracing::{info, warn};
@@ -217,8 +219,19 @@ pub struct WorkspaceView {
     storage: Arc<dyn codirigent_core::StorageService>,
     /// Claude Code JSONL session reader for high-fidelity status detection.
     claude_reader: Option<ClaudeSessionReader>,
+    /// Codex CLI JSONL session reader for high-fidelity status detection.
+    codex_reader: Option<CodexSessionReader>,
+    /// Gemini CLI JSON session reader for high-fidelity status detection.
+    gemini_reader: Option<GeminiSessionReader>,
     /// Last time JSONL status was checked (throttled to ~1/second).
     last_jsonl_check: Instant,
+}
+
+/// Returns `true` if the editor command refers to a terminal-based editor
+/// (one that needs to run inside an existing terminal session).
+fn is_terminal_editor(editor: &str) -> bool {
+    let base = editor.rsplit('/').next().unwrap_or(editor);
+    matches!(base, "vim" | "nvim" | "vi" | "nano" | "emacs" | "helix" | "hx" | "micro")
 }
 
 impl WorkspaceView {
@@ -369,6 +382,8 @@ impl WorkspaceView {
             config_service: DefaultConfigService::new().ok(),
             storage: storage.clone(),
             claude_reader: ClaudeSessionReader::new(),
+            codex_reader: CodexSessionReader::new(),
+            gemini_reader: GeminiSessionReader::new(),
             last_jsonl_check: Instant::now(),
         };
 
@@ -587,30 +602,39 @@ impl WorkspaceView {
                 )
             };
 
-            // Overlay JSONL-based Claude Code status (throttled to ~1/second)
+            // Overlay CLI-specific session status (throttled to ~1/second)
             if check_jsonl {
                 if let Some(session) = self.workspace.session(session_id) {
                     let working_dir = session.working_directory.clone();
-                    if let Some(ref mut reader) = self.claude_reader {
-                        match reader.get_status(&working_dir) {
-                            ClaudeSessionStatus::NeedsPermission { ref tool_name } => {
-                                status = Some(SessionStatus::NeedsPermission);
-                                // Only fire event on transition, not every poll
-                                if session.status != SessionStatus::NeedsPermission {
-                                    self.event_bus.publish(CodirigentEvent::PermissionRequired {
-                                        session_id,
-                                        tool_name: tool_name.clone(),
-                                    });
-                                }
+                    let cli_type = self.clipboard_service.get_session_cli_type(session_id);
+
+                    let cli_status = match cli_type {
+                        codirigent_core::CliType::ClaudeCode => self
+                            .claude_reader
+                            .as_mut()
+                            .and_then(|r| map_claude_status(r.get_status(&working_dir))),
+                        codirigent_core::CliType::CodexCli => self
+                            .codex_reader
+                            .as_mut()
+                            .and_then(|r| map_codex_status(r.get_status(&working_dir))),
+                        codirigent_core::CliType::GeminiCli => self
+                            .gemini_reader
+                            .as_mut()
+                            .and_then(|r| map_gemini_status(r.get_status(&working_dir))),
+                        codirigent_core::CliType::GenericShell => None,
+                    };
+
+                    if let Some((new_status, tool_name)) = cli_status {
+                        if new_status == SessionStatus::NeedsPermission {
+                            // Only fire event on transition, not every poll
+                            if session.status != SessionStatus::NeedsPermission {
+                                self.event_bus.publish(CodirigentEvent::PermissionRequired {
+                                    session_id,
+                                    tool_name,
+                                });
                             }
-                            ClaudeSessionStatus::Working => {
-                                status = Some(SessionStatus::Working);
-                            }
-                            ClaudeSessionStatus::WaitingForInput => {
-                                status = Some(SessionStatus::WaitingForInput);
-                            }
-                            ClaudeSessionStatus::Unknown => {} // fall through to detector
                         }
+                        status = Some(new_status);
                     }
                 }
             }
@@ -1615,6 +1639,67 @@ impl WorkspaceView {
         cx.notify();
     }
 
+    /// Open a file in the user's configured editor.
+    ///
+    /// GUI editors (code, zed, cursor, etc.) are spawned as separate processes.
+    /// Terminal editors (vim, nvim, nano, etc.) are injected into the focused terminal.
+    fn open_in_editor(&mut self, path: &Path) {
+        let editor = self
+            .config_service
+            .as_ref()
+            .and_then(|cs| cs.load_user_settings().ok())
+            .map(|s| s.general.editor_command)
+            .unwrap_or_else(|| "code".to_string());
+
+        let absolute_path = if path.is_absolute() {
+            path.to_path_buf()
+        } else if let Some(root) = &self.project_root {
+            root.join(path)
+        } else {
+            path.to_path_buf()
+        };
+
+        if is_terminal_editor(&editor) {
+            // Terminal editor: inject command into the focused terminal
+            if let Some(session_id) = self.workspace.focused_session_id() {
+                let path_str = if let Some(tree) = &self.file_tree_model {
+                    let tree: &FileTree = tree;
+                    tree.path_for_terminal(path)
+                } else {
+                    path.to_string_lossy().to_string()
+                };
+
+                let command = format!("{} {}\n", editor, path_str);
+                if let Ok(manager) = self.session_manager.lock() {
+                    if let Err(e) = manager.send_input(session_id, command.as_bytes()) {
+                        warn!("Failed to open file in editor: {}", e);
+                    }
+                }
+            } else {
+                warn!("No focused terminal session for terminal editor");
+            }
+        } else {
+            // GUI editor: spawn as separate process
+            match std::process::Command::new(&editor)
+                .arg(&absolute_path)
+                .spawn()
+            {
+                Ok(_) => {
+                    info!(editor, ?absolute_path, "Opened file in GUI editor");
+                }
+                Err(e) => {
+                    warn!(editor, ?e, "Failed to spawn editor, falling back to 'open'");
+                    if let Err(e2) = std::process::Command::new("open")
+                        .arg(&absolute_path)
+                        .spawn()
+                    {
+                        warn!(?e2, "Fallback 'open' command also failed");
+                    }
+                }
+            }
+        }
+    }
+
     /// Handle file tree events.
     pub(super) fn handle_file_tree_event(&mut self, event: FileTreeEvent, cx: &mut Context<Self>) {
         match event {
@@ -1629,23 +1714,7 @@ impl WorkspaceView {
             }
             FileTreeEvent::FileActivated(path) => {
                 info!(?path, "File activated");
-
-                // Open file in editor in the focused terminal session
-                if let Some(session_id) = self.workspace.focused_session_id() {
-                    let path_str = if let Some(tree) = &self.file_tree_model {
-                        let tree: &FileTree = tree;
-                        tree.path_for_terminal(&path)
-                    } else {
-                        path.to_string_lossy().to_string()
-                    };
-
-                    let command = format!("vim {}\n", path_str);
-                    if let Ok(manager) = self.session_manager.lock() {
-                        if let Err(e) = manager.send_input(session_id, command.as_bytes()) {
-                            warn!("Failed to open file in editor: {}", e);
-                        }
-                    }
-                }
+                self.open_in_editor(&path);
             }
             FileTreeEvent::DirectoryToggled(path) => {
                 info!(?path, "Directory toggled");
@@ -1875,6 +1944,35 @@ impl WorkspaceView {
             error: None,
             project_dir,
             plan_file: String::new(),
+            editing_task_id: None,
+        });
+    }
+
+    /// Open the task creation modal pre-filled with a file's name and path.
+    pub(super) fn open_task_creation_modal_for_file(&mut self, path: &Path) {
+        let project_dir = self
+            .file_tree_model
+            .as_ref()
+            .map(|t| t.root().to_path_buf());
+
+        let relative_path = project_dir
+            .as_ref()
+            .and_then(|root| path.strip_prefix(root).ok())
+            .unwrap_or(path);
+
+        let filename = path
+            .file_name()
+            .map(|n| n.to_string_lossy().to_string())
+            .unwrap_or_default();
+
+        self.task_creation_modal = Some(TaskCreationModal {
+            title: filename,
+            description: String::new(),
+            priority: codirigent_core::TaskPriority::Medium,
+            focused_field: 0,
+            error: None,
+            project_dir,
+            plan_file: relative_path.to_string_lossy().to_string(),
             editing_task_id: None,
         });
     }
@@ -2990,6 +3088,51 @@ impl WorkspaceView {
 impl Focusable for WorkspaceView {
     fn focus_handle(&self, _cx: &App) -> FocusHandle {
         self.focus_handle.clone()
+    }
+}
+
+/// Map Claude session status to a unified `SessionStatus` + optional tool name.
+/// Returns `None` for `Unknown` to fall through to the generic detector.
+fn map_claude_status(
+    status: ClaudeSessionStatus,
+) -> Option<(SessionStatus, Option<String>)> {
+    match status {
+        ClaudeSessionStatus::Working => Some((SessionStatus::Working, None)),
+        ClaudeSessionStatus::WaitingForInput => Some((SessionStatus::WaitingForInput, None)),
+        ClaudeSessionStatus::NeedsPermission { tool_name } => {
+            Some((SessionStatus::NeedsPermission, tool_name))
+        }
+        ClaudeSessionStatus::Unknown => None,
+    }
+}
+
+/// Map Codex session status to a unified `SessionStatus` + optional tool name.
+/// Returns `None` for `Unknown` to fall through to the generic detector.
+fn map_codex_status(
+    status: CodexSessionStatus,
+) -> Option<(SessionStatus, Option<String>)> {
+    match status {
+        CodexSessionStatus::Working => Some((SessionStatus::Working, None)),
+        CodexSessionStatus::WaitingForInput => Some((SessionStatus::WaitingForInput, None)),
+        CodexSessionStatus::NeedsPermission { tool_name } => {
+            Some((SessionStatus::NeedsPermission, tool_name))
+        }
+        CodexSessionStatus::Unknown => None,
+    }
+}
+
+/// Map Gemini session status to a unified `SessionStatus` + optional tool name.
+/// Returns `None` for `Unknown` to fall through to the generic detector.
+fn map_gemini_status(
+    status: GeminiSessionStatus,
+) -> Option<(SessionStatus, Option<String>)> {
+    match status {
+        GeminiSessionStatus::Working => Some((SessionStatus::Working, None)),
+        GeminiSessionStatus::WaitingForInput => Some((SessionStatus::WaitingForInput, None)),
+        GeminiSessionStatus::NeedsPermission { tool_name } => {
+            Some((SessionStatus::NeedsPermission, tool_name))
+        }
+        GeminiSessionStatus::Unknown => None,
     }
 }
 
