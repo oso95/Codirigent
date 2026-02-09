@@ -267,10 +267,14 @@ impl Workspace {
     }
 
     /// Update a session's status.
-    pub fn update_session_status(&mut self, id: SessionId, status: SessionStatus) {
+    pub fn update_session_status(&mut self, id: SessionId, status: SessionStatus) -> bool {
         if let Some(session) = self.session_mut(id) {
-            session.status = status;
+            if session.status != status {
+                session.status = status;
+                return true;
+            }
         }
+        false
     }
 
     /// Sync session metadata from the authoritative source (SessionManager).
