@@ -2000,8 +2000,9 @@ impl WorkspaceView {
         // Mode tab bar
         let grid_tab_color = if current_mode == CustomLayoutMode::Grid { primary } else { muted };
         let split_tab_color = if current_mode == CustomLayoutMode::Split { primary } else { muted };
-        let grid_tab_border = if current_mode == CustomLayoutMode::Grid { primary } else { gpui::Hsla::transparent() };
-        let split_tab_border = if current_mode == CustomLayoutMode::Split { primary } else { gpui::Hsla::transparent() };
+        let transparent = gpui::Hsla { h: 0.0, s: 0.0, l: 0.0, a: 0.0 };
+        let grid_tab_border = if current_mode == CustomLayoutMode::Grid { primary } else { transparent };
+        let split_tab_border = if current_mode == CustomLayoutMode::Split { primary } else { transparent };
 
         let mode_tabs = div()
             .flex()
