@@ -782,8 +782,13 @@ impl WorkspaceView {
         self.next_session_id = num + 1;
 
         let working_dir = self
-            .project_root
-            .clone()
+            .config_service
+            .as_ref()
+            .and_then(|cs| cs.load_user_settings().ok())
+            .and_then(|s| s.general.default_working_dir)
+            .map(PathBuf::from)
+            .filter(|p| p.is_dir())
+            .or_else(|| self.project_root.clone())
             .or_else(|| std::env::current_dir().ok())
             .unwrap_or_else(|| PathBuf::from("/tmp"));
 
