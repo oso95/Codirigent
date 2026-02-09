@@ -804,4 +804,76 @@ mod tests {
         let debug_str = format!("{:?}", result);
         assert!(debug_str.contains("Restored"));
     }
+
+    // Persistence backward compatibility tests
+
+    #[test]
+    fn test_persistent_state_with_split_tree_layout() {
+        use crate::types::{LayoutNode, SlotId, SplitDirection};
+
+        let mut state = PersistentState::new();
+        let session = Session::new(SessionId(1), "Test".to_string(), PathBuf::from("/tmp"));
+        state.add_session(PersistentSession::from_session(&session));
+        state.layout = LayoutMode::SplitTree {
+            root: LayoutNode::Split {
+                direction: SplitDirection::Horizontal,
+                ratio: 0.6,
+                first: Box::new(LayoutNode::Leaf {
+                    slot: SlotId(0),
+                }),
+                second: Box::new(LayoutNode::Leaf {
+                    slot: SlotId(1),
+                }),
+            },
+        };
+
+        // Serialize
+        let json = serde_json::to_string_pretty(&state).unwrap();
+        assert!(json.contains("SplitTree"));
+        assert!(json.contains("Horizontal"));
+
+        // Deserialize
+        let parsed: PersistentState = serde_json::from_str(&json).unwrap();
+        assert_eq!(parsed.sessions.len(), 1);
+        match &parsed.layout {
+            LayoutMode::SplitTree { root } => {
+                assert_eq!(root.leaf_count(), 2);
+                let slots = root.slots_in_order();
+                assert_eq!(slots, vec![SlotId(0), SlotId(1)]);
+            }
+            _ => panic!("Expected SplitTree layout mode"),
+        }
+    }
+
+    #[test]
+    fn test_persistent_state_backward_compat_grid_json() {
+        // Simulates old JSON format without the SplitTree variant
+        let json = r#"{
+            "sessions": [],
+            "active_session": null,
+            "layout": {"Grid": {"rows": 2, "cols": 2}},
+            "updated_at": "2024-01-01T00:00:00Z",
+            "app_version": "0.1.0"
+        }"#;
+
+        let parsed: PersistentState = serde_json::from_str(json).unwrap();
+        assert!(matches!(
+            parsed.layout,
+            LayoutMode::Grid { rows: 2, cols: 2 }
+        ));
+    }
+
+    #[test]
+    fn test_persistent_state_backward_compat_single_json() {
+        let json = r#"{
+            "sessions": [],
+            "active_session": null,
+            "layout": "Single",
+            "updated_at": "2024-01-01T00:00:00Z",
+            "app_version": "0.1.0"
+        }"#;
+
+        let parsed: PersistentState = serde_json::from_str(json).unwrap();
+        assert!(matches!(parsed.layout, LayoutMode::Single));
+    }
 }

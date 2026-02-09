@@ -243,6 +243,18 @@ impl SetLayout {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct OpenSettings;
 
+/// Split the focused pane horizontally (left-to-right).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct SplitHorizontal;
+
+/// Split the focused pane vertically (top-to-bottom).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct SplitVertical;
+
+/// Close the focused pane (unsplit), promoting its sibling.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct ClosePane;
+
 /// Open command palette.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct OpenCommandPalette;
@@ -320,6 +332,10 @@ pub fn default_keybindings() -> Vec<KeyBinding> {
         // Session management
         KeyBinding::new("Ctrl+N", "create_session"),
         KeyBinding::new("Ctrl+W", "close_session"),
+        // Pane splitting
+        KeyBinding::new("Ctrl+D", "split_horizontal"),
+        KeyBinding::new("Ctrl+Shift+D", "split_vertical"),
+        KeyBinding::new("Ctrl+Shift+W", "close_pane"),
         // Application
         KeyBinding::new("Ctrl+Q", "quit"),
         KeyBinding::new("Ctrl+,", "open_settings"),
@@ -440,6 +456,16 @@ mod tests {
     }
 
     #[test]
+    fn test_split_pane_actions() {
+        let h = SplitHorizontal;
+        let v = SplitVertical;
+        let c = ClosePane;
+        assert_eq!(h, SplitHorizontal);
+        assert_eq!(v, SplitVertical);
+        assert_eq!(c, ClosePane);
+    }
+
+    #[test]
     fn test_other_actions() {
         let settings = OpenSettings;
         let palette = OpenCommandPalette;
@@ -472,6 +498,11 @@ mod tests {
         // Should have navigation bindings
         assert!(bindings.iter().any(|b| b.action == "focus_next"));
         assert!(bindings.iter().any(|b| b.action == "focus_up"));
+
+        // Should have pane splitting bindings
+        assert!(bindings.iter().any(|b| b.action == "split_horizontal"));
+        assert!(bindings.iter().any(|b| b.action == "split_vertical"));
+        assert!(bindings.iter().any(|b| b.action == "close_pane"));
 
         // Should have app bindings
         assert!(bindings.iter().any(|b| b.action == "quit"));

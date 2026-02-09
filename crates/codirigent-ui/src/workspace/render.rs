@@ -15,12 +15,12 @@ use crate::layout::LayoutProfile;
 use crate::terminal_header::TerminalHeaderRenderHints;
 use crate::theme::CodirigentTheme;
 use crate::title_bar::TitleBar;
-use codirigent_core::{Session, SessionId};
+use codirigent_core::{LayoutNode, Session, SessionId, SlotId, SplitDirection};
 use gpui::{
-    div, prelude::FluentBuilder, px, ClickEvent, Context, FontWeight, Image, ImageFormat,
-    InteractiveElement, IntoElement, MouseButton, MouseDownEvent, MouseMoveEvent, MouseUpEvent,
-    ObjectFit, ParentElement, ScrollWheelEvent, SharedString, StatefulInteractiveElement, Styled,
-    StyledImage, Window, WindowControlArea,
+    div, prelude::FluentBuilder, px, relative, ClickEvent, Context, FontWeight, Image,
+    ImageFormat, InteractiveElement, IntoElement, MouseButton, MouseDownEvent, MouseMoveEvent,
+    MouseUpEvent, ObjectFit, ParentElement, ScrollWheelEvent, SharedString,
+    StatefulInteractiveElement, Styled, StyledImage, Window, WindowControlArea,
 };
 use std::cell::Cell;
 use std::rc::Rc;
@@ -1125,7 +1125,16 @@ impl WorkspaceView {
 
     /// This is the updated grid renderer that uses TerminalHeader for sessions
     /// and EmptySessionCell for empty slots, with actual terminal content.
-    pub(super) fn render_grid_with_headers(&mut self, cx: &mut Context<Self>) -> impl IntoElement {
+    pub(super) fn render_grid_with_headers(&mut self, cx: &mut Context<Self>) -> gpui::AnyElement {
+        if self.workspace().is_split_tree_mode() {
+            self.render_split_tree_layout(cx).into_any_element()
+        } else {
+            self.render_grid_layout(cx).into_any_element()
+        }
+    }
+
+    /// Render the traditional NxM grid layout.
+    fn render_grid_layout(&mut self, cx: &mut Context<Self>) -> impl IntoElement {
         // Clone all theme values upfront to avoid borrow issues
         let theme = self.workspace().theme().clone();
         let panel_bg: gpui::Hsla = theme.panel_background.into();
@@ -1207,6 +1216,199 @@ impl WorkspaceView {
         }
 
         grid
+    }
+
+    /// Render the split tree layout using recursive binary tree traversal.
+    fn render_split_tree_layout(&mut self, cx: &mut Context<Self>) -> impl IntoElement {
+        let theme = self.workspace().theme().clone();
+        let grid_gap = theme.grid_gap;
+
+        // Collect split tree state needed for rendering
+        let tree = match self.workspace().layout_state() {
+            crate::layout::WorkspaceLayoutState::SplitTree(s) => s.tree().clone(),
+            _ => return div().flex_1().into_any_element(),
+        };
+
+        // Build a map of slot -> (session_id, is_focused, session_name, session_status)
+        let cells = self.workspace().cell_info();
+        let focused_session = self.workspace().focused_session();
+        let split_state = self.workspace().layout_state().as_split_tree();
+        let slot_sessions: std::collections::HashMap<SlotId, (SessionId, bool, String, codirigent_core::SessionStatus)> =
+            if let Some(state) = split_state {
+                state.assignments().iter().filter_map(|(slot, opt_sid)| {
+                    let sid = (*opt_sid)?;
+                    let session = self.workspace().session(sid)?;
+                    let is_focused = focused_session == Some(sid);
+                    Some((*slot, (sid, is_focused, session.name.clone(), session.status)))
+                }).collect()
+            } else {
+                std::collections::HashMap::new()
+            };
+
+        // Get cell height for the full grid area (used for empty cells)
+        let layout = self.grid_layout_with_task_board();
+        let cell_height = layout.cell_size().height;
+
+        self.render_split_node(&tree, &slot_sessions, &theme, cell_height, grid_gap, cx)
+    }
+
+    /// Recursively render a layout node in the split tree.
+    fn render_split_node(
+        &mut self,
+        node: &LayoutNode,
+        slot_sessions: &std::collections::HashMap<SlotId, (SessionId, bool, String, codirigent_core::SessionStatus)>,
+        theme: &CodirigentTheme,
+        cell_height: f32,
+        gap: f32,
+        cx: &mut Context<Self>,
+    ) -> gpui::AnyElement {
+        let panel_bg: gpui::Hsla = theme.panel_background.into();
+        let border_color: gpui::Hsla = theme.border.into();
+        let primary_color: gpui::Hsla = theme.primary.into();
+        let muted: gpui::Hsla = theme.muted.into();
+
+        match node {
+            LayoutNode::Leaf { slot } => {
+                if let Some((session_id, is_focused, name, status)) = slot_sessions.get(slot) {
+                    let cell_border = if *is_focused {
+                        primary_color
+                    } else {
+                        border_color
+                    };
+
+                    let header_hints =
+                        if let Some(header) = self.get_terminal_header(*session_id) {
+                            header.render_hints()
+                        } else {
+                            crate::terminal_header::TerminalHeader::new(name, *status)
+                                .with_focused(*is_focused)
+                                .render_hints()
+                        };
+
+                    self.render_session_cell_with_terminal(
+                        *session_id,
+                        &header_hints,
+                        panel_bg,
+                        cell_border,
+                        border_color,
+                        theme,
+                        cell_height,
+                        cx,
+                    )
+                    .into_any_element()
+                } else {
+                    // Empty slot
+                    self.render_split_empty_slot(*slot, panel_bg, border_color, muted, cx)
+                        .into_any_element()
+                }
+            }
+            LayoutNode::Split {
+                direction,
+                ratio,
+                first,
+                second,
+            } => {
+                // Render children recursively
+                let first_elem = self.render_split_node(first, slot_sessions, theme, cell_height, gap, cx);
+                let second_elem = self.render_split_node(second, slot_sessions, theme, cell_height, gap, cx);
+
+                // Use flex ratio to distribute space: first gets `ratio`, second gets `1 - ratio`
+                // Multiply by 1000 for precision in flex-grow values
+                let first_flex = *ratio * 1000.0;
+                let second_flex = (1.0 - *ratio) * 1000.0;
+
+                let container = match direction {
+                    SplitDirection::Horizontal => {
+                        // Left-to-right split
+                        let mut first_div = div().flex().flex_col().size_full();
+                        first_div.style().flex_grow = Some(first_flex);
+                        first_div.style().flex_shrink = Some(1.0);
+                        first_div.style().flex_basis = Some(relative(0.).into());
+                        let first_div = first_div.child(first_elem);
+
+                        let mut second_div = div().flex().flex_col().size_full();
+                        second_div.style().flex_grow = Some(second_flex);
+                        second_div.style().flex_shrink = Some(1.0);
+                        second_div.style().flex_basis = Some(relative(0.).into());
+                        let second_div = second_div.child(second_elem);
+
+                        div()
+                            .flex_1()
+                            .flex()
+                            .flex_row()
+                            .gap(px(gap))
+                            .child(first_div)
+                            .child(second_div)
+                    }
+                    SplitDirection::Vertical => {
+                        // Top-to-bottom split
+                        let mut first_div = div().flex().flex_row().size_full();
+                        first_div.style().flex_grow = Some(first_flex);
+                        first_div.style().flex_shrink = Some(1.0);
+                        first_div.style().flex_basis = Some(relative(0.).into());
+                        let first_div = first_div.child(first_elem);
+
+                        let mut second_div = div().flex().flex_row().size_full();
+                        second_div.style().flex_grow = Some(second_flex);
+                        second_div.style().flex_shrink = Some(1.0);
+                        second_div.style().flex_basis = Some(relative(0.).into());
+                        let second_div = second_div.child(second_elem);
+
+                        div()
+                            .flex_1()
+                            .flex()
+                            .flex_col()
+                            .gap(px(gap))
+                            .child(first_div)
+                            .child(second_div)
+                    }
+                };
+
+                container.into_any_element()
+            }
+        }
+    }
+
+    /// Render an empty slot in split tree mode.
+    fn render_split_empty_slot(
+        &mut self,
+        slot: SlotId,
+        panel_bg: gpui::Hsla,
+        border_color: gpui::Hsla,
+        muted: gpui::Hsla,
+        cx: &mut Context<Self>,
+    ) -> gpui::Stateful<gpui::Div> {
+        div()
+            .id(SharedString::from(format!("empty-slot-{}", slot.0)))
+            .size_full()
+            .bg(panel_bg)
+            .border_1()
+            .border_color(border_color)
+            .rounded_lg()
+            .border_dashed()
+            .flex()
+            .flex_col()
+            .items_center()
+            .justify_center()
+            .gap_2()
+            .cursor_pointer()
+            .on_click(cx.listener(move |this, _: &ClickEvent, _window, cx| {
+                info!(?slot, "Empty split slot clicked");
+                cx.notify();
+            }))
+            .child(
+                div()
+                    .text_xl()
+                    .text_color(muted)
+                    .font_family(icons::LUCIDE_FONT_FAMILY)
+                    .child(icons::circle_plus()),
+            )
+            .child(
+                div()
+                    .text_xs()
+                    .text_color(muted)
+                    .child("Idle - Ready for next task"),
+            )
     }
 
     /// Render a session cell with terminal header and actual terminal content.

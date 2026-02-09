@@ -36,9 +36,9 @@ use crate::theme::CodirigentTheme;
 use crate::toolbar::CustomLayoutPicker;
 // Core imports (combined)
 use crate::app::{
-    CloseSession, Copy, FocusSession1, FocusSession2, FocusSession3, FocusSession4, FocusSession5,
-    FocusSession6, FocusSession7, FocusSession8, FocusSession9, NewSession, NextLayout,
-    OpenSettings, Paste, ToggleSidebar,
+    ClosePane, CloseSession, Copy, FocusSession1, FocusSession2, FocusSession3, FocusSession4,
+    FocusSession5, FocusSession6, FocusSession7, FocusSession8, FocusSession9, NewSession,
+    NextLayout, OpenSettings, Paste, SplitHorizontal, SplitVertical, ToggleSidebar,
 };
 use crate::clipboard;
 use crate::clipboard_preview::ClipboardPreview;
@@ -48,8 +48,8 @@ use codirigent_core::config_service::{ConfigService, DefaultConfigService};
 use codirigent_core::ClipboardContent;
 use codirigent_core::{
     AssignmentAction, CodirigentEvent, DefaultEventBus, EventBus, FileStorageService, GridPosition,
-    ProcessMonitor, Session, SessionId, SessionManager, SessionStatus, Task, TaskId, TaskManager,
-    TaskManagerConfig, WorktreeCreateOptions,
+    ProcessMonitor, Session, SessionId, SessionManager, SessionStatus, SplitDirection, Task,
+    TaskId, TaskManager, TaskManagerConfig, WorktreeCreateOptions,
 };
 use codirigent_detector::InputDetector;
 use codirigent_filetree::FileTree;
@@ -2258,6 +2258,48 @@ impl WorkspaceView {
         self.close_focused_session(cx);
     }
 
+    /// Handle SplitHorizontal action (Cmd+D).
+    fn handle_split_horizontal(
+        &mut self,
+        _action: &SplitHorizontal,
+        _window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        info!("SplitHorizontal action triggered");
+        if let Some(slot) = self.workspace.split_pane(SplitDirection::Horizontal, 0.5) {
+            info!(?slot, "Split pane horizontally, new slot created");
+            cx.notify();
+        }
+    }
+
+    /// Handle SplitVertical action (Cmd+Shift+D).
+    fn handle_split_vertical(
+        &mut self,
+        _action: &SplitVertical,
+        _window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        info!("SplitVertical action triggered");
+        if let Some(slot) = self.workspace.split_pane(SplitDirection::Vertical, 0.5) {
+            info!(?slot, "Split pane vertically, new slot created");
+            cx.notify();
+        }
+    }
+
+    /// Handle ClosePane action (Cmd+Shift+W).
+    fn handle_close_pane(
+        &mut self,
+        _action: &ClosePane,
+        _window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        info!("ClosePane action triggered");
+        if self.workspace.close_pane() {
+            info!("Closed focused pane");
+            cx.notify();
+        }
+    }
+
     /// Handle NextLayout action (Cmd+\).
     fn handle_next_layout(
         &mut self,
@@ -3290,6 +3332,9 @@ impl Render for WorkspaceView {
             .on_action(cx.listener(Self::handle_focus_session7))
             .on_action(cx.listener(Self::handle_focus_session8))
             .on_action(cx.listener(Self::handle_focus_session9))
+            .on_action(cx.listener(Self::handle_split_horizontal))
+            .on_action(cx.listener(Self::handle_split_vertical))
+            .on_action(cx.listener(Self::handle_close_pane))
             .on_action(cx.listener(Self::handle_paste))
             .on_action(cx.listener(Self::handle_copy))
             .on_action(cx.listener(Self::handle_open_settings))

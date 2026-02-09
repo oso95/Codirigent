@@ -31,7 +31,7 @@
 //! assert_eq!(layout.cell_count(), 4);
 //! ```
 
-use codirigent_core::{GridPosition, LayoutMode, SessionId};
+use codirigent_core::{GridPosition, LayoutMode, LayoutNode, SessionId, SlotId, SplitDirection};
 
 /// Recommended minimum cell width in pixels for comfortable terminal display.
 /// This is a soft limit - cells can be smaller, but will log warnings.
@@ -507,7 +507,8 @@ impl LayoutProfile {
             LayoutMode::Grid { rows: 3, cols: 3 } => Some(LayoutProfile::Grid3x3),
             LayoutMode::Single => Some(LayoutProfile::Single),
             LayoutMode::Grid { rows, cols } => LayoutProfile::custom(*rows, *cols),
-            LayoutMode::Custom { .. } => None, // Custom positions not supported
+            LayoutMode::Custom { .. } => None,   // Custom positions not supported
+            LayoutMode::SplitTree { .. } => None, // Split trees use SplitLayout, not grid profiles
         }
     }
 }
@@ -563,6 +564,11 @@ impl GridLayout {
                 let max_row = positions.iter().map(|(_, p)| p.row).max().unwrap_or(0);
                 let max_col = positions.iter().map(|(_, p)| p.col).max().unwrap_or(0);
                 (max_row + 1, max_col + 1)
+            }
+            LayoutMode::SplitTree { .. } => {
+                // SplitTree uses SplitLayout, not GridLayout.
+                // Fall back to 1x1 if someone mistakenly creates a GridLayout from SplitTree.
+                (1, 1)
             }
         };
 
@@ -736,6 +742,258 @@ impl GridLayout {
     /// Update the gap between cells.
     pub fn update_gap(&mut self, gap: f32) {
         self.gap = gap;
+    }
+}
+
+/// Information about a divider (drag handle) between split children.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct DividerInfo {
+    /// The slot whose parent split this divider belongs to.
+    /// Specifically, the first child's leftmost/topmost slot.
+    pub first_slot: SlotId,
+    /// The slot on the other side of the divider.
+    pub second_slot: SlotId,
+    /// Direction of the split (determines whether this is a vertical or horizontal bar).
+    pub direction: SplitDirection,
+    /// The bounds of the divider hit area.
+    pub bounds: Bounds,
+}
+
+/// Layout calculator for split tree layouts.
+///
+/// Sits alongside `GridLayout` — used when the workspace is in `SplitTree` mode.
+/// Performs recursive subdivision to compute pixel bounds for each leaf.
+#[derive(Debug, Clone)]
+pub struct SplitLayout {
+    /// The root of the split tree.
+    root: LayoutNode,
+    /// Total bounds available for the layout.
+    bounds: Bounds,
+    /// Gap between panes in pixels.
+    gap: f32,
+}
+
+impl SplitLayout {
+    /// Create a new split layout.
+    pub fn new(root: LayoutNode, bounds: Bounds, gap: f32) -> Self {
+        Self { root, bounds, gap }
+    }
+
+    /// Compute pixel bounds for all leaf slots.
+    ///
+    /// Returns pairs of `(SlotId, Bounds)` in DFS order.
+    pub fn leaf_bounds(&self) -> Vec<(SlotId, Bounds)> {
+        let mut result = Vec::new();
+        self.compute_bounds(&self.root, self.bounds, &mut result);
+        result
+    }
+
+    fn compute_bounds(
+        &self,
+        node: &LayoutNode,
+        available: Bounds,
+        out: &mut Vec<(SlotId, Bounds)>,
+    ) {
+        match node {
+            LayoutNode::Leaf { slot } => {
+                // Enforce minimum cell sizes
+                let clamped = Bounds::new(
+                    available.origin.x,
+                    available.origin.y,
+                    available.size.width.max(ABSOLUTE_MIN_CELL_WIDTH),
+                    available.size.height.max(ABSOLUTE_MIN_CELL_HEIGHT),
+                );
+                out.push((*slot, clamped));
+            }
+            LayoutNode::Split {
+                direction,
+                ratio,
+                first,
+                second,
+            } => {
+                let (first_bounds, second_bounds) = match direction {
+                    SplitDirection::Horizontal => {
+                        let total_w = available.size.width - self.gap;
+                        let first_w = (total_w * ratio).max(0.0);
+                        let second_w = (total_w - first_w).max(0.0);
+                        (
+                            Bounds::new(
+                                available.origin.x,
+                                available.origin.y,
+                                first_w,
+                                available.size.height,
+                            ),
+                            Bounds::new(
+                                available.origin.x + first_w + self.gap,
+                                available.origin.y,
+                                second_w,
+                                available.size.height,
+                            ),
+                        )
+                    }
+                    SplitDirection::Vertical => {
+                        let total_h = available.size.height - self.gap;
+                        let first_h = (total_h * ratio).max(0.0);
+                        let second_h = (total_h - first_h).max(0.0);
+                        (
+                            Bounds::new(
+                                available.origin.x,
+                                available.origin.y,
+                                available.size.width,
+                                first_h,
+                            ),
+                            Bounds::new(
+                                available.origin.x,
+                                available.origin.y + first_h + self.gap,
+                                available.size.width,
+                                second_h,
+                            ),
+                        )
+                    }
+                };
+                self.compute_bounds(first, first_bounds, out);
+                self.compute_bounds(second, second_bounds, out);
+            }
+        }
+    }
+
+    /// Find which slot contains a given point.
+    pub fn slot_at_point(&self, point: Point) -> Option<SlotId> {
+        for (slot, bounds) in self.leaf_bounds() {
+            if bounds.contains(point) {
+                return Some(slot);
+            }
+        }
+        None
+    }
+
+    /// Find a divider (drag handle) near a given point.
+    ///
+    /// Returns info about the closest divider within the gap region.
+    pub fn divider_at_point(&self, point: Point) -> Option<DividerInfo> {
+        let mut result = None;
+        self.find_divider(&self.root, self.bounds, point, &mut result);
+        result
+    }
+
+    fn find_divider(
+        &self,
+        node: &LayoutNode,
+        available: Bounds,
+        point: Point,
+        out: &mut Option<DividerInfo>,
+    ) {
+        let LayoutNode::Split {
+            direction,
+            ratio,
+            first,
+            second,
+        } = node
+        else {
+            return;
+        };
+
+        let first_slots = first.slots_in_order();
+        let second_slots = second.slots_in_order();
+        let first_slot = first_slots.first().copied().unwrap_or(SlotId(0));
+        let second_slot = second_slots.first().copied().unwrap_or(SlotId(0));
+
+        match direction {
+            SplitDirection::Horizontal => {
+                let total_w = available.size.width - self.gap;
+                let first_w = total_w * ratio;
+                let divider_x = available.origin.x + first_w;
+                let divider_bounds = Bounds::new(
+                    divider_x,
+                    available.origin.y,
+                    self.gap,
+                    available.size.height,
+                );
+                if divider_bounds.contains(point) {
+                    *out = Some(DividerInfo {
+                        first_slot,
+                        second_slot,
+                        direction: *direction,
+                        bounds: divider_bounds,
+                    });
+                    return;
+                }
+                // Recurse into children
+                let first_bounds = Bounds::new(
+                    available.origin.x,
+                    available.origin.y,
+                    first_w,
+                    available.size.height,
+                );
+                let second_bounds = Bounds::new(
+                    divider_x + self.gap,
+                    available.origin.y,
+                    (total_w - first_w).max(0.0),
+                    available.size.height,
+                );
+                self.find_divider(first, first_bounds, point, out);
+                if out.is_none() {
+                    self.find_divider(second, second_bounds, point, out);
+                }
+            }
+            SplitDirection::Vertical => {
+                let total_h = available.size.height - self.gap;
+                let first_h = total_h * ratio;
+                let divider_y = available.origin.y + first_h;
+                let divider_bounds = Bounds::new(
+                    available.origin.x,
+                    divider_y,
+                    available.size.width,
+                    self.gap,
+                );
+                if divider_bounds.contains(point) {
+                    *out = Some(DividerInfo {
+                        first_slot,
+                        second_slot,
+                        direction: *direction,
+                        bounds: divider_bounds,
+                    });
+                    return;
+                }
+                // Recurse into children
+                let first_bounds = Bounds::new(
+                    available.origin.x,
+                    available.origin.y,
+                    available.size.width,
+                    first_h,
+                );
+                let second_bounds = Bounds::new(
+                    available.origin.x,
+                    divider_y + self.gap,
+                    available.size.width,
+                    (total_h - first_h).max(0.0),
+                );
+                self.find_divider(first, first_bounds, point, out);
+                if out.is_none() {
+                    self.find_divider(second, second_bounds, point, out);
+                }
+            }
+        }
+    }
+
+    /// Get the root node.
+    pub fn root(&self) -> &LayoutNode {
+        &self.root
+    }
+
+    /// Get the bounds.
+    pub fn bounds(&self) -> Bounds {
+        self.bounds
+    }
+
+    /// Get the gap.
+    pub fn gap(&self) -> f32 {
+        self.gap
+    }
+
+    /// Update the bounds (e.g., on window resize).
+    pub fn update_bounds(&mut self, bounds: Bounds) {
+        self.bounds = bounds;
     }
 }
 
@@ -967,6 +1225,437 @@ impl LayoutState {
         let new_index = (new_row * cols + new_col) as usize;
         if new_index < self.assignments.len() {
             self.focused_index = Some(new_index);
+        }
+    }
+}
+
+/// Split layout state manager.
+///
+/// Manages session assignments to split tree slots, focus tracking, and slot ID generation.
+#[derive(Debug, Clone)]
+pub struct SplitLayoutState {
+    /// The split tree defining the pane arrangement.
+    tree: LayoutNode,
+    /// Session assignments: (SlotId, Option<SessionId>). Empty slots have None.
+    assignments: Vec<(SlotId, Option<SessionId>)>,
+    /// Currently focused slot.
+    focused_slot: Option<SlotId>,
+    /// Next slot ID to allocate.
+    next_slot_id: u32,
+}
+
+impl SplitLayoutState {
+    /// Create from a layout node tree.
+    pub fn new(tree: LayoutNode) -> Self {
+        let slots = tree.slots_in_order();
+        let max_id = slots.iter().map(|s| s.0).max().unwrap_or(0);
+        let assignments = slots.iter().map(|&s| (s, None)).collect();
+        Self {
+            tree,
+            assignments,
+            focused_slot: None,
+            next_slot_id: max_id + 1,
+        }
+    }
+
+    /// Create from a grid dimensions (converts to equivalent tree).
+    pub fn from_grid(rows: u32, cols: u32) -> Self {
+        Self::new(LayoutNode::from_grid(rows, cols))
+    }
+
+    /// Get the tree.
+    pub fn tree(&self) -> &LayoutNode {
+        &self.tree
+    }
+
+    /// Get the assignments.
+    pub fn assignments(&self) -> &[(SlotId, Option<SessionId>)] {
+        &self.assignments
+    }
+
+    /// Get the focused slot.
+    pub fn focused_slot(&self) -> Option<SlotId> {
+        self.focused_slot
+    }
+
+    /// Get the focused session ID.
+    pub fn focused_session(&self) -> Option<SessionId> {
+        self.focused_slot.and_then(|slot| {
+            self.assignments
+                .iter()
+                .find(|(s, _)| *s == slot)
+                .and_then(|(_, sess)| *sess)
+        })
+    }
+
+    /// Get all assigned session IDs in DFS order.
+    pub fn assigned_sessions(&self) -> Vec<SessionId> {
+        self.assignments
+            .iter()
+            .filter_map(|(_, sess)| *sess)
+            .collect()
+    }
+
+    /// Find the slot a session is assigned to.
+    pub fn slot_for_session(&self, session_id: SessionId) -> Option<SlotId> {
+        self.assignments
+            .iter()
+            .find(|(_, sess)| *sess == Some(session_id))
+            .map(|(slot, _)| *slot)
+    }
+
+    /// Assign a session to the first empty slot.
+    /// Returns true if assigned successfully.
+    pub fn add_session(&mut self, session_id: SessionId) -> bool {
+        // Don't add duplicates
+        if self
+            .assignments
+            .iter()
+            .any(|(_, s)| *s == Some(session_id))
+        {
+            return false;
+        }
+        for entry in &mut self.assignments {
+            if entry.1.is_none() {
+                entry.1 = Some(session_id);
+                return true;
+            }
+        }
+        false
+    }
+
+    /// Remove a session from its slot.
+    pub fn remove_session(&mut self, session_id: SessionId) -> bool {
+        for entry in &mut self.assignments {
+            if entry.1 == Some(session_id) {
+                entry.1 = None;
+                // If the focused slot was this session's slot, try to move focus
+                if self.focused_slot == Some(entry.0) {
+                    self.focused_slot = self
+                        .assignments
+                        .iter()
+                        .find(|(_, s)| s.is_some())
+                        .map(|(slot, _)| *slot);
+                }
+                return true;
+            }
+        }
+        false
+    }
+
+    /// Focus a session by ID.
+    pub fn focus_session(&mut self, session_id: SessionId) -> bool {
+        if let Some(slot) = self.slot_for_session(session_id) {
+            self.focused_slot = Some(slot);
+            true
+        } else {
+            false
+        }
+    }
+
+    /// Focus a specific slot.
+    pub fn focus_slot(&mut self, slot: SlotId) {
+        if self.tree.contains_slot(slot) {
+            self.focused_slot = Some(slot);
+        }
+    }
+
+    /// Focus the next occupied slot in DFS order.
+    pub fn focus_next(&mut self) {
+        let occupied: Vec<SlotId> = self
+            .assignments
+            .iter()
+            .filter(|(_, s)| s.is_some())
+            .map(|(slot, _)| *slot)
+            .collect();
+        if occupied.is_empty() {
+            return;
+        }
+        let current_idx = self
+            .focused_slot
+            .and_then(|s| occupied.iter().position(|&o| o == s));
+        let next = match current_idx {
+            Some(i) => (i + 1) % occupied.len(),
+            None => 0,
+        };
+        self.focused_slot = Some(occupied[next]);
+    }
+
+    /// Focus the previous occupied slot in DFS order.
+    pub fn focus_previous(&mut self) {
+        let occupied: Vec<SlotId> = self
+            .assignments
+            .iter()
+            .filter(|(_, s)| s.is_some())
+            .map(|(slot, _)| *slot)
+            .collect();
+        if occupied.is_empty() {
+            return;
+        }
+        let current_idx = self
+            .focused_slot
+            .and_then(|s| occupied.iter().position(|&o| o == s));
+        let prev = match current_idx {
+            Some(0) => occupied.len() - 1,
+            Some(i) => i - 1,
+            None => 0,
+        };
+        self.focused_slot = Some(occupied[prev]);
+    }
+
+    /// Spatial focus navigation — find the nearest slot in the given direction.
+    ///
+    /// Uses computed bounds centers to find the best candidate.
+    pub fn focus_direction(&mut self, direction: FocusDirection, layout: &SplitLayout) {
+        let Some(current_slot) = self.focused_slot else {
+            // No focus — pick first occupied slot
+            if let Some((slot, _)) = self.assignments.iter().find(|(_, s)| s.is_some()) {
+                self.focused_slot = Some(*slot);
+            }
+            return;
+        };
+
+        let leaf_bounds = layout.leaf_bounds();
+        let current_center = leaf_bounds
+            .iter()
+            .find(|(s, _)| *s == current_slot)
+            .map(|(_, b)| {
+                (
+                    b.origin.x + b.size.width / 2.0,
+                    b.origin.y + b.size.height / 2.0,
+                )
+            });
+        let Some((cx, cy)) = current_center else {
+            return;
+        };
+
+        let mut best: Option<(SlotId, f32)> = None;
+
+        for (slot, bounds) in &leaf_bounds {
+            if *slot == current_slot {
+                continue;
+            }
+            // Only consider occupied slots
+            if !self
+                .assignments
+                .iter()
+                .any(|(s, sess)| *s == *slot && sess.is_some())
+            {
+                continue;
+            }
+
+            let sx = bounds.origin.x + bounds.size.width / 2.0;
+            let sy = bounds.origin.y + bounds.size.height / 2.0;
+
+            let in_direction = match direction {
+                FocusDirection::Right => sx > cx,
+                FocusDirection::Left => sx < cx,
+                FocusDirection::Down => sy > cy,
+                FocusDirection::Up => sy < cy,
+            };
+
+            if in_direction {
+                let dist = (sx - cx).powi(2) + (sy - cy).powi(2);
+                if best.is_none() || dist < best.unwrap().1 {
+                    best = Some((*slot, dist));
+                }
+            }
+        }
+
+        if let Some((slot, _)) = best {
+            self.focused_slot = Some(slot);
+        }
+    }
+
+    /// Split a slot into two. Returns the new slot ID, or None if the slot wasn't found.
+    pub fn split_slot(
+        &mut self,
+        target: SlotId,
+        direction: SplitDirection,
+        ratio: f32,
+    ) -> Option<SlotId> {
+        let new_slot = SlotId(self.next_slot_id);
+        if let Some(new_tree) = self.tree.split_slot(target, direction, ratio, new_slot) {
+            self.tree = new_tree;
+            self.next_slot_id += 1;
+            // Add the new slot to assignments (empty)
+            self.assignments.push((new_slot, None));
+            Some(new_slot)
+        } else {
+            None
+        }
+    }
+
+    /// Close a slot, promoting its sibling. Returns true if successful.
+    pub fn close_slot(&mut self, target: SlotId) -> bool {
+        if let Some(new_tree) = self.tree.close_slot(target) {
+            self.tree = new_tree;
+            // Remove the closed slot from assignments
+            self.assignments.retain(|(s, _)| *s != target);
+            // Fix focus if needed
+            if self.focused_slot == Some(target) {
+                self.focused_slot = self
+                    .assignments
+                    .iter()
+                    .find(|(_, s)| s.is_some())
+                    .map(|(slot, _)| *slot);
+            }
+            true
+        } else {
+            false
+        }
+    }
+
+    /// Resize a split by updating its ratio.
+    pub fn resize_split(&mut self, target: SlotId, new_ratio: f32) -> bool {
+        if let Some(new_tree) = self.tree.set_ratio_for_slot(target, new_ratio) {
+            self.tree = new_tree;
+            true
+        } else {
+            false
+        }
+    }
+
+    /// Get the number of leaf slots.
+    pub fn slot_count(&self) -> usize {
+        self.tree.leaf_count()
+    }
+
+    /// Get the number of available (empty) slots.
+    pub fn available_slots(&self) -> usize {
+        self.assignments.iter().filter(|(_, s)| s.is_none()).count()
+    }
+
+    /// Get the session at a specific slot.
+    pub fn session_at_slot(&self, slot: SlotId) -> Option<SessionId> {
+        self.assignments
+            .iter()
+            .find(|(s, _)| *s == slot)
+            .and_then(|(_, sess)| *sess)
+    }
+}
+
+/// Unified workspace layout state wrapping both grid and split tree modes.
+#[derive(Debug, Clone)]
+pub enum WorkspaceLayoutState {
+    /// Traditional grid layout using predefined profiles.
+    Grid(LayoutState),
+    /// Binary split tree for custom asymmetric layouts.
+    SplitTree(SplitLayoutState),
+}
+
+impl Default for WorkspaceLayoutState {
+    fn default() -> Self {
+        WorkspaceLayoutState::Grid(LayoutState::new())
+    }
+}
+
+impl WorkspaceLayoutState {
+    /// Create a grid-mode state with a specific profile.
+    pub fn with_profile(profile: LayoutProfile) -> Self {
+        WorkspaceLayoutState::Grid(LayoutState::with_profile(profile))
+    }
+
+    /// Create a split-tree-mode state from a tree.
+    pub fn with_split_tree(tree: LayoutNode) -> Self {
+        WorkspaceLayoutState::SplitTree(SplitLayoutState::new(tree))
+    }
+
+    /// Check if currently in grid mode.
+    pub fn is_grid(&self) -> bool {
+        matches!(self, WorkspaceLayoutState::Grid(_))
+    }
+
+    /// Check if currently in split tree mode.
+    pub fn is_split_tree(&self) -> bool {
+        matches!(self, WorkspaceLayoutState::SplitTree(_))
+    }
+
+    /// Get the grid state, if in grid mode.
+    pub fn as_grid(&self) -> Option<&LayoutState> {
+        match self {
+            WorkspaceLayoutState::Grid(s) => Some(s),
+            _ => None,
+        }
+    }
+
+    /// Get mutable grid state, if in grid mode.
+    pub fn as_grid_mut(&mut self) -> Option<&mut LayoutState> {
+        match self {
+            WorkspaceLayoutState::Grid(s) => Some(s),
+            _ => None,
+        }
+    }
+
+    /// Get the split tree state, if in split tree mode.
+    pub fn as_split_tree(&self) -> Option<&SplitLayoutState> {
+        match self {
+            WorkspaceLayoutState::SplitTree(s) => Some(s),
+            _ => None,
+        }
+    }
+
+    /// Get mutable split tree state, if in split tree mode.
+    pub fn as_split_tree_mut(&mut self) -> Option<&mut SplitLayoutState> {
+        match self {
+            WorkspaceLayoutState::SplitTree(s) => Some(s),
+            _ => None,
+        }
+    }
+
+    /// Add a session. Delegates to the active variant.
+    pub fn add_session(&mut self, session_id: SessionId) -> bool {
+        match self {
+            WorkspaceLayoutState::Grid(s) => s.add_session(session_id),
+            WorkspaceLayoutState::SplitTree(s) => s.add_session(session_id),
+        }
+    }
+
+    /// Remove a session. Delegates to the active variant.
+    pub fn remove_session(&mut self, session_id: SessionId) -> bool {
+        match self {
+            WorkspaceLayoutState::Grid(s) => s.remove_session(session_id),
+            WorkspaceLayoutState::SplitTree(s) => s.remove_session(session_id),
+        }
+    }
+
+    /// Get the focused session ID.
+    pub fn focused_session(&self) -> Option<SessionId> {
+        match self {
+            WorkspaceLayoutState::Grid(s) => s.focused_session(),
+            WorkspaceLayoutState::SplitTree(s) => s.focused_session(),
+        }
+    }
+
+    /// Focus a session by ID.
+    pub fn focus_session(&mut self, session_id: SessionId) -> bool {
+        match self {
+            WorkspaceLayoutState::Grid(s) => s.focus_session(session_id),
+            WorkspaceLayoutState::SplitTree(s) => s.focus_session(session_id),
+        }
+    }
+
+    /// Focus next session.
+    pub fn focus_next(&mut self) {
+        match self {
+            WorkspaceLayoutState::Grid(s) => s.focus_next(),
+            WorkspaceLayoutState::SplitTree(s) => s.focus_next(),
+        }
+    }
+
+    /// Focus previous session.
+    pub fn focus_previous(&mut self) {
+        match self {
+            WorkspaceLayoutState::Grid(s) => s.focus_previous(),
+            WorkspaceLayoutState::SplitTree(s) => s.focus_previous(),
+        }
+    }
+
+    /// Get all assigned session IDs in order.
+    pub fn assigned_sessions(&self) -> Vec<SessionId> {
+        match self {
+            WorkspaceLayoutState::Grid(s) => s.assignments().to_vec(),
+            WorkspaceLayoutState::SplitTree(s) => s.assigned_sessions(),
         }
     }
 }
@@ -1808,5 +2497,439 @@ mod tests {
         // Recommended minimums should be reasonable
         assert!(rec_w >= 300.0);
         assert!(rec_h >= 200.0);
+    }
+
+    // ============================================================
+    // SplitLayout tests
+    // ============================================================
+
+    #[test]
+    fn test_split_layout_single_leaf() {
+        let root = LayoutNode::Leaf { slot: SlotId(0) };
+        let layout = SplitLayout::new(root, test_bounds(), 4.0);
+        let leaves = layout.leaf_bounds();
+        assert_eq!(leaves.len(), 1);
+        assert_eq!(leaves[0].0, SlotId(0));
+        assert_eq!(leaves[0].1.size.width, 1000.0);
+        assert_eq!(leaves[0].1.size.height, 800.0);
+    }
+
+    #[test]
+    fn test_split_layout_horizontal_split() {
+        let root = LayoutNode::Split {
+            direction: SplitDirection::Horizontal,
+            ratio: 0.5,
+            first: Box::new(LayoutNode::Leaf { slot: SlotId(0) }),
+            second: Box::new(LayoutNode::Leaf { slot: SlotId(1) }),
+        };
+        let layout = SplitLayout::new(root, Bounds::from_size(1000.0, 800.0), 4.0);
+        let leaves = layout.leaf_bounds();
+
+        assert_eq!(leaves.len(), 2);
+        // First child: 0.5 * (1000 - 4) = 498
+        assert!((leaves[0].1.size.width - 498.0).abs() < 0.01);
+        // Second child: (1000 - 4) - 498 = 498
+        assert!((leaves[1].1.size.width - 498.0).abs() < 0.01);
+        // Both full height
+        assert_eq!(leaves[0].1.size.height, 800.0);
+        assert_eq!(leaves[1].1.size.height, 800.0);
+        // Second child starts after first + gap
+        assert!((leaves[1].1.origin.x - 502.0).abs() < 0.01);
+    }
+
+    #[test]
+    fn test_split_layout_vertical_split() {
+        let root = LayoutNode::Split {
+            direction: SplitDirection::Vertical,
+            ratio: 0.5,
+            first: Box::new(LayoutNode::Leaf { slot: SlotId(0) }),
+            second: Box::new(LayoutNode::Leaf { slot: SlotId(1) }),
+        };
+        let layout = SplitLayout::new(root, Bounds::from_size(1000.0, 800.0), 4.0);
+        let leaves = layout.leaf_bounds();
+
+        assert_eq!(leaves.len(), 2);
+        // First child: 0.5 * (800 - 4) = 398
+        assert!((leaves[0].1.size.height - 398.0).abs() < 0.01);
+        // Second child: (800 - 4) - 398 = 398
+        assert!((leaves[1].1.size.height - 398.0).abs() < 0.01);
+        // Both full width
+        assert_eq!(leaves[0].1.size.width, 1000.0);
+        assert_eq!(leaves[1].1.size.width, 1000.0);
+    }
+
+    #[test]
+    fn test_split_layout_grid_2x2_matches_grid_layout() {
+        // A 2x2 grid-equivalent tree should produce similar bounds to GridLayout.
+        let tree = LayoutNode::from_grid(2, 2);
+        let bounds = Bounds::from_size(1000.0, 800.0);
+        let gap = 4.0;
+
+        let split_layout = SplitLayout::new(tree, bounds, gap);
+        let split_leaves = split_layout.leaf_bounds();
+
+        let grid_layout = GridLayout::new(LayoutMode::Grid { rows: 2, cols: 2 }, bounds, gap);
+
+        // There should be 4 leaves
+        assert_eq!(split_leaves.len(), 4);
+
+        // Compare bounds for each cell
+        for (i, (slot_id, split_bounds)) in split_leaves.iter().enumerate() {
+            assert_eq!(slot_id.0, i as u32);
+            let grid_bounds = grid_layout.cell_bounds_for_index(i).unwrap();
+
+            // Widths and heights should match within floating-point tolerance
+            assert!(
+                (split_bounds.size.width - grid_bounds.size.width).abs() < 1.0,
+                "Cell {} width mismatch: split={}, grid={}",
+                i,
+                split_bounds.size.width,
+                grid_bounds.size.width
+            );
+            assert!(
+                (split_bounds.size.height - grid_bounds.size.height).abs() < 1.0,
+                "Cell {} height mismatch: split={}, grid={}",
+                i,
+                split_bounds.size.height,
+                grid_bounds.size.height
+            );
+        }
+    }
+
+    #[test]
+    fn test_split_layout_grid_1x4_matches_grid_layout() {
+        let tree = LayoutNode::from_grid(1, 4);
+        let bounds = Bounds::from_size(2000.0, 800.0);
+        let gap = 4.0;
+
+        let split_layout = SplitLayout::new(tree, bounds, gap);
+        let split_leaves = split_layout.leaf_bounds();
+
+        let grid_layout = GridLayout::new(LayoutMode::Grid { rows: 1, cols: 4 }, bounds, gap);
+
+        assert_eq!(split_leaves.len(), 4);
+        for (i, (_slot, split_b)) in split_leaves.iter().enumerate() {
+            let grid_b = grid_layout.cell_bounds_for_index(i).unwrap();
+            // Binary tree splits introduce small rounding differences
+            // due to nested gap subtraction, so we allow up to 3px tolerance.
+            assert!(
+                (split_b.size.width - grid_b.size.width).abs() < 3.0,
+                "Cell {} width mismatch: split={}, grid={}",
+                i,
+                split_b.size.width,
+                grid_b.size.width
+            );
+        }
+    }
+
+    #[test]
+    fn test_split_layout_slot_at_point() {
+        let root = LayoutNode::Split {
+            direction: SplitDirection::Horizontal,
+            ratio: 0.5,
+            first: Box::new(LayoutNode::Leaf { slot: SlotId(0) }),
+            second: Box::new(LayoutNode::Leaf { slot: SlotId(1) }),
+        };
+        let layout = SplitLayout::new(root, Bounds::from_size(1000.0, 800.0), 4.0);
+
+        // Point in left half
+        assert_eq!(layout.slot_at_point(Point::new(100.0, 400.0)), Some(SlotId(0)));
+        // Point in right half
+        assert_eq!(layout.slot_at_point(Point::new(700.0, 400.0)), Some(SlotId(1)));
+        // Point outside
+        assert_eq!(layout.slot_at_point(Point::new(1100.0, 400.0)), None);
+    }
+
+    #[test]
+    fn test_split_layout_divider_at_point() {
+        let root = LayoutNode::Split {
+            direction: SplitDirection::Horizontal,
+            ratio: 0.5,
+            first: Box::new(LayoutNode::Leaf { slot: SlotId(0) }),
+            second: Box::new(LayoutNode::Leaf { slot: SlotId(1) }),
+        };
+        let layout = SplitLayout::new(root, Bounds::from_size(1000.0, 800.0), 4.0);
+
+        // The divider should be at x = 498 (0.5 * (1000-4)), width = 4
+        let divider = layout.divider_at_point(Point::new(499.0, 400.0));
+        assert!(divider.is_some());
+        let d = divider.unwrap();
+        assert_eq!(d.first_slot, SlotId(0));
+        assert_eq!(d.second_slot, SlotId(1));
+        assert_eq!(d.direction, SplitDirection::Horizontal);
+
+        // Point not on divider
+        assert!(layout.divider_at_point(Point::new(100.0, 400.0)).is_none());
+    }
+
+    #[test]
+    fn test_split_layout_asymmetric() {
+        // 2 stacked on left + 1 full-height on right
+        // H(0.5, V(0.5, slot0, slot1), slot2)
+        let root = LayoutNode::Split {
+            direction: SplitDirection::Horizontal,
+            ratio: 0.5,
+            first: Box::new(LayoutNode::Split {
+                direction: SplitDirection::Vertical,
+                ratio: 0.5,
+                first: Box::new(LayoutNode::Leaf { slot: SlotId(0) }),
+                second: Box::new(LayoutNode::Leaf { slot: SlotId(1) }),
+            }),
+            second: Box::new(LayoutNode::Leaf { slot: SlotId(2) }),
+        };
+        let layout = SplitLayout::new(root, Bounds::from_size(1000.0, 800.0), 4.0);
+        let leaves = layout.leaf_bounds();
+
+        assert_eq!(leaves.len(), 3);
+        // Slot 0: top-left
+        assert_eq!(leaves[0].0, SlotId(0));
+        // Slot 1: bottom-left
+        assert_eq!(leaves[1].0, SlotId(1));
+        // Slot 2: full right side
+        assert_eq!(leaves[2].0, SlotId(2));
+        // Right pane should be full height
+        assert_eq!(leaves[2].1.size.height, 800.0);
+        // Left panes should be half height each (minus gap)
+        assert!((leaves[0].1.size.height - leaves[1].1.size.height).abs() < 1.0);
+    }
+
+    #[test]
+    fn test_split_layout_update_bounds() {
+        let root = LayoutNode::Leaf { slot: SlotId(0) };
+        let mut layout = SplitLayout::new(root, Bounds::from_size(1000.0, 800.0), 4.0);
+        layout.update_bounds(Bounds::from_size(2000.0, 1600.0));
+        let leaves = layout.leaf_bounds();
+        assert_eq!(leaves[0].1.size.width, 2000.0);
+        assert_eq!(leaves[0].1.size.height, 1600.0);
+    }
+
+    #[test]
+    fn test_split_layout_accessors() {
+        let root = LayoutNode::Leaf { slot: SlotId(0) };
+        let layout = SplitLayout::new(root.clone(), Bounds::from_size(100.0, 100.0), 2.0);
+        assert_eq!(*layout.root(), root);
+        assert_eq!(layout.bounds().size.width, 100.0);
+        assert_eq!(layout.gap(), 2.0);
+    }
+
+    // ============================================================
+    // SplitLayoutState tests
+    // ============================================================
+
+    #[test]
+    fn test_split_layout_state_new() {
+        let tree = LayoutNode::from_grid(2, 2);
+        let state = SplitLayoutState::new(tree);
+        assert_eq!(state.slot_count(), 4);
+        assert_eq!(state.available_slots(), 4);
+        assert!(state.focused_slot().is_none());
+    }
+
+    #[test]
+    fn test_split_layout_state_from_grid() {
+        let state = SplitLayoutState::from_grid(2, 3);
+        assert_eq!(state.slot_count(), 6);
+    }
+
+    #[test]
+    fn test_split_layout_state_add_session() {
+        let mut state = SplitLayoutState::from_grid(2, 2);
+        assert!(state.add_session(SessionId(1)));
+        assert!(state.add_session(SessionId(2)));
+        assert_eq!(state.available_slots(), 2);
+
+        // Duplicate rejected
+        assert!(!state.add_session(SessionId(1)));
+    }
+
+    #[test]
+    fn test_split_layout_state_add_session_full() {
+        let mut state = SplitLayoutState::new(LayoutNode::Leaf { slot: SlotId(0) });
+        assert!(state.add_session(SessionId(1)));
+        assert!(!state.add_session(SessionId(2))); // Only one slot
+    }
+
+    #[test]
+    fn test_split_layout_state_remove_session() {
+        let mut state = SplitLayoutState::from_grid(2, 2);
+        state.add_session(SessionId(1));
+        state.add_session(SessionId(2));
+        assert!(state.remove_session(SessionId(1)));
+        assert_eq!(state.available_slots(), 3);
+        assert!(!state.remove_session(SessionId(99)));
+    }
+
+    #[test]
+    fn test_split_layout_state_focus_session() {
+        let mut state = SplitLayoutState::from_grid(2, 2);
+        state.add_session(SessionId(1));
+        state.add_session(SessionId(2));
+
+        assert!(state.focus_session(SessionId(2)));
+        assert_eq!(state.focused_session(), Some(SessionId(2)));
+
+        assert!(!state.focus_session(SessionId(99)));
+    }
+
+    #[test]
+    fn test_split_layout_state_focus_next_previous() {
+        let mut state = SplitLayoutState::from_grid(1, 3);
+        state.add_session(SessionId(1));
+        state.add_session(SessionId(2));
+        state.add_session(SessionId(3));
+        state.focus_session(SessionId(1));
+
+        state.focus_next();
+        assert_eq!(state.focused_session(), Some(SessionId(2)));
+
+        state.focus_next();
+        assert_eq!(state.focused_session(), Some(SessionId(3)));
+
+        state.focus_next();
+        assert_eq!(state.focused_session(), Some(SessionId(1))); // wrap
+
+        state.focus_previous();
+        assert_eq!(state.focused_session(), Some(SessionId(3))); // wrap back
+    }
+
+    #[test]
+    fn test_split_layout_state_focus_direction() {
+        let mut state = SplitLayoutState::from_grid(2, 2);
+        state.add_session(SessionId(1));
+        state.add_session(SessionId(2));
+        state.add_session(SessionId(3));
+        state.add_session(SessionId(4));
+        state.focus_session(SessionId(1)); // top-left
+
+        let layout = SplitLayout::new(
+            state.tree().clone(),
+            Bounds::from_size(1000.0, 800.0),
+            4.0,
+        );
+
+        // Move right
+        state.focus_direction(FocusDirection::Right, &layout);
+        assert_eq!(state.focused_session(), Some(SessionId(2)));
+
+        // Move down
+        state.focus_direction(FocusDirection::Down, &layout);
+        assert_eq!(state.focused_session(), Some(SessionId(4)));
+
+        // Move left
+        state.focus_direction(FocusDirection::Left, &layout);
+        assert_eq!(state.focused_session(), Some(SessionId(3)));
+
+        // Move up
+        state.focus_direction(FocusDirection::Up, &layout);
+        assert_eq!(state.focused_session(), Some(SessionId(1)));
+    }
+
+    #[test]
+    fn test_split_layout_state_split_and_close() {
+        let mut state = SplitLayoutState::new(LayoutNode::Leaf { slot: SlotId(0) });
+        state.add_session(SessionId(1));
+
+        // Split the slot
+        let new_slot = state
+            .split_slot(SlotId(0), SplitDirection::Horizontal, 0.5)
+            .unwrap();
+        assert_eq!(state.slot_count(), 2);
+        assert_eq!(state.available_slots(), 1);
+
+        // Add a session to the new slot
+        state.add_session(SessionId(2));
+        assert_eq!(state.available_slots(), 0);
+
+        // Close the new slot
+        assert!(state.close_slot(new_slot));
+        assert_eq!(state.slot_count(), 1);
+    }
+
+    #[test]
+    fn test_split_layout_state_resize() {
+        let mut state = SplitLayoutState::from_grid(1, 2);
+        assert!(state.resize_split(SlotId(0), 0.3));
+    }
+
+    #[test]
+    fn test_split_layout_state_assigned_sessions() {
+        let mut state = SplitLayoutState::from_grid(2, 2);
+        state.add_session(SessionId(1));
+        state.add_session(SessionId(2));
+        let sessions = state.assigned_sessions();
+        assert_eq!(sessions, vec![SessionId(1), SessionId(2)]);
+    }
+
+    #[test]
+    fn test_split_layout_state_session_at_slot() {
+        let mut state = SplitLayoutState::from_grid(2, 2);
+        state.add_session(SessionId(42));
+        assert_eq!(state.session_at_slot(SlotId(0)), Some(SessionId(42)));
+        assert_eq!(state.session_at_slot(SlotId(1)), None);
+    }
+
+    // ============================================================
+    // WorkspaceLayoutState tests
+    // ============================================================
+
+    #[test]
+    fn test_workspace_layout_state_default_is_grid() {
+        let wls = WorkspaceLayoutState::default();
+        assert!(wls.is_grid());
+        assert!(!wls.is_split_tree());
+    }
+
+    #[test]
+    fn test_workspace_layout_state_with_profile() {
+        let wls = WorkspaceLayoutState::with_profile(LayoutProfile::Grid3x3);
+        assert!(wls.is_grid());
+        assert_eq!(wls.as_grid().unwrap().profile(), LayoutProfile::Grid3x3);
+    }
+
+    #[test]
+    fn test_workspace_layout_state_with_split_tree() {
+        let tree = LayoutNode::from_grid(2, 2);
+        let wls = WorkspaceLayoutState::with_split_tree(tree);
+        assert!(wls.is_split_tree());
+        assert!(!wls.is_grid());
+    }
+
+    #[test]
+    fn test_workspace_layout_state_grid_operations() {
+        let mut wls = WorkspaceLayoutState::default();
+        assert!(wls.add_session(SessionId(1)));
+        assert!(wls.add_session(SessionId(2)));
+        assert_eq!(wls.focused_session(), None);
+
+        assert!(wls.focus_session(SessionId(1)));
+        assert_eq!(wls.focused_session(), Some(SessionId(1)));
+
+        wls.focus_next();
+        assert_eq!(wls.focused_session(), Some(SessionId(2)));
+
+        wls.focus_previous();
+        assert_eq!(wls.focused_session(), Some(SessionId(1)));
+
+        let sessions = wls.assigned_sessions();
+        assert_eq!(sessions, vec![SessionId(1), SessionId(2)]);
+
+        assert!(wls.remove_session(SessionId(1)));
+    }
+
+    #[test]
+    fn test_workspace_layout_state_split_operations() {
+        let tree = LayoutNode::from_grid(2, 2);
+        let mut wls = WorkspaceLayoutState::with_split_tree(tree);
+        assert!(wls.add_session(SessionId(1)));
+        assert!(wls.add_session(SessionId(2)));
+
+        assert!(wls.focus_session(SessionId(2)));
+        assert_eq!(wls.focused_session(), Some(SessionId(2)));
+
+        wls.focus_next();
+        assert_eq!(wls.focused_session(), Some(SessionId(1))); // wrap
+
+        wls.focus_previous();
+        assert_eq!(wls.focused_session(), Some(SessionId(2))); // wrap back
     }
 }

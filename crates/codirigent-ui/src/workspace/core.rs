@@ -27,10 +27,11 @@
 //! ```
 
 use crate::layout::{
-    Bounds, FocusDirection, GridLayout, LayoutProfile, LayoutState, Point, TOP_BAR_HEIGHT,
+    Bounds, FocusDirection, GridLayout, LayoutProfile, LayoutState, Point, SplitLayout,
+    SplitLayoutState, WorkspaceLayoutState, TOP_BAR_HEIGHT,
 };
 use crate::theme::CodirigentTheme;
-use codirigent_core::{Session, SessionId, SessionStatus};
+use codirigent_core::{LayoutNode, Session, SessionId, SessionStatus, SlotId, SplitDirection};
 
 /// Main workspace containing the grid of sessions.
 ///
@@ -41,8 +42,8 @@ use codirigent_core::{Session, SessionId, SessionStatus};
 /// - Providing session navigation
 #[derive(Debug)]
 pub struct Workspace {
-    /// Layout state (profile and assignments).
-    layout_state: LayoutState,
+    /// Unified layout state supporting both grid and split tree modes.
+    layout_state: WorkspaceLayoutState,
     /// Sessions in the workspace.
     sessions: Vec<Session>,
     /// Theme configuration.
@@ -67,7 +68,7 @@ impl Workspace {
     /// Create a new workspace with default settings.
     pub fn new() -> Self {
         Self {
-            layout_state: LayoutState::new(),
+            layout_state: WorkspaceLayoutState::default(),
             sessions: Vec::new(),
             theme: CodirigentTheme::default(),
             show_sidebar: true,
@@ -80,7 +81,7 @@ impl Workspace {
     /// Create a new workspace with a specific layout profile.
     pub fn with_profile(profile: LayoutProfile) -> Self {
         Self {
-            layout_state: LayoutState::with_profile(profile),
+            layout_state: WorkspaceLayoutState::with_profile(profile),
             sessions: Vec::new(),
             theme: CodirigentTheme::default(),
             show_sidebar: true,
@@ -93,33 +94,96 @@ impl Workspace {
     // --- Layout Management ---
 
     /// Get the current layout profile.
+    ///
+    /// Returns the grid profile if in grid mode, or `Grid2x2` as fallback
+    /// if in split tree mode (split trees don't map to a single profile).
     pub fn layout_profile(&self) -> LayoutProfile {
-        self.layout_state.profile()
+        match &self.layout_state {
+            WorkspaceLayoutState::Grid(s) => s.profile(),
+            WorkspaceLayoutState::SplitTree(_) => LayoutProfile::Grid2x2,
+        }
     }
 
-    /// Set the layout profile.
+    /// Set the layout profile, switching to grid mode.
+    ///
+    /// When switching from split tree to grid, sessions are re-assigned
+    /// in their current order to the new grid.
     pub fn set_layout(&mut self, profile: LayoutProfile) {
-        self.layout_state.set_profile(profile);
+        match &mut self.layout_state {
+            WorkspaceLayoutState::Grid(s) => s.set_profile(profile),
+            WorkspaceLayoutState::SplitTree(split_state) => {
+                // Collect current sessions and focus
+                let sessions = split_state.assigned_sessions();
+                let focused = split_state.focused_session();
+
+                let mut grid_state = LayoutState::with_profile(profile);
+                for sess in &sessions {
+                    grid_state.add_session(*sess);
+                }
+                if let Some(fid) = focused {
+                    grid_state.focus_session(fid);
+                }
+                self.layout_state = WorkspaceLayoutState::Grid(grid_state);
+            }
+        }
     }
 
     /// Cycle to the next layout profile.
     pub fn next_layout(&mut self) {
-        self.layout_state.next_profile();
+        match &mut self.layout_state {
+            WorkspaceLayoutState::Grid(s) => s.next_profile(),
+            WorkspaceLayoutState::SplitTree(_) => {
+                // Switch to Grid2x2
+                self.set_layout(LayoutProfile::Grid2x2);
+            }
+        }
     }
 
     /// Cycle to the previous layout profile.
     pub fn previous_layout(&mut self) {
-        self.layout_state.previous_profile();
+        match &mut self.layout_state {
+            WorkspaceLayoutState::Grid(s) => s.previous_profile(),
+            WorkspaceLayoutState::SplitTree(_) => {
+                self.set_layout(LayoutProfile::Single);
+            }
+        }
     }
 
     /// Get the grid layout calculator for the current state.
+    ///
+    /// Only meaningful in grid mode; in split tree mode, returns a 1x1 grid.
     pub fn grid_layout(&self) -> GridLayout {
         let grid_bounds = self.grid_bounds();
-        GridLayout::from_profile(
-            self.layout_state.profile(),
-            grid_bounds,
-            self.theme.grid_gap,
-        )
+        match &self.layout_state {
+            WorkspaceLayoutState::Grid(s) => {
+                GridLayout::from_profile(s.profile(), grid_bounds, self.theme.grid_gap)
+            }
+            WorkspaceLayoutState::SplitTree(_) => {
+                GridLayout::from_profile(LayoutProfile::Single, grid_bounds, self.theme.grid_gap)
+            }
+        }
+    }
+
+    /// Get a split layout calculator, if in split tree mode.
+    pub fn split_layout(&self) -> Option<SplitLayout> {
+        match &self.layout_state {
+            WorkspaceLayoutState::SplitTree(s) => Some(SplitLayout::new(
+                s.tree().clone(),
+                self.grid_bounds(),
+                self.theme.grid_gap,
+            )),
+            _ => None,
+        }
+    }
+
+    /// Check if the workspace is in split tree mode.
+    pub fn is_split_tree_mode(&self) -> bool {
+        self.layout_state.is_split_tree()
+    }
+
+    /// Get the underlying layout state.
+    pub fn layout_state(&self) -> &WorkspaceLayoutState {
+        &self.layout_state
     }
 
     // --- Session Management ---
@@ -141,7 +205,7 @@ impl Workspace {
 
     /// Add a session to the workspace.
     ///
-    /// The session is automatically assigned to the next available grid slot.
+    /// The session is automatically assigned to the next available slot.
     ///
     /// # Returns
     ///
@@ -162,8 +226,8 @@ impl Workspace {
         self.sessions.push(session);
 
         // Focus the new session if it's the first one
-        if self.layout_state.focused_index().is_none() {
-            self.layout_state.focus_index(0);
+        if self.layout_state.focused_session().is_none() {
+            self.layout_state.focus_session(id);
         }
 
         true
@@ -215,18 +279,21 @@ impl Workspace {
         }
     }
 
-    /// Get the visible sessions (those assigned to grid cells).
+    /// Get the visible sessions (those assigned to cells/slots).
     pub fn visible_sessions(&self) -> Vec<&Session> {
         self.layout_state
-            .assignments()
+            .assigned_sessions()
             .iter()
-            .filter_map(|&id| self.session(id))
+            .filter_map(|id| self.session(*id))
             .collect()
     }
 
     /// Get the number of sessions that can still be added.
     pub fn available_slots(&self) -> usize {
-        self.layout_state.profile().max_sessions() - self.layout_state.assignments().len()
+        match &self.layout_state {
+            WorkspaceLayoutState::Grid(s) => s.profile().max_sessions() - s.assignments().len(),
+            WorkspaceLayoutState::SplitTree(s) => s.available_slots(),
+        }
     }
 
     // --- Focus Management ---
@@ -256,11 +323,22 @@ impl Workspace {
     ///
     /// `true` if the index is valid and session was focused.
     pub fn focus_session_number(&mut self, number: usize) -> bool {
-        if number == 0 || number > self.layout_state.assignments().len() {
-            return false;
+        match &mut self.layout_state {
+            WorkspaceLayoutState::Grid(s) => {
+                if number == 0 || number > s.assignments().len() {
+                    return false;
+                }
+                s.focus_index(number - 1);
+                true
+            }
+            WorkspaceLayoutState::SplitTree(s) => {
+                let sessions = s.assigned_sessions();
+                if number == 0 || number > sessions.len() {
+                    return false;
+                }
+                s.focus_session(sessions[number - 1])
+            }
         }
-        self.layout_state.focus_index(number - 1);
-        true
     }
 
     /// Focus the next session.
@@ -275,7 +353,97 @@ impl Workspace {
 
     /// Focus in a direction (for arrow key navigation).
     pub fn focus_direction(&mut self, direction: FocusDirection) {
-        self.layout_state.focus_direction(direction);
+        // Extract bounds and gap before mutable borrow of layout_state
+        let bounds = self.grid_bounds();
+        let gap = self.theme.grid_gap;
+        match &mut self.layout_state {
+            WorkspaceLayoutState::Grid(s) => s.focus_direction(direction),
+            WorkspaceLayoutState::SplitTree(s) => {
+                let layout = SplitLayout::new(
+                    s.tree().clone(),
+                    bounds,
+                    gap,
+                );
+                s.focus_direction(direction, &layout);
+            }
+        }
+    }
+
+    // --- Split Pane Operations ---
+
+    /// Split the focused pane into two.
+    ///
+    /// Switches to split tree mode if currently in grid mode.
+    /// Returns the new slot ID, or None if no pane is focused.
+    pub fn split_pane(&mut self, direction: SplitDirection, ratio: f32) -> Option<SlotId> {
+        // Ensure we're in split tree mode
+        if self.layout_state.is_grid() {
+            self.convert_to_split_tree();
+        }
+
+        if let WorkspaceLayoutState::SplitTree(s) = &mut self.layout_state {
+            let target = s.focused_slot()?;
+            s.split_slot(target, direction, ratio)
+        } else {
+            None
+        }
+    }
+
+    /// Close a pane (slot), promoting its sibling.
+    ///
+    /// If only one pane remains, switches back to grid mode.
+    pub fn close_pane(&mut self) -> bool {
+        if let WorkspaceLayoutState::SplitTree(s) = &mut self.layout_state {
+            if let Some(target) = s.focused_slot() {
+                let result = s.close_slot(target);
+                // If only one slot remains, consider switching back to grid
+                if result && s.slot_count() == 1 {
+                    let sessions = s.assigned_sessions();
+                    let focused = s.focused_session();
+                    let mut grid_state = LayoutState::with_profile(LayoutProfile::Single);
+                    for sess in &sessions {
+                        grid_state.add_session(*sess);
+                    }
+                    if let Some(fid) = focused {
+                        grid_state.focus_session(fid);
+                    }
+                    self.layout_state = WorkspaceLayoutState::Grid(grid_state);
+                }
+                return result;
+            }
+        }
+        false
+    }
+
+    /// Resize a split by updating the ratio for the parent of the focused slot.
+    pub fn resize_split(&mut self, new_ratio: f32) -> bool {
+        if let WorkspaceLayoutState::SplitTree(s) = &mut self.layout_state {
+            if let Some(target) = s.focused_slot() {
+                return s.resize_split(target, new_ratio);
+            }
+        }
+        false
+    }
+
+    /// Convert the current grid layout to an equivalent split tree.
+    fn convert_to_split_tree(&mut self) {
+        if let WorkspaceLayoutState::Grid(grid_state) = &self.layout_state {
+            let (rows, cols) = grid_state.profile().dimensions();
+            let tree = LayoutNode::from_grid(rows, cols);
+            let mut split_state = SplitLayoutState::new(tree);
+
+            // Transfer session assignments
+            for &session_id in grid_state.assignments() {
+                split_state.add_session(session_id);
+            }
+
+            // Transfer focus
+            if let Some(focused) = grid_state.focused_session() {
+                split_state.focus_session(focused);
+            }
+
+            self.layout_state = WorkspaceLayoutState::SplitTree(split_state);
+        }
     }
 
     // --- Sidebar ---
@@ -389,12 +557,21 @@ impl Workspace {
 
     /// Get the bounds for a session's cell.
     pub fn session_cell_bounds(&self, id: SessionId) -> Option<Bounds> {
-        let index = self
-            .layout_state
-            .assignments()
-            .iter()
-            .position(|&s| s == id)?;
-        self.grid_layout().cell_bounds_for_index(index)
+        match &self.layout_state {
+            WorkspaceLayoutState::Grid(s) => {
+                let index = s.assignments().iter().position(|&sid| sid == id)?;
+                self.grid_layout().cell_bounds_for_index(index)
+            }
+            WorkspaceLayoutState::SplitTree(s) => {
+                let slot = s.slot_for_session(id)?;
+                let layout = self.split_layout()?;
+                layout
+                    .leaf_bounds()
+                    .into_iter()
+                    .find(|(sid, _)| *sid == slot)
+                    .map(|(_, b)| b)
+            }
+        }
     }
 
     /// Get the session at a point in the grid.
@@ -406,21 +583,26 @@ impl Workspace {
             return None;
         }
 
-        // Adjust point relative to grid origin
-        let adjusted_point = Point::new(
-            point.x - grid_bounds.origin.x,
-            point.y - grid_bounds.origin.y,
-        );
-
-        let local_bounds = Bounds::from_size(grid_bounds.size.width, grid_bounds.size.height);
-        let layout = GridLayout::from_profile(
-            self.layout_state.profile(),
-            local_bounds,
-            self.theme.grid_gap,
-        );
-
-        let position = layout.cell_at_point(adjusted_point)?;
-        self.layout_state.session_at_position(position)
+        match &self.layout_state {
+            WorkspaceLayoutState::Grid(s) => {
+                // Adjust point relative to grid origin
+                let adjusted_point = Point::new(
+                    point.x - grid_bounds.origin.x,
+                    point.y - grid_bounds.origin.y,
+                );
+                let local_bounds =
+                    Bounds::from_size(grid_bounds.size.width, grid_bounds.size.height);
+                let layout =
+                    GridLayout::from_profile(s.profile(), local_bounds, self.theme.grid_gap);
+                let position = layout.cell_at_point(adjusted_point)?;
+                s.session_at_position(position)
+            }
+            WorkspaceLayoutState::SplitTree(s) => {
+                let layout = self.split_layout()?;
+                let slot = layout.slot_at_point(point)?;
+                s.session_at_slot(slot)
+            }
+        }
     }
 
     // --- State for Rendering ---
@@ -431,11 +613,18 @@ impl Workspace {
     /// This ensures that when switching to Single layout, the currently
     /// focused session is displayed, not just the first session.
     pub fn cell_info(&self) -> Vec<CellInfo> {
+        match &self.layout_state {
+            WorkspaceLayoutState::Grid(s) => self.grid_cell_info(s),
+            WorkspaceLayoutState::SplitTree(s) => self.split_cell_info(s),
+        }
+    }
+
+    fn grid_cell_info(&self, state: &LayoutState) -> Vec<CellInfo> {
         let layout = self.grid_layout();
-        let focused_id = self.focused_session_id();
+        let focused_id = state.focused_session();
 
         // Special handling for Single layout: only show the focused session
-        if self.layout_state.profile() == LayoutProfile::Single {
+        if state.profile() == LayoutProfile::Single {
             if let Some(focused_session_id) = focused_id {
                 if let Some(session) = self.session(focused_session_id) {
                     // Get bounds for the single cell (index 0)
@@ -456,12 +645,38 @@ impl Workspace {
         }
 
         // For other layouts, show all assigned sessions
-        self.layout_state
+        state
             .assignments()
             .iter()
             .enumerate()
             .filter_map(|(index, &session_id)| {
                 let bounds = layout.cell_bounds_for_index(index)?;
+                let session = self.session(session_id)?;
+
+                Some(CellInfo {
+                    session_id,
+                    index,
+                    bounds,
+                    name: session.name.clone(),
+                    status: session.status,
+                    is_focused: focused_id == Some(session_id),
+                })
+            })
+            .collect()
+    }
+
+    fn split_cell_info(&self, state: &SplitLayoutState) -> Vec<CellInfo> {
+        let Some(layout) = self.split_layout() else {
+            return vec![];
+        };
+        let focused_id = state.focused_session();
+        let leaf_bounds = layout.leaf_bounds();
+
+        leaf_bounds
+            .into_iter()
+            .enumerate()
+            .filter_map(|(index, (slot, bounds))| {
+                let session_id = state.session_at_slot(slot)?;
                 let session = self.session(session_id)?;
 
                 Some(CellInfo {
