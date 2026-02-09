@@ -5,7 +5,6 @@
 //! - Session grouping with collapsible sections
 //! - Click-to-focus functionality
 //! - Session renaming support
-//! - New session button
 //! - File tree browser
 
 mod file_tree;
@@ -56,7 +55,6 @@ impl SessionSidebar {
     const HEADER_HEIGHT: f32 = 40.0;
     const ITEM_HEIGHT: f32 = 32.0;
     const GROUP_HEADER_HEIGHT: f32 = 28.0;
-    const NEW_SESSION_BUTTON_HEIGHT: f32 = 44.0;
 
     /// Create a new sidebar.
     pub fn new() -> Self {
@@ -283,7 +281,7 @@ impl SessionSidebar {
         }
 
         // Calculate total height
-        let mut total_height = Self::HEADER_HEIGHT + Self::NEW_SESSION_BUTTON_HEIGHT;
+        let mut total_height = Self::HEADER_HEIGHT;
         for item in &items {
             total_height += match item {
                 SidebarItem::GroupHeader { .. } => Self::GROUP_HEADER_HEIGHT,

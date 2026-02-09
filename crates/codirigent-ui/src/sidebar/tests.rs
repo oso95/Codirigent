@@ -244,8 +244,8 @@ fn test_render_hints_height() {
         create_test_session(2, "S2", SessionStatus::Working),
     ]);
     let hints = sidebar.render_hints();
-    // header (40) + 2 items (32 each) + new session button (44)
-    assert_eq!(hints.total_height, 40.0 + 32.0 + 32.0 + 44.0);
+    // header (40) + 2 items (32 each)
+    assert_eq!(hints.total_height, 40.0 + 32.0 + 32.0);
 }
 
 #[test]

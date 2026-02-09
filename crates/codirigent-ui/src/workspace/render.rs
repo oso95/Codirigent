@@ -3730,43 +3730,11 @@ impl WorkspaceView {
                     .border_t_1()
                     .border_color(border_color)
                     .bg(header_bg)
-                    .flex()
-                    .justify_between()
-                    .items_center()
                     .child(div().text_xs().text_color(muted).child(format!(
                         "{} session{}",
                         session_count,
                         if session_count == 1 { "" } else { "s" }
-                    )))
-                    .child(
-                        div()
-                            .id("drawer-new-session")
-                            .px_2()
-                            .py(px(4.0))
-                            .rounded_md()
-                            .cursor_pointer()
-                            .hover(|style| {
-                                let c: gpui::Hsla = theme.active.into();
-                                style.bg(c)
-                            })
-                            .on_mouse_down(
-                                MouseButton::Left,
-                                cx.listener(|this, _, _, cx| {
-                                    this.create_session(cx);
-                                }),
-                            )
-                            .child(self.aligned_icon_label_row(
-                                icons::plus(),
-                                fg,
-                                12.0,
-                                "New Session",
-                                fg,
-                                11.0,
-                                FontWeight::MEDIUM,
-                                14.0,
-                                4.0,
-                            )),
-                    ),
+                    ))),
             )
     }
 
