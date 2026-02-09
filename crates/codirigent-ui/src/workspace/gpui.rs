@@ -972,6 +972,25 @@ impl WorkspaceView {
 
     /// Create a new session.
     pub fn create_session(&mut self, cx: &mut Context<Self>) {
+        self.create_session_inner(None, cx);
+    }
+
+    /// Create a new session at a specific grid position.
+    pub fn create_session_at(&mut self, _position: GridPosition, cx: &mut Context<Self>) {
+        // For now, just create a regular session
+        // In the future, this could assign the session to a specific grid slot
+        self.create_session(cx);
+    }
+
+    /// Create a new session in a specific split tree slot.
+    pub fn create_session_in_slot(&mut self, slot: SlotId, cx: &mut Context<Self>) {
+        self.create_session_inner(Some(slot), cx);
+    }
+
+    /// Shared implementation for session creation.
+    /// When `target_slot` is `None`, adds to the first available slot;
+    /// when `Some(slot)`, adds to that specific slot.
+    fn create_session_inner(&mut self, target_slot: Option<SlotId>, cx: &mut Context<Self>) {
         // Find the lowest available session number (reuse gaps from closed sessions)
         let existing_numbers: std::collections::HashSet<u64> = self
             .workspace
@@ -1009,7 +1028,7 @@ impl WorkspaceView {
             .map(|s| s.general.default_shell)
             .filter(|s| !s.is_empty());
 
-        // Create session with real PTY via session manager (from main branch)
+        // Create session with real PTY via session manager
         let session_id = {
             let manager = self.session_manager.lock().unwrap();
             match manager.create_session(name.clone(), working_dir.clone(), shell) {
@@ -1021,13 +1040,13 @@ impl WorkspaceView {
             }
         };
 
-        // Get child PID for monitoring (from main branch)
+        // Get child PID for monitoring
         let child_pid = {
             let manager = self.session_manager.lock().unwrap();
             manager.get_child_pid(session_id)
         };
 
-        // Start monitoring session status (from main branch)
+        // Start monitoring session status
         if let Some(pid) = child_pid {
             let mut detector = self.detector.lock().unwrap();
             if let Err(e) = detector.start_monitoring(session_id, pid) {
@@ -1035,7 +1054,7 @@ impl WorkspaceView {
             }
         }
 
-        // Create terminal emulator for this session (from main branch)
+        // Create terminal emulator for this session
         let terminal = Terminal::new(24, 80, session_id);
         let theme = self.workspace.theme();
         let terminal_view = TerminalView::new(terminal, theme.clone());
@@ -1049,8 +1068,12 @@ impl WorkspaceView {
                 .unwrap_or_else(|| Session::new(session_id, name.clone(), working_dir))
         };
 
-        if self.workspace.add_session(session.clone()) {
-            // Create terminal header for this session (from feature branch)
+        let added = match target_slot {
+            Some(slot) => self.workspace.add_session_to_slot(session.clone(), slot),
+            None => self.workspace.add_session(session.clone()),
+        };
+
+        if added {
             let mut header = TerminalHeader::new(&name, SessionStatus::Idle);
 
             // Populate git info on header if available from session manager
@@ -1077,115 +1100,11 @@ impl WorkspaceView {
             // Auto-select the newly created session for natural UX
             self.select_session(session_id);
 
-            // Event is already published by session manager
-            info!(%name, "Created new session with PTY");
-            self.save_state_to_disk();
-            cx.notify();
-        }
-    }
-
-    /// Create a new session at a specific grid position.
-    pub fn create_session_at(&mut self, _position: GridPosition, cx: &mut Context<Self>) {
-        // For now, just create a regular session
-        // In the future, this could assign the session to a specific grid slot
-        self.create_session(cx);
-    }
-
-    /// Create a new session in a specific split tree slot.
-    pub fn create_session_in_slot(&mut self, slot: SlotId, cx: &mut Context<Self>) {
-        let existing_numbers: std::collections::HashSet<u64> = self
-            .workspace
-            .sessions()
-            .iter()
-            .filter_map(|s| {
-                s.name
-                    .strip_prefix("Session ")
-                    .and_then(|n| n.parse::<u64>().ok())
-            })
-            .collect();
-        let mut num = 1u64;
-        while existing_numbers.contains(&num) {
-            num += 1;
-        }
-        let name = format!("Session {}", num);
-        self.next_session_id = num + 1;
-
-        let working_dir = self
-            .config_service
-            .as_ref()
-            .and_then(|cs| cs.load_user_settings().ok())
-            .and_then(|s| s.general.default_working_dir)
-            .map(PathBuf::from)
-            .filter(|p| p.is_dir())
-            .or_else(|| self.project_root.clone())
-            .or_else(|| std::env::current_dir().ok())
-            .unwrap_or_else(|| PathBuf::from("/tmp"));
-
-        let shell = self
-            .config_service
-            .as_ref()
-            .and_then(|cs| cs.load_user_settings().ok())
-            .map(|s| s.general.default_shell)
-            .filter(|s| !s.is_empty());
-
-        let session_id = {
-            let manager = self.session_manager.lock().unwrap();
-            match manager.create_session(name.clone(), working_dir.clone(), shell) {
-                Ok(id) => id,
-                Err(e) => {
-                    warn!("Failed to create session: {}", e);
-                    return;
-                }
+            if let Some(slot) = target_slot {
+                info!(%name, ?slot, "Created new session in slot with PTY");
+            } else {
+                info!(%name, "Created new session with PTY");
             }
-        };
-
-        let child_pid = {
-            let manager = self.session_manager.lock().unwrap();
-            manager.get_child_pid(session_id)
-        };
-
-        if let Some(pid) = child_pid {
-            let mut detector = self.detector.lock().unwrap();
-            if let Err(e) = detector.start_monitoring(session_id, pid) {
-                warn!("Failed to start monitoring session {}: {}", session_id, e);
-            }
-        }
-
-        let terminal = Terminal::new(24, 80, session_id);
-        let theme = self.workspace.theme();
-        let terminal_view = TerminalView::new(terminal, theme.clone());
-        self.terminals.insert(session_id, terminal_view);
-
-        let session = {
-            let manager = self.session_manager.lock().unwrap();
-            manager
-                .get_session(session_id)
-                .unwrap_or_else(|| Session::new(session_id, name.clone(), working_dir))
-        };
-
-        if self.workspace.add_session_to_slot(session.clone(), slot) {
-            let mut header = TerminalHeader::new(&name, SessionStatus::Idle);
-
-            if let Some(ref gi) = session.git_info {
-                header = header.with_git_info(gi.branch.clone(), gi.dirty_count);
-            }
-
-            let dir_name = session
-                .git_info
-                .as_ref()
-                .and_then(|gi| gi.repo_root.file_name())
-                .or_else(|| session.working_directory.file_name())
-                .and_then(|n| n.to_str())
-                .unwrap_or("unknown");
-            header = header.with_project_name(dir_name);
-
-            self.terminal_headers.push((session_id, header));
-
-            self.resize_terminals_to_grid();
-
-            self.select_session(session_id);
-
-            info!(%name, ?slot, "Created new session in slot with PTY");
             self.save_state_to_disk();
             cx.notify();
         }
