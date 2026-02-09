@@ -10,7 +10,7 @@ use std::io::{Read, Write};
 use std::path::Path;
 use std::thread;
 use tokio::sync::mpsc;
-use tracing::{debug, info};
+use tracing::{debug, info, warn};
 
 /// PTY dimensions.
 ///
@@ -154,23 +154,46 @@ impl PtyHandle {
             cmd.env(key, value);
         }
 
-        // Enable OSC 7 (CWD) + OSC 133 (shell integration) for bash via PROMPT_COMMAND.
-        // OSC 133 D;$? → finish previous command, 133 A → prompt start, then OSC 7 for CWD.
-        // PROMPT_COMMAND runs before each prompt, so D+A reliably mark idle state.
-        #[cfg(unix)]
-        cmd.env(
-            "CODIRIGENT_OSC7",
-            r#"printf '\e]7;file://%s%s\e\\' "$(hostname)" "$PWD""#,
-        );
+        // Shell integration: OSC 7 (CWD tracking) + OSC 133 (shell state markers).
+        // - Bash: uses PROMPT_COMMAND (runs before each prompt).
+        // - Zsh:  uses ZDOTDIR redirect to inject a precmd hook via precmd_functions.
+        // OSC 133 D;$? marks command finish, 133 A marks prompt start.
+        // OSC 7 emits file:// URI with the current working directory.
         #[cfg(unix)]
         {
             cmd.env(
-                "PROMPT_COMMAND",
-                concat!(
-                    r#"printf "\e]133;D;$?\a\e]133;A\a"; "#,
-                    r#"printf "\e]7;file://%s%s\e\\" "$(hostname)" "$PWD""#,
-                ),
+                "CODIRIGENT_OSC7",
+                r#"printf '\e]7;file://%s%s\e\\' "$(hostname)" "$PWD""#,
             );
+
+            if is_zsh_shell(command) {
+                match setup_zsh_integration() {
+                    Ok(zdotdir) => {
+                        if let Ok(orig) = std::env::var("ZDOTDIR") {
+                            cmd.env("CODIRIGENT_ORIG_ZDOTDIR", orig);
+                        }
+                        cmd.env("ZDOTDIR", &zdotdir);
+                    }
+                    Err(e) => {
+                        warn!(%e, "Zsh integration setup failed, falling back to PROMPT_COMMAND");
+                        cmd.env(
+                            "PROMPT_COMMAND",
+                            concat!(
+                                r#"printf "\e]133;D;$?\a\e]133;A\a"; "#,
+                                r#"printf "\e]7;file://%s%s\e\\" "$(hostname)" "$PWD""#,
+                            ),
+                        );
+                    }
+                }
+            } else {
+                cmd.env(
+                    "PROMPT_COMMAND",
+                    concat!(
+                        r#"printf "\e]133;D;$?\a\e]133;A\a"; "#,
+                        r#"printf "\e]7;file://%s%s\e\\" "$(hostname)" "$PWD""#,
+                    ),
+                );
+            }
         }
 
         let child = pair
@@ -419,6 +442,81 @@ fn detect_shell_command() -> ShellCommand {
 /// a wrapper script via `CODIRIGENT_SHELL`.
 fn split_shell_args(value: &str) -> Vec<String> {
     value.split_whitespace().map(str::to_string).collect()
+}
+
+/// Check whether the given command is a zsh shell.
+///
+/// Matches `/bin/zsh`, `/usr/bin/zsh`, `/usr/local/bin/zsh`, or bare `zsh`.
+#[cfg(unix)]
+fn is_zsh_shell(command: &str) -> bool {
+    std::path::Path::new(command)
+        .file_name()
+        .and_then(|n| n.to_str())
+        .map_or(false, |base| base == "zsh")
+}
+
+/// Set up zsh shell integration via a ZDOTDIR redirect.
+///
+/// Creates a temporary directory containing `.zshenv`, `.zprofile`, and `.zshrc`
+/// that forward to the user's original startup files and append an OSC 7 / OSC 133
+/// `precmd` hook at the end of `.zshrc` (after the user's config has loaded).
+///
+/// The directory is reused across sessions (content is idempotent).
+#[cfg(unix)]
+fn setup_zsh_integration() -> Result<std::path::PathBuf> {
+    let zdotdir = std::env::temp_dir().join("codirigent-zsh-integration");
+    std::fs::create_dir_all(&zdotdir)
+        .context("Failed to create zsh integration directory")?;
+
+    // .zshenv — always sourced (interactive, non-interactive, login, non-login).
+    // Forward to user's .zshenv; do NOT restore ZDOTDIR here so our
+    // .zprofile and .zshrc are still picked up by zsh.
+    std::fs::write(
+        zdotdir.join(".zshenv"),
+        r#"# Codirigent shell integration — forward to user's .zshenv
+if [[ -f "${CODIRIGENT_ORIG_ZDOTDIR:-$HOME}/.zshenv" ]]; then
+  ZDOTDIR="${CODIRIGENT_ORIG_ZDOTDIR:-$HOME}" source "${CODIRIGENT_ORIG_ZDOTDIR:-$HOME}/.zshenv"
+fi
+"#,
+    )
+    .context("Failed to write .zshenv")?;
+
+    // .zprofile — login shells only. Forward to user's .zprofile.
+    std::fs::write(
+        zdotdir.join(".zprofile"),
+        r#"# Codirigent shell integration — forward to user's .zprofile
+if [[ -f "${CODIRIGENT_ORIG_ZDOTDIR:-$HOME}/.zprofile" ]]; then
+  source "${CODIRIGENT_ORIG_ZDOTDIR:-$HOME}/.zprofile"
+fi
+"#,
+    )
+    .context("Failed to write .zprofile")?;
+
+    // .zshrc — interactive shells. Forward to user's .zshrc, then install
+    // our precmd hook (appended AFTER user config so it is not overridden),
+    // then restore ZDOTDIR so subshells use the user's own config.
+    std::fs::write(
+        zdotdir.join(".zshrc"),
+        r#"# Codirigent shell integration — forward to user's .zshrc + add hooks
+if [[ -f "${CODIRIGENT_ORIG_ZDOTDIR:-$HOME}/.zshrc" ]]; then
+  ZDOTDIR="${CODIRIGENT_ORIG_ZDOTDIR:-$HOME}" source "${CODIRIGENT_ORIG_ZDOTDIR:-$HOME}/.zshrc"
+fi
+
+# Restore ZDOTDIR so subshells and .zlogin use the user's config
+ZDOTDIR="${CODIRIGENT_ORIG_ZDOTDIR:-$HOME}"
+
+# OSC 133 (shell state) + OSC 7 (CWD tracking) via precmd hook
+__codirigent_precmd() {
+  local ec=$?
+  printf '\e]133;D;%s\a\e]133;A\a' "$ec"
+  printf '\e]7;file://%s%s\e\\' "$(hostname)" "$PWD"
+}
+precmd_functions+=(__codirigent_precmd)
+"#,
+    )
+    .context("Failed to write .zshrc")?;
+
+    Ok(zdotdir)
 }
 
 /// Buffer size for reading PTY output.
@@ -1115,5 +1213,124 @@ mod tests {
         assert!(!all_output.is_empty(), "Should receive some output");
 
         output_reader.stop();
+    }
+
+    // --- Zsh integration tests ---
+
+    #[cfg(unix)]
+    #[test]
+    fn test_is_zsh_shell() {
+        assert!(is_zsh_shell("/bin/zsh"));
+        assert!(is_zsh_shell("/usr/bin/zsh"));
+        assert!(is_zsh_shell("/usr/local/bin/zsh"));
+        assert!(is_zsh_shell("zsh"));
+
+        assert!(!is_zsh_shell("/bin/bash"));
+        assert!(!is_zsh_shell("bash"));
+        assert!(!is_zsh_shell("/bin/sh"));
+        assert!(!is_zsh_shell("fish"));
+        assert!(!is_zsh_shell(""));
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn test_setup_zsh_integration_creates_files() {
+        let zdotdir = setup_zsh_integration().expect("setup_zsh_integration should succeed");
+
+        assert!(zdotdir.join(".zshenv").exists(), ".zshenv should exist");
+        assert!(
+            zdotdir.join(".zprofile").exists(),
+            ".zprofile should exist"
+        );
+        assert!(zdotdir.join(".zshrc").exists(), ".zshrc should exist");
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn test_setup_zsh_integration_zshrc_contains_precmd_hook() {
+        let zdotdir = setup_zsh_integration().unwrap();
+        let zshrc = std::fs::read_to_string(zdotdir.join(".zshrc")).unwrap();
+
+        assert!(
+            zshrc.contains("__codirigent_precmd"),
+            ".zshrc should define the precmd hook"
+        );
+        assert!(
+            zshrc.contains("precmd_functions+="),
+            ".zshrc should append to precmd_functions"
+        );
+        assert!(
+            zshrc.contains("133;D"),
+            ".zshrc should emit OSC 133 markers"
+        );
+        assert!(
+            zshrc.contains(r"\e]7;file://"),
+            ".zshrc should emit OSC 7 URI"
+        );
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn test_setup_zsh_integration_zshrc_sources_user_config() {
+        let zdotdir = setup_zsh_integration().unwrap();
+        let zshrc = std::fs::read_to_string(zdotdir.join(".zshrc")).unwrap();
+
+        assert!(
+            zshrc.contains("CODIRIGENT_ORIG_ZDOTDIR"),
+            ".zshrc should reference the original ZDOTDIR"
+        );
+        assert!(
+            zshrc.contains("source"),
+            ".zshrc should source the user's config"
+        );
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn test_setup_zsh_integration_zshrc_restores_zdotdir() {
+        let zdotdir = setup_zsh_integration().unwrap();
+        let zshrc = std::fs::read_to_string(zdotdir.join(".zshrc")).unwrap();
+
+        // The ZDOTDIR restore must appear BEFORE the precmd hook
+        let restore_pos = zshrc
+            .find("ZDOTDIR=\"${CODIRIGENT_ORIG_ZDOTDIR:-$HOME}\"")
+            .expect("should restore ZDOTDIR");
+        let hook_pos = zshrc
+            .find("__codirigent_precmd()")
+            .expect("should define hook");
+        assert!(
+            restore_pos < hook_pos,
+            "ZDOTDIR restore should come before precmd hook definition"
+        );
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn test_setup_zsh_integration_idempotent() {
+        let dir1 = setup_zsh_integration().unwrap();
+        let content1 = std::fs::read_to_string(dir1.join(".zshrc")).unwrap();
+
+        // Call again — should overwrite without error
+        let dir2 = setup_zsh_integration().unwrap();
+        let content2 = std::fs::read_to_string(dir2.join(".zshrc")).unwrap();
+
+        assert_eq!(dir1, dir2, "should reuse the same directory");
+        assert_eq!(content1, content2, "content should be identical");
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn test_setup_zsh_integration_zshenv_forwards_user_config() {
+        let zdotdir = setup_zsh_integration().unwrap();
+        let zshenv = std::fs::read_to_string(zdotdir.join(".zshenv")).unwrap();
+
+        assert!(
+            zshenv.contains("CODIRIGENT_ORIG_ZDOTDIR"),
+            ".zshenv should reference original ZDOTDIR"
+        );
+        assert!(
+            zshenv.contains(".zshenv"),
+            ".zshenv should forward to user's .zshenv"
+        );
     }
 }
