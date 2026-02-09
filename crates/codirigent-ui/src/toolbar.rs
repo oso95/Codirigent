@@ -4,6 +4,7 @@
 //! broadcast button, and new session button.
 
 use crate::layout::LayoutProfile;
+use codirigent_core::{LayoutNode, SlotId, SplitDirection};
 
 /// Events emitted by the sessions toolbar.
 #[derive(Debug, Clone, PartialEq)]
@@ -62,8 +63,18 @@ impl LayoutTabButton {
     }
 }
 
+/// Mode for the custom layout picker modal.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum CustomLayoutMode {
+    /// Traditional NxM grid configuration.
+    #[default]
+    Grid,
+    /// Interactive binary split tree builder.
+    Split,
+}
+
 /// Custom layout picker state.
-#[derive(Debug, Clone, Default)]
+#[derive(Debug, Clone)]
 pub struct CustomLayoutPicker {
     /// Whether the picker is visible.
     pub is_open: bool,
@@ -75,6 +86,20 @@ pub struct CustomLayoutPicker {
     pub error: Option<String>,
     /// Which input field is focused (0 = rows, 1 = columns).
     focused_input: Option<usize>,
+    /// Current mode (Grid or Split).
+    pub mode: CustomLayoutMode,
+    /// Draft split tree for the split builder.
+    pub split_tree: LayoutNode,
+    /// Currently selected slot in the split preview.
+    pub selected_slot: Option<SlotId>,
+    /// Next slot ID counter for generating unique slot IDs.
+    next_slot_id: u32,
+}
+
+impl Default for CustomLayoutPicker {
+    fn default() -> Self {
+        Self::new()
+    }
 }
 
 impl CustomLayoutPicker {
@@ -86,6 +111,12 @@ impl CustomLayoutPicker {
             cols_input: "2".to_string(),
             error: None,
             focused_input: None,
+            mode: CustomLayoutMode::Grid,
+            split_tree: LayoutNode::Leaf {
+                slot: SlotId(0),
+            },
+            selected_slot: Some(SlotId(0)),
+            next_slot_id: 1,
         }
     }
 
@@ -96,6 +127,7 @@ impl CustomLayoutPicker {
         self.cols_input = "2".to_string();
         self.error = None;
         self.focused_input = Some(0);
+        self.mode = CustomLayoutMode::Grid;
     }
 
     /// Open the picker with specific values.
@@ -105,6 +137,34 @@ impl CustomLayoutPicker {
         self.cols_input = cols.to_string();
         self.error = None;
         self.focused_input = Some(0);
+        self.mode = CustomLayoutMode::Grid;
+    }
+
+    /// Open the picker with state derived from the current workspace layout.
+    ///
+    /// If `current_tree` is `Some`, populates the split builder from it and
+    /// sets mode to Split. Otherwise defaults to Grid mode with a single leaf.
+    pub fn open_with_state(&mut self, current_tree: Option<LayoutNode>, rows: u32, cols: u32) {
+        self.is_open = true;
+        self.rows_input = rows.to_string();
+        self.cols_input = cols.to_string();
+        self.error = None;
+
+        if let Some(tree) = current_tree {
+            let max_id = tree.slots_in_order().iter().map(|s| s.0).max().unwrap_or(0);
+            let first_slot = tree.slots_in_order().first().copied();
+            self.split_tree = tree;
+            self.next_slot_id = max_id + 1;
+            self.selected_slot = first_slot;
+            self.mode = CustomLayoutMode::Split;
+            self.focused_input = None;
+        } else {
+            self.split_tree = LayoutNode::Leaf { slot: SlotId(0) };
+            self.selected_slot = Some(SlotId(0));
+            self.next_slot_id = 1;
+            self.mode = CustomLayoutMode::Grid;
+            self.focused_input = Some(0);
+        }
     }
 
     /// Close the picker.
@@ -112,6 +172,81 @@ impl CustomLayoutPicker {
         self.is_open = false;
         self.error = None;
         self.focused_input = None;
+        // Reset split state
+        self.split_tree = LayoutNode::Leaf { slot: SlotId(0) };
+        self.selected_slot = Some(SlotId(0));
+        self.next_slot_id = 1;
+        self.mode = CustomLayoutMode::Grid;
+    }
+
+    /// Switch between Grid and Split modes.
+    pub fn set_mode(&mut self, mode: CustomLayoutMode) {
+        self.mode = mode;
+        self.error = None;
+    }
+
+    /// Select a slot in the split preview.
+    pub fn select_slot(&mut self, slot: SlotId) {
+        if self.split_tree.contains_slot(slot) {
+            self.selected_slot = Some(slot);
+        }
+    }
+
+    /// Split the currently selected slot in the given direction.
+    ///
+    /// Returns `true` if the split was successful.
+    pub fn split_selected(&mut self, direction: SplitDirection) -> bool {
+        let Some(target) = self.selected_slot else {
+            return false;
+        };
+        let new_slot = SlotId(self.next_slot_id);
+        if let Some(new_tree) = self.split_tree.split_slot(target, direction, 0.5, new_slot) {
+            self.split_tree = new_tree;
+            self.next_slot_id += 1;
+            self.error = None;
+            true
+        } else {
+            false
+        }
+    }
+
+    /// Remove the currently selected slot.
+    ///
+    /// Returns `true` if the removal was successful.
+    pub fn remove_selected(&mut self) -> bool {
+        let Some(target) = self.selected_slot else {
+            return false;
+        };
+        if self.split_tree.leaf_count() <= 1 {
+            self.error = Some("Cannot remove the last pane".to_string());
+            return false;
+        }
+        if let Some(new_tree) = self.split_tree.close_slot(target) {
+            self.split_tree = new_tree;
+            // Select the first remaining slot
+            self.selected_slot = self.split_tree.slots_in_order().first().copied();
+            self.error = None;
+            true
+        } else {
+            false
+        }
+    }
+
+    /// Validate the split tree and return it if valid.
+    ///
+    /// Ensures the tree has between 1 and 20 panes.
+    pub fn validate_split(&mut self) -> Option<LayoutNode> {
+        let count = self.split_tree.leaf_count();
+        if count < 1 {
+            self.error = Some("Must have at least 1 pane".to_string());
+            return None;
+        }
+        if count > 20 {
+            self.error = Some("Maximum 20 panes allowed".to_string());
+            return None;
+        }
+        self.error = None;
+        Some(self.split_tree.clone())
     }
 
     /// Validate and parse the current input values.
@@ -676,5 +811,182 @@ mod tests {
         toolbar.select_layout(LayoutProfile::Grid2x3);
         assert!(!toolbar.tabs()[0].is_active);
         assert!(toolbar.tabs()[1].is_active); // 2x3 should now be active
+    }
+
+    // --- Split builder tests ---
+
+    #[test]
+    fn test_split_selected_creates_correct_tree() {
+        let mut picker = CustomLayoutPicker::new();
+        picker.mode = CustomLayoutMode::Split;
+        // Starts as single leaf SlotId(0)
+        assert_eq!(picker.split_tree.leaf_count(), 1);
+
+        // Split horizontally
+        assert!(picker.split_selected(SplitDirection::Horizontal));
+        assert_eq!(picker.split_tree.leaf_count(), 2);
+
+        // The tree should be a horizontal split with slots 0 and 1
+        let slots = picker.split_tree.slots_in_order();
+        assert_eq!(slots.len(), 2);
+        assert_eq!(slots[0], SlotId(0));
+        assert_eq!(slots[1], SlotId(1));
+
+        // Split the first slot vertically
+        picker.selected_slot = Some(SlotId(0));
+        assert!(picker.split_selected(SplitDirection::Vertical));
+        assert_eq!(picker.split_tree.leaf_count(), 3);
+
+        let slots = picker.split_tree.slots_in_order();
+        assert_eq!(slots.len(), 3);
+        assert!(slots.contains(&SlotId(0)));
+        assert!(slots.contains(&SlotId(1)));
+        assert!(slots.contains(&SlotId(2)));
+    }
+
+    #[test]
+    fn test_remove_selected_promotes_sibling() {
+        let mut picker = CustomLayoutPicker::new();
+        // Create 2 panes
+        picker.split_selected(SplitDirection::Horizontal);
+        assert_eq!(picker.split_tree.leaf_count(), 2);
+
+        // Select and remove slot 1
+        picker.selected_slot = Some(SlotId(1));
+        assert!(picker.remove_selected());
+        assert_eq!(picker.split_tree.leaf_count(), 1);
+
+        // Selected should move to remaining slot
+        assert!(picker.selected_slot.is_some());
+        assert!(picker.split_tree.contains_slot(picker.selected_slot.unwrap()));
+    }
+
+    #[test]
+    fn test_remove_selected_cannot_remove_last_pane() {
+        let mut picker = CustomLayoutPicker::new();
+        // Single pane
+        assert_eq!(picker.split_tree.leaf_count(), 1);
+
+        picker.selected_slot = Some(SlotId(0));
+        assert!(!picker.remove_selected());
+        assert!(picker.error.is_some());
+        assert_eq!(picker.split_tree.leaf_count(), 1);
+    }
+
+    #[test]
+    fn test_validate_split_enforces_limits() {
+        let mut picker = CustomLayoutPicker::new();
+
+        // Single pane is valid
+        let result = picker.validate_split();
+        assert!(result.is_some());
+        assert!(picker.error.is_none());
+
+        // Build 20 panes (split 19 more times)
+        for _ in 0..19 {
+            let slots = picker.split_tree.slots_in_order();
+            picker.selected_slot = Some(slots[0]);
+            picker.split_selected(SplitDirection::Horizontal);
+        }
+        assert_eq!(picker.split_tree.leaf_count(), 20);
+        assert!(picker.validate_split().is_some());
+
+        // Add one more to exceed limit
+        let slots = picker.split_tree.slots_in_order();
+        picker.selected_slot = Some(slots[0]);
+        picker.split_selected(SplitDirection::Horizontal);
+        assert_eq!(picker.split_tree.leaf_count(), 21);
+        assert!(picker.validate_split().is_none());
+        assert!(picker.error.is_some());
+    }
+
+    #[test]
+    fn test_select_slot_only_selects_existing() {
+        let mut picker = CustomLayoutPicker::new();
+        // Single leaf with SlotId(0)
+
+        // Selecting existing slot works
+        picker.select_slot(SlotId(0));
+        assert_eq!(picker.selected_slot, Some(SlotId(0)));
+
+        // Selecting non-existent slot doesn't change selection
+        picker.select_slot(SlotId(99));
+        assert_eq!(picker.selected_slot, Some(SlotId(0)));
+    }
+
+    #[test]
+    fn test_open_with_state_existing_tree() {
+        let mut picker = CustomLayoutPicker::new();
+
+        // Build a tree externally
+        let tree = LayoutNode::from_grid(2, 2);
+        let expected_slots = tree.slots_in_order();
+        let max_id = expected_slots.iter().map(|s| s.0).max().unwrap_or(0);
+
+        picker.open_with_state(Some(tree.clone()), 2, 2);
+
+        assert!(picker.is_open);
+        assert_eq!(picker.mode, CustomLayoutMode::Split);
+        assert_eq!(picker.split_tree, tree);
+        assert_eq!(picker.next_slot_id, max_id + 1);
+        assert!(picker.selected_slot.is_some());
+        assert!(expected_slots.contains(&picker.selected_slot.unwrap()));
+    }
+
+    #[test]
+    fn test_open_with_state_no_tree() {
+        let mut picker = CustomLayoutPicker::new();
+
+        picker.open_with_state(None, 3, 4);
+
+        assert!(picker.is_open);
+        assert_eq!(picker.mode, CustomLayoutMode::Grid);
+        assert_eq!(picker.rows_input, "3");
+        assert_eq!(picker.cols_input, "4");
+        assert_eq!(picker.split_tree.leaf_count(), 1);
+    }
+
+    #[test]
+    fn test_mode_switching_preserves_state() {
+        let mut picker = CustomLayoutPicker::new();
+        picker.open();
+
+        // Set up grid state
+        picker.rows_input = "5".to_string();
+        picker.cols_input = "6".to_string();
+
+        // Switch to split and back
+        picker.set_mode(CustomLayoutMode::Split);
+        assert_eq!(picker.mode, CustomLayoutMode::Split);
+
+        picker.set_mode(CustomLayoutMode::Grid);
+        assert_eq!(picker.mode, CustomLayoutMode::Grid);
+        // Grid state preserved
+        assert_eq!(picker.rows_input, "5");
+        assert_eq!(picker.cols_input, "6");
+    }
+
+    #[test]
+    fn test_close_resets_split_state() {
+        let mut picker = CustomLayoutPicker::new();
+        picker.open();
+        picker.set_mode(CustomLayoutMode::Split);
+        picker.split_selected(SplitDirection::Horizontal);
+        assert_eq!(picker.split_tree.leaf_count(), 2);
+
+        picker.close();
+
+        // Split state should be reset
+        assert_eq!(picker.split_tree.leaf_count(), 1);
+        assert_eq!(picker.next_slot_id, 1);
+        assert_eq!(picker.selected_slot, Some(SlotId(0)));
+        assert_eq!(picker.mode, CustomLayoutMode::Grid);
+    }
+
+    #[test]
+    fn test_split_selected_no_selection() {
+        let mut picker = CustomLayoutPicker::new();
+        picker.selected_slot = None;
+        assert!(!picker.split_selected(SplitDirection::Horizontal));
     }
 }

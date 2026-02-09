@@ -33,7 +33,7 @@ use crate::sidebar::{
 use crate::task_board::TaskBoardPanel;
 use crate::terminal_header::TerminalHeader;
 use crate::theme::CodirigentTheme;
-use crate::toolbar::CustomLayoutPicker;
+use crate::toolbar::{CustomLayoutMode, CustomLayoutPicker};
 // Core imports (combined)
 use crate::app::{
     ClosePane, CloseSession, Copy, FocusSession1, FocusSession2, FocusSession3, FocusSession4,
@@ -1352,12 +1352,13 @@ impl WorkspaceView {
                     if self.custom_picker.is_open {
                         self.custom_picker.close();
                     } else {
-                        let layout = self.workspace.layout_profile();
-                        if let LayoutProfile::Custom { rows, cols } = layout {
-                            self.custom_picker.open_with(rows, cols);
+                        let current_tree = if self.workspace.is_split_tree_mode() {
+                            self.workspace.layout_state().as_split_tree().map(|s| s.tree().clone())
                         } else {
-                            self.custom_picker.open();
-                        }
+                            None
+                        };
+                        let (rows, cols) = self.workspace.layout_profile().dimensions();
+                        self.custom_picker.open_with_state(current_tree, rows, cols);
                     }
                 }
                 crate::top_bar::TopBarEvent::NewSessionRequested => {
@@ -3162,6 +3163,8 @@ impl WorkspaceView {
         }
 
         let key = event.keystroke.key.to_lowercase();
+
+        // Universal keys (both modes)
         match key.as_str() {
             "escape" => {
                 self.custom_picker.close();
@@ -3169,41 +3172,95 @@ impl WorkspaceView {
                 return true;
             }
             "enter" => {
-                if let Some((rows, cols)) = self.custom_picker.validate() {
-                    self.custom_picker.close();
-                    let profile = crate::layout::LayoutProfile::Custom { rows, cols };
-                    self.workspace.set_layout(profile);
+                match self.custom_picker.mode {
+                    CustomLayoutMode::Grid => {
+                        if let Some((rows, cols)) = self.custom_picker.validate() {
+                            self.custom_picker.close();
+                            let profile = crate::layout::LayoutProfile::Custom { rows, cols };
+                            self.workspace.set_layout(profile);
+                        }
+                    }
+                    CustomLayoutMode::Split => {
+                        if let Some(tree) = self.custom_picker.validate_split() {
+                            self.custom_picker.close();
+                            self.workspace.set_split_tree(tree);
+                        }
+                    }
                 }
-                cx.notify();
-                return true;
-            }
-            "tab" => {
-                let current = self.custom_picker.focused_input().unwrap_or(0);
-                let next = if current == 0 { 1 } else { 0 };
-                self.custom_picker.set_focus(next);
-                cx.notify();
-                return true;
-            }
-            "backspace" => {
-                self.custom_picker.handle_backspace();
                 cx.notify();
                 return true;
             }
             _ => {}
         }
 
-        if event.keystroke.modifiers.control
-            || event.keystroke.modifiers.alt
-            || event.keystroke.modifiers.platform
-        {
-            return true;
-        }
+        // Mode-specific keys
+        match self.custom_picker.mode {
+            CustomLayoutMode::Grid => {
+                match key.as_str() {
+                    "tab" => {
+                        let current = self.custom_picker.focused_input().unwrap_or(0);
+                        let next = if current == 0 { 1 } else { 0 };
+                        self.custom_picker.set_focus(next);
+                        cx.notify();
+                        return true;
+                    }
+                    "backspace" => {
+                        self.custom_picker.handle_backspace();
+                        cx.notify();
+                        return true;
+                    }
+                    _ => {}
+                }
 
-        if let Some(ref key_char) = event.keystroke.key_char {
-            if let Some(ch) = key_char.chars().next() {
-                if ch.is_ascii_digit() {
-                    self.custom_picker.handle_char_input(ch);
-                    cx.notify();
+                if event.keystroke.modifiers.control
+                    || event.keystroke.modifiers.alt
+                    || event.keystroke.modifiers.platform
+                {
+                    return true;
+                }
+
+                if let Some(ref key_char) = event.keystroke.key_char {
+                    if let Some(ch) = key_char.chars().next() {
+                        if ch.is_ascii_digit() {
+                            self.custom_picker.handle_char_input(ch);
+                            cx.notify();
+                        }
+                    }
+                }
+            }
+            CustomLayoutMode::Split => {
+                match key.as_str() {
+                    "h" => {
+                        self.custom_picker.split_selected(SplitDirection::Horizontal);
+                        cx.notify();
+                        return true;
+                    }
+                    "v" => {
+                        self.custom_picker.split_selected(SplitDirection::Vertical);
+                        cx.notify();
+                        return true;
+                    }
+                    "backspace" | "delete" => {
+                        self.custom_picker.remove_selected();
+                        cx.notify();
+                        return true;
+                    }
+                    "tab" => {
+                        // Cycle selected slot
+                        let slots = self.custom_picker.split_tree.slots_in_order();
+                        if !slots.is_empty() {
+                            let current_idx = self.custom_picker.selected_slot
+                                .and_then(|s| slots.iter().position(|&o| o == s));
+                            let next = match current_idx {
+                                Some(i) => (i + 1) % slots.len(),
+                                None => 0,
+                            };
+                            self.custom_picker.selected_slot = Some(slots[next]);
+                        }
+                        cx.notify();
+                        return true;
+                    }
+                    _ => {}
                 }
             }
         }

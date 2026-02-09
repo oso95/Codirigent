@@ -3,7 +3,7 @@
 use super::core::*;
 use crate::layout::{Bounds, FocusDirection, LayoutProfile, Point};
 use crate::theme::CodirigentTheme;
-use codirigent_core::{Session, SessionId, SessionStatus};
+use codirigent_core::{LayoutNode, Session, SessionId, SessionStatus, SlotId, SplitDirection};
 use std::path::PathBuf;
 
 fn make_session(id: u64, name: &str) -> Session {
@@ -461,4 +461,84 @@ fn test_workspace_single_layout_preserves_order_on_exit() {
     assert!(!cells[1].is_focused);
     assert!(cells[2].is_focused);
     assert!(!cells[3].is_focused);
+}
+
+// --- set_split_tree tests ---
+
+#[test]
+fn test_set_split_tree_transfers_sessions() {
+    let mut ws = Workspace::with_profile(LayoutProfile::Grid2x2);
+    ws.add_session(make_session(1, "Session 1"));
+    ws.add_session(make_session(2, "Session 2"));
+
+    // Build a 3-pane tree
+    let tree = LayoutNode::from_grid(1, 3);
+    ws.set_split_tree(tree);
+
+    assert!(ws.is_split_tree_mode());
+    let visible = ws.visible_sessions();
+    // Both sessions should be transferred
+    assert_eq!(visible.len(), 2);
+    assert!(visible.iter().any(|s| s.id == SessionId(1)));
+    assert!(visible.iter().any(|s| s.id == SessionId(2)));
+}
+
+#[test]
+fn test_set_split_tree_preserves_focus() {
+    let mut ws = Workspace::with_profile(LayoutProfile::Grid2x2);
+    ws.add_session(make_session(1, "S1"));
+    ws.add_session(make_session(2, "S2"));
+    ws.focus_session(SessionId(2));
+
+    let tree = LayoutNode::from_grid(1, 3);
+    ws.set_split_tree(tree);
+
+    assert_eq!(ws.focused_session_id(), Some(SessionId(2)));
+}
+
+#[test]
+fn test_set_split_tree_from_grid_state() {
+    let mut ws = Workspace::with_profile(LayoutProfile::Grid3x3);
+    for i in 1..=4 {
+        ws.add_session(make_session(i, &format!("S{}", i)));
+    }
+
+    assert!(!ws.is_split_tree_mode());
+
+    // Switch to split tree
+    let tree = LayoutNode::Split {
+        direction: SplitDirection::Horizontal,
+        ratio: 0.5,
+        first: Box::new(LayoutNode::Leaf { slot: SlotId(0) }),
+        second: Box::new(LayoutNode::Split {
+            direction: SplitDirection::Vertical,
+            ratio: 0.5,
+            first: Box::new(LayoutNode::Leaf { slot: SlotId(1) }),
+            second: Box::new(LayoutNode::Leaf { slot: SlotId(2) }),
+        }),
+    };
+    ws.set_split_tree(tree);
+
+    assert!(ws.is_split_tree_mode());
+    // 3 slots, 4 sessions — only first 3 get assigned
+    assert_eq!(ws.visible_sessions().len(), 3);
+}
+
+#[test]
+fn test_set_split_tree_from_existing_split() {
+    let mut ws = Workspace::new();
+    ws.add_session(make_session(1, "S1"));
+    ws.add_session(make_session(2, "S2"));
+
+    // First set a simple split tree
+    let tree1 = LayoutNode::from_grid(1, 2);
+    ws.set_split_tree(tree1);
+    assert!(ws.is_split_tree_mode());
+    assert_eq!(ws.visible_sessions().len(), 2);
+
+    // Now switch to a different split tree
+    let tree2 = LayoutNode::from_grid(2, 2);
+    ws.set_split_tree(tree2);
+    assert!(ws.is_split_tree_mode());
+    assert_eq!(ws.visible_sessions().len(), 2);
 }

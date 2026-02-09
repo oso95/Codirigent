@@ -369,6 +369,22 @@ impl Workspace {
         }
     }
 
+    /// Apply a split tree layout directly.
+    ///
+    /// Transfers current sessions and focus to the new tree.
+    pub fn set_split_tree(&mut self, tree: LayoutNode) {
+        let sessions = self.layout_state.assigned_sessions();
+        let focused = self.layout_state.focused_session();
+        let mut split_state = SplitLayoutState::new(tree);
+        for sid in &sessions {
+            split_state.add_session(*sid);
+        }
+        if let Some(fid) = focused {
+            split_state.focus_session(fid);
+        }
+        self.layout_state = WorkspaceLayoutState::SplitTree(split_state);
+    }
+
     // --- Split Pane Operations ---
 
     /// Split the focused pane into two.
