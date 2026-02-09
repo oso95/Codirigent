@@ -531,14 +531,14 @@ fn test_render_hints_with_group_color() {
         "S1",
         SessionStatus::Idle,
         "Backend",
-        "#4ECDC4",
+        "#39d353",
     )]);
     let hints = sidebar.render_hints();
     // First item is the group header, second is the session
     if let SidebarItem::Session { group_color, .. } = &hints.items[1] {
         assert!(group_color.is_some());
         let color = group_color.unwrap();
-        // #4ECDC4 should have high green component
+        // #39d353 should have high green component
         assert!(color.g > 0.7);
     } else {
         panic!("Expected Session item");

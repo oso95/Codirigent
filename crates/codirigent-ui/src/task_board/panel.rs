@@ -215,14 +215,14 @@ impl AutoAssignToggle {
         match self.mode {
             AutoAssignMode::Off => Color::from_hex("#6b7280"),    // Gray
             AutoAssignMode::Confirm => Color::from_hex("#f59e0b"), // Amber
-            AutoAssignMode::Auto => Color::from_hex("#4ECDC4"),    // Teal
+            AutoAssignMode::Auto => Color::from_hex("#39d353"),    // Green
         }
     }
 
     /// Get the background color based on state (legacy compat).
     pub fn background_color(&self) -> Color {
         if self.is_active() {
-            Color::from_hex("#4ECDC4") // Teal when enabled
+            Color::from_hex("#39d353") // Green when enabled
         } else {
             Color::from_hex("#1a1a1f") // Border color when disabled
         }

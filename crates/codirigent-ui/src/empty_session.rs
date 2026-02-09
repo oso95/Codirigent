@@ -82,7 +82,7 @@ impl EmptySessionCell {
     pub fn border_style(&self) -> EmptySessionBorderStyle {
         EmptySessionBorderStyle {
             color: if self.is_hovered {
-                Color::from_hex("#4ECDC4") // Primary teal on hover
+                Color::from_hex("#39d353") // Primary green on hover
             } else {
                 Color::from_hex("#1a1a1f") // Border color
             },
@@ -142,7 +142,7 @@ impl EmptySessionCell {
                 Color::from_hex("#0d0d10") // Panel background
             },
             icon_color: if self.is_hovered {
-                Color::from_hex("#4ECDC4") // Primary teal
+                Color::from_hex("#39d353") // Primary green
             } else {
                 Color::from_hex("#555555") // Muted
             },

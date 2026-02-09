@@ -1,22 +1,22 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <svg width="120" height="120" viewBox="0 0 120 120" fill="none" xmlns="http://www.w3.org/2000/svg">
   <!-- Primary logo for dark backgrounds -->
-  <!-- 3x3 grid with teal cells, red center, and conductor icon -->
+  <!-- 3x3 grid with green cells, red center, and conductor icon -->
 
   <!-- Row 1 -->
-  <rect x="15" y="15" width="25" height="25" rx="5" fill="#4ECDC4"/>
-  <rect x="47" y="15" width="25" height="25" rx="5" fill="#4ECDC4" opacity="0.7"/>
-  <rect x="79" y="15" width="25" height="25" rx="5" fill="#4ECDC4" opacity="0.4"/>
+  <rect x="15" y="15" width="25" height="25" rx="5" fill="#39d353"/>
+  <rect x="47" y="15" width="25" height="25" rx="5" fill="#39d353" opacity="0.7"/>
+  <rect x="79" y="15" width="25" height="25" rx="5" fill="#39d353" opacity="0.4"/>
 
   <!-- Row 2 -->
-  <rect x="15" y="47" width="25" height="25" rx="5" fill="#4ECDC4" opacity="0.7"/>
+  <rect x="15" y="47" width="25" height="25" rx="5" fill="#39d353" opacity="0.7"/>
   <rect x="47" y="47" width="25" height="25" rx="5" fill="#FF6B6B"/>
-  <rect x="79" y="47" width="25" height="25" rx="5" fill="#4ECDC4" opacity="0.7"/>
+  <rect x="79" y="47" width="25" height="25" rx="5" fill="#39d353" opacity="0.7"/>
 
   <!-- Row 3 -->
-  <rect x="15" y="79" width="25" height="25" rx="5" fill="#4ECDC4" opacity="0.4"/>
-  <rect x="47" y="79" width="25" height="25" rx="5" fill="#4ECDC4" opacity="0.7"/>
-  <rect x="79" y="79" width="25" height="25" rx="5" fill="#4ECDC4"/>
+  <rect x="15" y="79" width="25" height="25" rx="5" fill="#39d353" opacity="0.4"/>
+  <rect x="47" y="79" width="25" height="25" rx="5" fill="#39d353" opacity="0.7"/>
+  <rect x="79" y="79" width="25" height="25" rx="5" fill="#39d353"/>
 
   <!-- Conductor icon (play arrow + baton) -->
   <path d="M55 55 L62 60 L55 65" stroke="#fff" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>

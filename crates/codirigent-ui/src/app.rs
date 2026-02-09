@@ -185,9 +185,9 @@ impl AppView {
                     .flex()
                     .flex_row()
                     .gap(px(gap))
-                    .child(Self::render_logo_cell(brand::TEAL, cell_size, radius))
-                    .child(Self::render_logo_cell(brand::TEAL_70, cell_size, radius))
-                    .child(Self::render_logo_cell(brand::TEAL_40, cell_size, radius)),
+                    .child(Self::render_logo_cell(brand::GREEN, cell_size, radius))
+                    .child(Self::render_logo_cell(brand::GREEN_70, cell_size, radius))
+                    .child(Self::render_logo_cell(brand::GREEN_40, cell_size, radius)),
             )
             .child(
                 // Row 2
@@ -195,9 +195,9 @@ impl AppView {
                     .flex()
                     .flex_row()
                     .gap(px(gap))
-                    .child(Self::render_logo_cell(brand::TEAL_70, cell_size, radius))
+                    .child(Self::render_logo_cell(brand::GREEN_70, cell_size, radius))
                     .child(Self::render_logo_cell(brand::CORAL, cell_size, radius))
-                    .child(Self::render_logo_cell(brand::TEAL_70, cell_size, radius)),
+                    .child(Self::render_logo_cell(brand::GREEN_70, cell_size, radius)),
             )
             .child(
                 // Row 3
@@ -205,9 +205,9 @@ impl AppView {
                     .flex()
                     .flex_row()
                     .gap(px(gap))
-                    .child(Self::render_logo_cell(brand::TEAL_40, cell_size, radius))
-                    .child(Self::render_logo_cell(brand::TEAL_70, cell_size, radius))
-                    .child(Self::render_logo_cell(brand::TEAL, cell_size, radius)),
+                    .child(Self::render_logo_cell(brand::GREEN_40, cell_size, radius))
+                    .child(Self::render_logo_cell(brand::GREEN_70, cell_size, radius))
+                    .child(Self::render_logo_cell(brand::GREEN, cell_size, radius)),
             )
     }
 
@@ -231,7 +231,7 @@ impl AppView {
                     .w(px(400.0))
                     .h(px(400.0))
                     .rounded_full()
-                    .bg(gpui::hsla(176.0 / 360.0, 0.58, 0.55, 0.1)),
+                    .bg(gpui::hsla(130.0 / 360.0, 0.64, 0.525, 0.1)),
             )
             .child(
                 // Main content

@@ -18,27 +18,27 @@ pub const LOGO_PNG_BYTES: &[u8] = include_bytes!("../../../assets/icons/logo-pri
 pub mod brand {
     use gpui::Hsla;
 
-    /// Primary teal color (#4ECDC4)
-    pub const TEAL: Hsla = Hsla {
-        h: 176.0 / 360.0,
-        s: 0.58,
-        l: 0.55,
+    /// Primary green color - GitHub commit green (#39d353)
+    pub const GREEN: Hsla = Hsla {
+        h: 130.0 / 360.0,
+        s: 0.64,
+        l: 0.525,
         a: 1.0,
     };
 
-    /// Teal at 70% opacity
-    pub const TEAL_70: Hsla = Hsla {
-        h: 176.0 / 360.0,
-        s: 0.58,
-        l: 0.55,
+    /// Green at 70% opacity
+    pub const GREEN_70: Hsla = Hsla {
+        h: 130.0 / 360.0,
+        s: 0.64,
+        l: 0.525,
         a: 0.7,
     };
 
-    /// Teal at 40% opacity
-    pub const TEAL_40: Hsla = Hsla {
-        h: 176.0 / 360.0,
-        s: 0.58,
-        l: 0.55,
+    /// Green at 40% opacity
+    pub const GREEN_40: Hsla = Hsla {
+        h: 130.0 / 360.0,
+        s: 0.64,
+        l: 0.525,
         a: 0.4,
     };
 
@@ -58,11 +58,11 @@ pub mod brand {
         a: 1.0,
     };
 
-    /// Glow color (teal at 8% opacity)
+    /// Glow color (green at 8% opacity)
     pub const GLOW: Hsla = Hsla {
-        h: 176.0 / 360.0,
-        s: 0.58,
-        l: 0.55,
+        h: 130.0 / 360.0,
+        s: 0.64,
+        l: 0.525,
         a: 0.08,
     };
 
@@ -198,7 +198,7 @@ impl Render for SplashScreen {
                     .w(px(400.0))
                     .h(px(400.0))
                     .rounded_full()
-                    .bg(hsla(176.0 / 360.0, 0.58, 0.55, 0.1)),
+                    .bg(hsla(130.0 / 360.0, 0.64, 0.525, 0.1)),
             )
             .child(
                 // Main content
@@ -276,18 +276,18 @@ mod tests {
     #[test]
     fn test_brand_colors() {
         // Verify brand colors are defined correctly
-        assert!(brand::TEAL.a == 1.0);
-        assert!(brand::TEAL_70.a == 0.7);
-        assert!(brand::TEAL_40.a == 0.4);
+        assert!(brand::GREEN.a == 1.0);
+        assert!(brand::GREEN_70.a == 0.7);
+        assert!(brand::GREEN_40.a == 0.4);
         assert!(brand::CORAL.a == 1.0);
         assert!(brand::BACKGROUND.a == 1.0);
     }
 
     #[test]
-    fn test_brand_teal_hue() {
-        // Teal should have hue around 176 degrees
-        let expected_hue = 176.0 / 360.0;
-        assert!((brand::TEAL.h - expected_hue).abs() < 0.01);
+    fn test_brand_green_hue() {
+        // Green should have hue around 130 degrees
+        let expected_hue = 130.0 / 360.0;
+        assert!((brand::GREEN.h - expected_hue).abs() < 0.01);
     }
 
     #[test]

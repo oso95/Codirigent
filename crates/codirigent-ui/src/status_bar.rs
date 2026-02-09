@@ -113,12 +113,12 @@ impl StatusBar {
         vec![
             StatusBarItem::SessionCount {
                 total: self.total_sessions,
-                color: Color::from_hex("#4ECDC4"),
+                color: Color::from_hex("#39d353"),
             },
             StatusBarItem::SessionStatus {
                 label: "Working",
                 count: self.working_sessions,
-                color: Color::from_hex("#4ECDC4"),
+                color: Color::from_hex("#39d353"),
             },
             StatusBarItem::SessionStatus {
                 label: "Waiting",

@@ -286,8 +286,8 @@ pub mod colors {
     /// Active state color.
     pub const ACTIVE: &str = "#1a1a22";
 
-    /// Primary accent color (teal).
-    pub const PRIMARY: &str = "#4ECDC4";
+    /// Primary accent color (GitHub commit green).
+    pub const PRIMARY: &str = "#39d353";
     /// Secondary accent color (blue).
     pub const SECONDARY: &str = "#5B8DEF";
     /// Purple accent.
@@ -420,7 +420,7 @@ mod tests {
     #[test]
     fn test_color_constants() {
         assert_eq!(colors::BACKGROUND, "#0a0a0c");
-        assert_eq!(colors::PRIMARY, "#4ECDC4");
+        assert_eq!(colors::PRIMARY, "#39d353");
         assert_eq!(colors::TEXT_PRIMARY, "#e0e0e0");
     }
 

@@ -63,9 +63,9 @@ impl TaskStatus {
     pub fn badge_color(&self) -> Color {
         match self {
             Self::Queued => Color::from_hex("#666666"),
-            Self::InProgress => Color::from_hex("#4ECDC4"),
+            Self::InProgress => Color::from_hex("#39d353"),
             Self::PendingReview => Color::from_hex("#F59E0B"),
-            Self::Completed => Color::from_hex("#4ECDC4"),
+            Self::Completed => Color::from_hex("#39d353"),
         }
     }
 }

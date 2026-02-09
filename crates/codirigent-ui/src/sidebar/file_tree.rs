@@ -103,11 +103,11 @@ impl FileTreeIcon {
             Self::File => Color::from_hex("#888888"),                      // Gray
             Self::Rust => Color::from_hex("#FF6B6B"),                      // Rust orange-red
             Self::Markdown => Color::from_hex("#5B8DEF"),                  // Blue
-            Self::Json | Self::Toml | Self::Yaml => Color::from_hex("#4ECDC4"), // Teal
+            Self::Json | Self::Toml | Self::Yaml => Color::from_hex("#39d353"), // Green
             Self::TypeScript => Color::from_hex("#3178C6"),                // TypeScript blue
             Self::JavaScript => Color::from_hex("#F7DF1E"),                // JavaScript yellow
             Self::Python => Color::from_hex("#3776AB"),                    // Python blue
-            Self::Shell => Color::from_hex("#4ECDC4"),                     // Teal
+            Self::Shell => Color::from_hex("#39d353"),                     // Green
             Self::Git => Color::from_hex("#F05032"),                       // Git orange
         }
     }
