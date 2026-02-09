@@ -906,6 +906,17 @@ impl WorkspaceView {
             if let Some(ref gi) = session.git_info {
                 header = header.with_git_info(gi.branch.clone(), gi.dirty_count);
             }
+
+            // Populate project name from git repo root or working directory
+            let dir_name = session
+                .git_info
+                .as_ref()
+                .and_then(|gi| gi.repo_root.file_name())
+                .or_else(|| session.working_directory.file_name())
+                .and_then(|n| n.to_str())
+                .unwrap_or("unknown");
+            header = header.with_project_name(dir_name);
+
             self.terminal_headers.push((session_id, header));
 
             // Immediately resize PTY to match actual grid cell bounds
@@ -1150,6 +1161,13 @@ impl WorkspaceView {
                 header.context_usage = session.context_usage;
                 header.is_focused = focused_id == Some(session.id);
                 header.group_name = session.group.clone();
+                header.project_name = session
+                    .git_info
+                    .as_ref()
+                    .and_then(|gi| gi.repo_root.file_name())
+                    .or_else(|| session.working_directory.file_name())
+                    .and_then(|n| n.to_str())
+                    .map(|s| s.to_string());
                 if let Some(color_hex) = &session.color {
                     header.session_color = crate::sidebar::Color::from_hex(color_hex);
                 }

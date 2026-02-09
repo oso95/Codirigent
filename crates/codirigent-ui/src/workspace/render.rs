@@ -4328,6 +4328,7 @@ impl WorkspaceView {
 
         let path_for_insert = menu.path.clone();
         let path_for_copy = menu.path.clone();
+        let path_for_task = menu.path.clone();
 
         // Click-away backdrop (transparent)
         let backdrop = div()
@@ -4377,6 +4378,25 @@ impl WorkspaceView {
             )
             .child(div().text_xs().text_color(fg).child("Copy path"));
 
+        let create_task_item = div()
+            .id("ctx-create-task")
+            .h(px(28.0))
+            .px_3()
+            .flex()
+            .items_center()
+            .gap_2()
+            .cursor_pointer()
+            .hover(move |style| style.bg(hover_bg))
+            .on_mouse_down(
+                MouseButton::Left,
+                cx.listener(move |this, _, _, cx| {
+                    let path = path_for_task.clone();
+                    this.open_task_creation_modal_for_file(&path);
+                    this.close_file_tree_context_menu(cx);
+                }),
+            )
+            .child(div().text_xs().text_color(fg).child("Create task"));
+
         let dropdown = div()
             .w(px(140.0))
             .bg(panel_bg)
@@ -4389,7 +4409,8 @@ impl WorkspaceView {
             .flex_col()
             .py_1()
             .child(insert_item)
-            .child(copy_item);
+            .child(copy_item)
+            .child(create_task_item);
 
         // Position the menu at the click location
         let menu_container = div()
