@@ -13,6 +13,7 @@ use gpui::{div, IntoElement, ParentElement, Styled};
 /// Render the General settings panel.
 pub fn render_general_panel(page: &SettingsPage, theme: &CodirigentTheme) -> impl IntoElement {
     let general = &page.user_settings.general;
+    let editor_options: Vec<&str> = page.detected_editors.iter().map(|s| s.as_str()).collect();
 
     div()
         .flex()
@@ -25,7 +26,7 @@ pub fn render_general_panel(page: &SettingsPage, theme: &CodirigentTheme) -> imp
             "External editor to open files with",
             theme,
             setting_dropdown(
-                &["code", "zed", "cursor", "vim"],
+                &editor_options,
                 &general.editor_command,
                 theme,
             ),

@@ -322,6 +322,8 @@ impl super::gpui::WorkspaceView {
                 .unwrap_or_else(|_| String::new())
         });
 
+        let editor_options: Vec<&str> = page.detected_editors.iter().map(|s| s.as_str()).collect();
+
         div()
             .flex()
             .flex_col()
@@ -333,7 +335,7 @@ impl super::gpui::WorkspaceView {
                 theme,
                 self.render_dropdown_control(
                     "dd-editor",
-                    &["code", "zed", "cursor", "vim"],
+                    &editor_options,
                     &editor,
                     cx,
                     |this, val, _, _| {

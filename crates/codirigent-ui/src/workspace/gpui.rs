@@ -229,9 +229,30 @@ pub struct WorkspaceView {
 
 /// Returns `true` if the editor command refers to a terminal-based editor
 /// (one that needs to run inside an existing terminal session).
+const KNOWN_GUI_EDITORS: &[&str] = &["code", "zed", "cursor", "windsurf", "codium", "subl"];
+const KNOWN_TERMINAL_EDITORS: &[&str] = &["vim", "nvim", "vi", "nano", "emacs", "helix", "hx", "micro"];
+
+fn detect_installed_editors() -> Vec<String> {
+    let check_cmd = if cfg!(windows) { "where" } else { "which" };
+    KNOWN_GUI_EDITORS
+        .iter()
+        .chain(KNOWN_TERMINAL_EDITORS.iter())
+        .filter(|editor| {
+            std::process::Command::new(check_cmd)
+                .arg(editor)
+                .stdout(std::process::Stdio::null())
+                .stderr(std::process::Stdio::null())
+                .status()
+                .map(|s| s.success())
+                .unwrap_or(false)
+        })
+        .map(|s| s.to_string())
+        .collect()
+}
+
 fn is_terminal_editor(editor: &str) -> bool {
     let base = editor.rsplit('/').next().unwrap_or(editor);
-    matches!(base, "vim" | "nvim" | "vi" | "nano" | "emacs" | "helix" | "hx" | "micro")
+    KNOWN_TERMINAL_EDITORS.contains(&base)
 }
 
 impl WorkspaceView {
@@ -1398,7 +1419,15 @@ impl WorkspaceView {
             user_settings.appearance.grid_gap = theme.grid_gap as u32;
             user_settings.terminal.font_size = theme.terminal_font_size as u32;
 
-            self.settings_page = Some(SettingsPage::new(user_settings, project_config));
+            let mut detected = detect_installed_editors();
+            let current = &user_settings.general.editor_command;
+            if !detected.iter().any(|e| e == current) {
+                detected.insert(0, current.clone());
+            }
+            if detected.is_empty() {
+                detected.push("code".to_string());
+            }
+            self.settings_page = Some(SettingsPage::new(user_settings, project_config, detected));
         }
         self.settings_open = true;
     }
