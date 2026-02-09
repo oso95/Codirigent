@@ -542,3 +542,80 @@ fn test_set_split_tree_from_existing_split() {
     assert!(ws.is_split_tree_mode());
     assert_eq!(ws.visible_sessions().len(), 2);
 }
+
+#[test]
+fn test_add_session_to_slot() {
+    let mut ws = Workspace::new();
+    let tree = LayoutNode::from_grid(1, 3); // 3 slots
+    ws.set_split_tree(tree);
+
+    // Get the slot IDs
+    let slots: Vec<SlotId> = ws
+        .layout_state()
+        .as_split_tree()
+        .unwrap()
+        .assignments()
+        .iter()
+        .map(|(s, _)| *s)
+        .collect();
+
+    // Add session to the second slot specifically
+    let session = make_session(1, "Session 1");
+    assert!(ws.add_session_to_slot(session, slots[1]));
+    assert_eq!(ws.sessions().len(), 1);
+    assert_eq!(ws.focused_session_id(), Some(SessionId(1)));
+
+    // The session should be in the second slot, not the first
+    let split = ws.layout_state().as_split_tree().unwrap();
+    assert_eq!(split.assignments()[0].1, None);
+    assert_eq!(split.assignments()[1].1, Some(SessionId(1)));
+    assert_eq!(split.assignments()[2].1, None);
+}
+
+#[test]
+fn test_add_session_to_slot_duplicate_rejected() {
+    let mut ws = Workspace::new();
+    let tree = LayoutNode::from_grid(1, 3);
+    ws.set_split_tree(tree);
+
+    let slots: Vec<SlotId> = ws
+        .layout_state()
+        .as_split_tree()
+        .unwrap()
+        .assignments()
+        .iter()
+        .map(|(s, _)| *s)
+        .collect();
+
+    assert!(ws.add_session_to_slot(make_session(1, "S1"), slots[0]));
+    // Duplicate session ID should fail
+    assert!(!ws.add_session_to_slot(make_session(1, "S1 again"), slots[1]));
+    assert_eq!(ws.sessions().len(), 1);
+}
+
+#[test]
+fn test_close_pane_removes_session_from_workspace() {
+    let mut ws = Workspace::new();
+    let tree = LayoutNode::from_grid(1, 2); // 2 slots
+    ws.set_split_tree(tree);
+
+    ws.add_session(make_session(1, "S1"));
+    ws.add_session(make_session(2, "S2"));
+    assert_eq!(ws.sessions().len(), 2);
+
+    // Focus session 1, then close its pane
+    ws.focus_session(SessionId(1));
+    let closed_id = ws.focused_session_id();
+    assert_eq!(closed_id, Some(SessionId(1)));
+
+    // close_pane removes the slot from the tree
+    assert!(ws.close_pane());
+
+    // Now remove the session as handle_close_pane would
+    if let Some(id) = closed_id {
+        ws.remove_session(id);
+    }
+    assert_eq!(ws.sessions().len(), 1);
+    assert!(ws.session(SessionId(1)).is_none());
+    assert!(ws.session(SessionId(2)).is_some());
+}

@@ -233,6 +233,22 @@ impl Workspace {
         true
     }
 
+    /// Add a session to a specific slot in the split tree.
+    pub fn add_session_to_slot(&mut self, session: Session, slot: SlotId) -> bool {
+        let id = session.id;
+        if self.sessions.iter().any(|s| s.id == id) {
+            return false;
+        }
+        if !self.layout_state.add_session_to_slot(id, slot) {
+            return false;
+        }
+        self.sessions.push(session);
+        if self.layout_state.focused_session().is_none() {
+            self.layout_state.focus_session(id);
+        }
+        true
+    }
+
     /// Remove a session from the workspace.
     ///
     /// # Returns

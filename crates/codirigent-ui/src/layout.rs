@@ -1324,6 +1324,25 @@ impl SplitLayoutState {
         false
     }
 
+    /// Assign a session to a specific slot.
+    pub fn assign_session_to_slot(&mut self, session_id: SessionId, slot: SlotId) -> bool {
+        // Don't add duplicates
+        if self
+            .assignments
+            .iter()
+            .any(|(_, s)| *s == Some(session_id))
+        {
+            return false;
+        }
+        for entry in &mut self.assignments {
+            if entry.0 == slot && entry.1.is_none() {
+                entry.1 = Some(session_id);
+                return true;
+            }
+        }
+        false
+    }
+
     /// Remove a session from its slot.
     pub fn remove_session(&mut self, session_id: SessionId) -> bool {
         for entry in &mut self.assignments {
@@ -1608,6 +1627,14 @@ impl WorkspaceLayoutState {
         match self {
             WorkspaceLayoutState::Grid(s) => s.add_session(session_id),
             WorkspaceLayoutState::SplitTree(s) => s.add_session(session_id),
+        }
+    }
+
+    /// Add a session to a specific slot (split tree mode only).
+    pub fn add_session_to_slot(&mut self, session_id: SessionId, slot: SlotId) -> bool {
+        match self {
+            WorkspaceLayoutState::SplitTree(s) => s.assign_session_to_slot(session_id, slot),
+            _ => false,
         }
     }
 
@@ -2931,5 +2958,63 @@ mod tests {
 
         wls.focus_previous();
         assert_eq!(wls.focused_session(), Some(SessionId(2))); // wrap back
+    }
+
+    #[test]
+    fn test_assign_session_to_slot() {
+        let tree = LayoutNode::from_grid(1, 3); // 3 leaf slots
+        let mut state = SplitLayoutState::new(tree);
+        let slots: Vec<SlotId> = state.assignments.iter().map(|(s, _)| *s).collect();
+        assert_eq!(slots.len(), 3);
+
+        // Assign to the second slot specifically
+        assert!(state.assign_session_to_slot(SessionId(1), slots[1]));
+        assert_eq!(state.assignments[1].1, Some(SessionId(1)));
+        // First and third slots remain empty
+        assert_eq!(state.assignments[0].1, None);
+        assert_eq!(state.assignments[2].1, None);
+    }
+
+    #[test]
+    fn test_assign_session_to_slot_rejects_duplicate() {
+        let tree = LayoutNode::from_grid(1, 3);
+        let mut state = SplitLayoutState::new(tree);
+        let slots: Vec<SlotId> = state.assignments.iter().map(|(s, _)| *s).collect();
+
+        assert!(state.assign_session_to_slot(SessionId(1), slots[0]));
+        // Same session to a different slot should fail (duplicate)
+        assert!(!state.assign_session_to_slot(SessionId(1), slots[1]));
+    }
+
+    #[test]
+    fn test_assign_session_to_slot_rejects_occupied() {
+        let tree = LayoutNode::from_grid(1, 3);
+        let mut state = SplitLayoutState::new(tree);
+        let slots: Vec<SlotId> = state.assignments.iter().map(|(s, _)| *s).collect();
+
+        assert!(state.assign_session_to_slot(SessionId(1), slots[0]));
+        // Different session to the same (now-occupied) slot should fail
+        assert!(!state.assign_session_to_slot(SessionId(2), slots[0]));
+    }
+
+    #[test]
+    fn test_workspace_layout_state_add_session_to_slot() {
+        let tree = LayoutNode::from_grid(1, 3);
+        let mut wls = WorkspaceLayoutState::with_split_tree(tree);
+
+        // Delegates to SplitLayoutState
+        let slots: Vec<SlotId> = wls
+            .as_split_tree()
+            .unwrap()
+            .assignments
+            .iter()
+            .map(|(s, _)| *s)
+            .collect();
+        assert!(wls.add_session_to_slot(SessionId(1), slots[2]));
+        assert_eq!(wls.assigned_sessions(), vec![SessionId(1)]);
+
+        // Grid mode returns false
+        let mut grid_wls = WorkspaceLayoutState::with_profile(LayoutProfile::Grid2x2);
+        assert!(!grid_wls.add_session_to_slot(SessionId(1), SlotId(0)));
     }
 }

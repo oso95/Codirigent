@@ -1393,9 +1393,9 @@ impl WorkspaceView {
             .justify_center()
             .gap_2()
             .cursor_pointer()
-            .on_click(cx.listener(move |_this, _: &ClickEvent, _window, cx| {
-                info!(?slot, "Empty split slot clicked");
-                cx.notify();
+            .on_click(cx.listener(move |this, _: &ClickEvent, _window, cx| {
+                info!(?slot, "Empty split slot clicked — creating session");
+                this.create_session_in_slot(slot, cx);
             }))
             .child(
                 div()
