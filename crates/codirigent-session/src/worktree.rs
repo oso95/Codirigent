@@ -32,7 +32,7 @@
 
 use anyhow::{bail, Context, Result};
 use codirigent_core::{SessionId, Worktree, WorktreeCreateOptions};
-use git2::Repository;
+use git2::{BranchType, Repository};
 use std::path::{Path, PathBuf};
 use tracing::{debug, info};
 
@@ -143,6 +143,20 @@ impl WorktreeManager {
     /// ```
     pub fn list(&self) -> &[Worktree] {
         &self.worktrees
+    }
+
+    /// List all local branch names, sorted alphabetically.
+    pub fn list_local_branches(&self) -> Result<Vec<String>> {
+        let repo = Repository::open(&self.repo_path)?;
+        let mut branches = Vec::new();
+        for branch_result in repo.branches(Some(BranchType::Local))? {
+            let (branch, _) = branch_result?;
+            if let Some(name) = branch.name()? {
+                branches.push(name.to_string());
+            }
+        }
+        branches.sort();
+        Ok(branches)
     }
 
     /// Refresh the worktree list from git.

@@ -2595,444 +2595,6 @@ impl WorkspaceView {
         grid
     }
 
-    /// Render the worktree create modal.
-    ///
-    /// Displays a modal overlay with inputs for creating a new git worktree.
-    pub(super) fn render_worktree_modal(
-        &mut self,
-        cx: &mut Context<Self>,
-    ) -> Option<impl IntoElement> {
-        if !self.worktree_panel.is_create_modal_open() {
-            return None;
-        }
-
-        let theme = self.workspace().theme();
-        let bg: gpui::Hsla = theme.panel_background.into();
-        let border_color: gpui::Hsla = theme.border.into();
-        let fg: gpui::Hsla = theme.foreground.into();
-        let muted: gpui::Hsla = theme.muted.into();
-        let primary: gpui::Hsla = theme.primary.into();
-        let input_bg: gpui::Hsla = theme.terminal_background.into();
-        let focus_border: gpui::Hsla = primary;
-        let input_style = TextInputStyle {
-            height: 36.0,
-            padding_x: 12.0,
-            bg: input_bg,
-            border: border_color,
-            focus_border,
-            error_border: border_color,
-            text: fg,
-        };
-        let placeholder_style = TextInputStyle {
-            text: muted,
-            ..input_style
-        };
-
-        let branch_value = self.worktree_panel.branch_input().to_string();
-        let base_branch_value = self.worktree_panel.base_branch_input().to_string();
-        let use_existing = self.worktree_panel.use_existing_branch();
-        let available_branches = self.worktree_panel.available_branches().to_vec();
-        let focused_input = self.worktree_panel.focused_input();
-        let dropdown_open = self.worktree_panel.is_branch_dropdown_open();
-
-        Some(
-            div()
-                .id("worktree-modal-overlay")
-                .absolute()
-                .inset_0()
-                .flex()
-                .items_center()
-                .justify_center()
-                .bg(gpui::Hsla::black().opacity(0.5))
-                .on_click(cx.listener(|this, _: &ClickEvent, _window, cx| {
-                    // Close modal on overlay click
-                    this.handle_worktree_event(crate::sidebar::WorktreeEvent::CancelCreate, cx);
-                }))
-                .child(
-                    div()
-                        .id("worktree-modal")
-                        .w(px(450.0))
-                        .bg(bg)
-                        .border_1()
-                        .border_color(border_color)
-                        .rounded_lg()
-                        .flex()
-                        .flex_col()
-                        .on_click(cx.listener(|_this, _: &ClickEvent, _window, cx| {
-                            cx.stop_propagation();
-                        }))
-                        // Header
-                        .child(
-                            div()
-                                .h(px(48.0))
-                                .px_4()
-                                .border_b_1()
-                                .border_color(border_color)
-                                .flex()
-                                .items_center()
-                                .child(
-                                    self.aligned_icon_label_row(
-                                        icons::git_branch(),
-                                        fg,
-                                        16.0,
-                                        "Create Git Worktree",
-                                        fg,
-                                        16.0,
-                                        FontWeight::SEMIBOLD,
-                                        20.0,
-                                        8.0,
-                                    ),
-                                ),
-                        )
-                        // Content
-                        .child(
-                            div()
-                                .p_4()
-                                .flex()
-                                .flex_col()
-                                .gap_4()
-                                // Branch type toggle
-                                .child(
-                                    div()
-                                        .flex()
-                                        .flex_col()
-                                        .gap_2()
-                                        .child(
-                                            div()
-                                                .text_sm()
-                                                .text_color(muted)
-                                                .child("Branch Type:"),
-                                        )
-                                        .child(
-                                            div()
-                                                .flex()
-                                                .gap_2()
-                                                // New branch button
-                                                .child(
-                                                    div()
-                                                        .id("worktree-new-branch-btn")
-                                                        .px_3()
-                                                        .py_2()
-                                                        .border_1()
-                                                        .border_color(if !use_existing { primary } else { border_color })
-                                                        .bg(if !use_existing { primary.opacity(0.1) } else { bg.opacity(0.0) })
-                                                        .rounded_md()
-                                                        .text_sm()
-                                                        .text_color(if !use_existing { primary } else { fg })
-                                                        .cursor_pointer()
-                                                        .hover(|style| style.bg(primary.opacity(0.05)))
-                                                        .on_click(cx.listener(|this, _: &ClickEvent, _window, cx| {
-                                                            if this.worktree_panel.use_existing_branch() {
-                                                                this.worktree_panel.toggle_use_existing_branch();
-                                                                cx.notify();
-                                                            }
-                                                        }))
-                                                        .child(self.aligned_icon_label_row(
-                                                            icons::git_branch(),
-                                                            if !use_existing { primary } else { fg },
-                                                            12.0,
-                                                            "New Branch",
-                                                            if !use_existing { primary } else { fg },
-                                                            14.0,
-                                                            FontWeight::MEDIUM,
-                                                            16.0,
-                                                            4.0,
-                                                        )),
-                                                )
-                                                // Existing branch button
-                                                .child(
-                                                    div()
-                                                        .id("worktree-existing-branch-btn")
-                                                        .px_3()
-                                                        .py_2()
-                                                        .border_1()
-                                                        .border_color(if use_existing { primary } else { border_color })
-                                                        .bg(if use_existing { primary.opacity(0.1) } else { bg.opacity(0.0) })
-                                                        .rounded_md()
-                                                        .text_sm()
-                                                        .text_color(if use_existing { primary } else { fg })
-                                                        .cursor_pointer()
-                                                        .hover(|style| style.bg(primary.opacity(0.05)))
-                                                        .on_click(cx.listener(|this, _: &ClickEvent, _window, cx| {
-                                                            if !this.worktree_panel.use_existing_branch() {
-                                                                this.worktree_panel.toggle_use_existing_branch();
-                                                                cx.notify();
-                                                            }
-                                                        }))
-                                                        .child(self.aligned_icon_label_row(
-                                                            icons::git_fork(),
-                                                            if use_existing { primary } else { fg },
-                                                            12.0,
-                                                            "Existing Branch",
-                                                            if use_existing { primary } else { fg },
-                                                            14.0,
-                                                            FontWeight::MEDIUM,
-                                                            16.0,
-                                                            4.0,
-                                                        )),
-                                                ),
-                                        ),
-                                )
-                                // Branch name input (shown for new branch) or selection (shown for existing)
-                                .child({
-                                    let mut branch_block = div()
-                                        .flex()
-                                        .flex_col()
-                                        .gap_2()
-                                        .child(
-                                            div()
-                                                .text_sm()
-                                                .text_color(muted)
-                                                .child(if use_existing { "Select Branch:" } else { "Branch Name:" }),
-                                        );
-
-                                    if !use_existing {
-                                        let is_focused = focused_input == Some(0);
-                                        let display_value = if branch_value.is_empty() {
-                                            "e.g., feature/my-feature".to_string()
-                                        } else {
-                                            branch_value.clone()
-                                        };
-                                        let display_with_cursor = if is_focused && !display_value.is_empty() {
-                                            format!("{}|", display_value)
-                                        } else if is_focused {
-                                            "|".to_string()
-                                        } else {
-                                            display_value.clone()
-                                        };
-                                        let style = if branch_value.is_empty() && !is_focused {
-                                            placeholder_style
-                                        } else {
-                                            input_style
-                                        };
-
-                                        branch_block = branch_block.child({
-                                            let input = text_input(
-                                                "branch-input",
-                                                display_with_cursor,
-                                                is_focused,
-                                                false,
-                                                &style,
-                                            )
-                                            .cursor_pointer();
-
-                                            input.on_mouse_down(gpui::MouseButton::Left, cx.listener(|this, _event, _window, cx| {
-                                                this.worktree_panel.set_focus(0);
-                                                cx.notify();
-                                            }))
-                                        });
-                                    } else {
-                                        let display_text = if branch_value.is_empty() {
-                                            "Select a branch...".to_string()
-                                        } else {
-                                            branch_value.clone()
-                                        };
-                                        let style = if branch_value.is_empty() {
-                                            placeholder_style
-                                        } else {
-                                            input_style
-                                        };
-
-                                        let dropdown = {
-                                            let input = text_input(
-                                                "branch-dropdown",
-                                                format!("{} v", display_text),
-                                                false,
-                                                false,
-                                                &style,
-                                            )
-                                            .cursor_pointer();
-
-                                            input.on_mouse_down(gpui::MouseButton::Left, cx.listener(|this, _event, _window, cx| {
-                                                this.worktree_panel.toggle_branch_dropdown();
-                                                cx.notify();
-                                            }))
-                                        };
-
-                                        let mut dropdown_container = div()
-                                            .flex()
-                                            .flex_col()
-                                            .gap_2()
-                                            .child(dropdown);
-
-                                        if dropdown_open {
-                                            let mut list = div()
-                                                .bg(input_bg)
-                                                .border_1()
-                                                .border_color(border_color)
-                                                .rounded_md()
-                                                .flex()
-                                                .flex_col();
-
-                                            if available_branches.is_empty() {
-                                                list = list.child(
-                                                    div()
-                                                        .px_3()
-                                                        .py_2()
-                                                        .text_sm()
-                                                        .text_color(muted)
-                                                        .child("No branches available"),
-                                                );
-                                            } else {
-                                                for branch in &available_branches {
-                                                    let branch_name = branch.clone();
-                                                    list = list.child({
-                                                        let branch_div = div()
-                                                            .px_3()
-                                                            .py_2()
-                                                            .text_sm()
-                                                            .text_color(fg)
-                                                            .cursor_pointer()
-                                                            .hover(|style| style.bg(primary.opacity(0.1)));
-
-                                                        branch_div.on_mouse_down(gpui::MouseButton::Left, cx.listener(move |this, _event, _window, cx| {
-                                                                this.worktree_panel.select_existing_branch(branch_name.clone());
-                                                                cx.notify();
-                                                            }))
-                                                            .child(branch.clone())
-                                                    });
-                                                }
-                                            }
-
-                                            dropdown_container = dropdown_container.child(list);
-                                        }
-
-                                        branch_block = branch_block.child(dropdown_container);
-                                    }
-
-                                    branch_block
-                                })
-                                // Base branch input (only shown for new branches)
-                                .when(!use_existing, |this| {
-                                    this.child(
-                                        div()
-                                            .flex()
-                                            .flex_col()
-                                            .gap_2()
-                                            .child(
-                                                div()
-                                                    .text_sm()
-                                                    .text_color(muted)
-                                                    .child("Base Branch:"),
-                                            )
-                                            .child({
-                                                let is_focused = focused_input == Some(1);
-                                                let display_text = if is_focused {
-                                                    format!("{}|", base_branch_value)
-                                                } else {
-                                                    base_branch_value.clone()
-                                                };
-                                                let input = text_input(
-                                                    "base-branch-input",
-                                                    display_text,
-                                                    is_focused,
-                                                    false,
-                                                    &input_style,
-                                                )
-                                                .cursor_pointer();
-
-                                                input.on_mouse_down(gpui::MouseButton::Left, cx.listener(|this, _event, _window, cx| {
-                                                    this.worktree_panel.set_focus(1);
-                                                    cx.notify();
-                                                }))
-                                            }),
-                                    )
-                                })
-                                // Info message
-                                .child(
-                                    div()
-                                        .text_xs()
-                                        .text_color(muted)
-                                        .child(if use_existing {
-                                            "Checkout an existing branch in a new worktree."
-                                        } else {
-                                            "Create a new branch from the base branch in a new worktree."
-                                        }),
-                                ),
-                        )
-                        // Footer with buttons
-                        .child(
-                            div()
-                                .h(px(60.0))
-                                .px_4()
-                                .border_t_1()
-                                .border_color(border_color)
-                                .flex()
-                                .items_center()
-                                .justify_end()
-                                .gap_2()
-                                // Cancel button
-                                .child(
-                                    div()
-                                        .id("worktree-cancel")
-                                        .px_4()
-                                        .py_2()
-                                        .border_1()
-                                        .border_color(border_color)
-                                        .rounded_md()
-                                        .text_sm()
-                                        .text_color(fg)
-                                        .cursor_pointer()
-                                        .hover(|style| style.bg(border_color.opacity(0.1)))
-                                        .on_click(cx.listener(|this, _: &ClickEvent, _window, cx| {
-                                            this.handle_worktree_event(crate::sidebar::WorktreeEvent::CancelCreate, cx);
-                                        }))
-                                        .child(self.aligned_icon_label_row(
-                                            icons::x(),
-                                            fg,
-                                            12.0,
-                                            "Cancel",
-                                            fg,
-                                            14.0,
-                                            FontWeight::MEDIUM,
-                                            16.0,
-                                            4.0,
-                                        )),
-                                )
-                                // Create button
-                                .child(
-                                    div()
-                                        .id("worktree-create")
-                                        .px_4()
-                                        .py_2()
-                                        .bg(if branch_value.is_empty() { muted } else { primary })
-                                        .rounded_md()
-                                        .text_sm()
-                                        .text_color(gpui::Hsla::white())
-                                        .cursor(if branch_value.is_empty() { gpui::CursorStyle::OperationNotAllowed } else { gpui::CursorStyle::PointingHand })
-                                        .when(!branch_value.is_empty(), |style| {
-                                            style
-                                                .hover(|style| style.bg(primary.opacity(0.8)))
-                                                .on_click(cx.listener(|this, _: &ClickEvent, _window, cx| {
-                                                    let branch = this.worktree_panel.branch_input().to_string();
-                                                    let base_branch = if this.worktree_panel.use_existing_branch() {
-                                                        None
-                                                    } else {
-                                                        Some(this.worktree_panel.base_branch_input().to_string())
-                                                    };
-                                                    this.handle_worktree_event(
-                                                        crate::sidebar::WorktreeEvent::ConfirmCreate { branch, base_branch },
-                                                        cx
-                                                    );
-                                                }))
-                                        })
-                                        .child(self.aligned_icon_label_row(
-                                            icons::plus(),
-                                            gpui::Hsla::white(),
-                                            12.0,
-                                            "Create",
-                                            gpui::Hsla::white(),
-                                            14.0,
-                                            FontWeight::MEDIUM,
-                                            16.0,
-                                            4.0,
-                                        )),
-                                ),
-                        ),
-                ),
-        )
-    }
-
     /// Render a small logo for the title bar using the embedded PNG.
     fn render_logo_small(&self) -> impl IntoElement {
         // The PNG (120x120 / 240x240 @2x) has ~25% built-in padding around
@@ -4528,6 +4090,166 @@ impl WorkspaceView {
                     .text_xs()
                     .text_color(green)
                     .child("Working tree clean"),
+            );
+        }
+
+        // Worktrees section
+        let worktrees = self.worktree_panel.worktrees();
+        if !worktrees.is_empty() {
+            // Section divider + header
+            content = content.child(
+                div()
+                    .mt_3()
+                    .pt_2()
+                    .border_t_1()
+                    .border_color(border_color.opacity(0.3))
+                    .flex()
+                    .items_center()
+                    .child(
+                        div()
+                            .text_xs()
+                            .font_weight(FontWeight::BOLD)
+                            .text_color(muted)
+                            .child("Worktrees"),
+                    ),
+            );
+
+            // Collect session lookup data
+            let all_sessions: Vec<Session> = self.workspace().sessions().to_vec();
+
+            for wt in worktrees {
+                // Icon: star for main, diamond for linked
+                let icon = if wt.is_main { "\u{2605}" } else { "\u{25C6}" };
+                let icon_color = if wt.is_main { green } else { blue };
+
+                let sha_text = wt
+                    .head_sha
+                    .as_ref()
+                    .map(|s| {
+                        if s.len() > 3 {
+                            s[..3].to_string()
+                        } else {
+                            s.clone()
+                        }
+                    })
+                    .unwrap_or_default();
+
+                // Session binding label
+                let binding_label = match wt.bound_session {
+                    Some(sid) => {
+                        let session_name = all_sessions
+                            .iter()
+                            .find(|s| s.id == sid)
+                            .map(|s| s.name.clone())
+                            .unwrap_or_else(|| format!("Session {}", sid.0));
+                        format!("\u{2192} {}", session_name)
+                    }
+                    None => "(unbound)".to_string(),
+                };
+
+                content = content
+                    .child(
+                        div()
+                            .pl_1()
+                            .flex()
+                            .items_center()
+                            .gap_1()
+                            // Icon
+                            .child(
+                                div()
+                                    .text_xs()
+                                    .text_color(icon_color)
+                                    .child(icon),
+                            )
+                            // Branch name
+                            .child(
+                                div()
+                                    .text_xs()
+                                    .font_weight(FontWeight::MEDIUM)
+                                    .text_color(fg)
+                                    .child(wt.branch.clone()),
+                            )
+                            // Short SHA
+                            .when(!sha_text.is_empty(), |el| {
+                                el.child(
+                                    div()
+                                        .text_xs()
+                                        .text_color(muted.opacity(0.5))
+                                        .child(sha_text),
+                                )
+                            }),
+                    )
+                    .child(
+                        div()
+                            .pl_4()
+                            .text_xs()
+                            .text_color(muted.opacity(0.6))
+                            .child(binding_label),
+                    );
+            }
+        }
+
+        // Branches section — show branches not already in a worktree
+        let available_branches = self.worktree_panel.available_branches();
+        let worktree_branches: Vec<&str> = self
+            .worktree_panel
+            .worktrees()
+            .iter()
+            .map(|wt| wt.branch.as_str())
+            .collect();
+        let extra_branches: Vec<&String> = available_branches
+            .iter()
+            .filter(|b| !worktree_branches.contains(&b.as_str()))
+            .collect();
+
+        if !extra_branches.is_empty() {
+            content = content.child(
+                div()
+                    .mt_3()
+                    .pt_2()
+                    .border_t_1()
+                    .border_color(border_color.opacity(0.3))
+                    .flex()
+                    .items_center()
+                    .child(
+                        div()
+                            .text_xs()
+                            .font_weight(FontWeight::BOLD)
+                            .text_color(muted)
+                            .child("Branches"),
+                    ),
+            );
+
+            for branch in &extra_branches {
+                content = content.child(
+                    div()
+                        .pl_3()
+                        .text_xs()
+                        .text_color(muted.opacity(0.6))
+                        .child((*branch).clone()),
+                );
+            }
+        }
+
+        // Footer — summary counts
+        let wt_count = self.worktree_panel.worktrees().len();
+        let branch_count = available_branches.len();
+        if wt_count > 0 || branch_count > 0 {
+            content = content.child(
+                div()
+                    .mt_3()
+                    .pt_2()
+                    .border_t_1()
+                    .border_color(border_color.opacity(0.3))
+                    .text_xs()
+                    .text_color(muted.opacity(0.4))
+                    .child(format!(
+                        "{} worktree{} \u{00B7} {} branch{}",
+                        wt_count,
+                        if wt_count == 1 { "" } else { "s" },
+                        branch_count,
+                        if branch_count == 1 { "" } else { "es" },
+                    )),
             );
         }
 
