@@ -944,6 +944,24 @@ impl WorkspaceView {
                 .child(hints.name.clone()),
         );
 
+        // Project/directory name (after session name)
+        if let Some(project) = &hints.project_name {
+            let muted_fg = gpui::Hsla {
+                h: 0.0,
+                s: 0.0,
+                l: 0.5,
+                a: 0.7,
+            };
+            header = header.child(
+                div()
+                    .text_xs()
+                    .text_color(muted_fg)
+                    .overflow_hidden()
+                    .text_ellipsis()
+                    .child(project.clone()),
+            );
+        }
+
         // Git branch badge (after session name)
         if let Some(branch) = &hints.git_branch {
             let git_muted = gpui::Hsla {
@@ -1522,6 +1540,24 @@ impl WorkspaceView {
                 .text_ellipsis()
                 .child(hints.name.clone()),
         );
+
+        // Project/directory name (after session name)
+        if let Some(project) = &hints.project_name {
+            let muted_fg = gpui::Hsla {
+                h: 0.0,
+                s: 0.0,
+                l: 0.5,
+                a: 0.7,
+            };
+            header = header.child(
+                div()
+                    .text_xs()
+                    .text_color(muted_fg)
+                    .overflow_hidden()
+                    .text_ellipsis()
+                    .child(project.clone()),
+            );
+        }
 
         // Git branch badge (after session name)
         if let Some(branch) = &hints.git_branch {
