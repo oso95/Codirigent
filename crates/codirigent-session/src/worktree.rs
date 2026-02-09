@@ -145,17 +145,37 @@ impl WorktreeManager {
         &self.worktrees
     }
 
-    /// List all local branch names, sorted alphabetically.
+    /// List all branch names (local and remote), sorted alphabetically.
+    ///
+    /// Remote branches are included with their remote prefix stripped
+    /// (e.g., `origin/feature` becomes `feature`). Local branches take
+    /// priority when both exist. The special `HEAD` remote ref is excluded.
     pub fn list_local_branches(&self) -> Result<Vec<String>> {
         let repo = Repository::open(&self.repo_path)?;
         let mut branches = Vec::new();
+
+        // Local branches
         for branch_result in repo.branches(Some(BranchType::Local))? {
             let (branch, _) = branch_result?;
             if let Some(name) = branch.name()? {
                 branches.push(name.to_string());
             }
         }
+
+        // Remote branches — strip remote prefix (e.g., "origin/feature" → "feature")
+        for branch_result in repo.branches(Some(BranchType::Remote))? {
+            let (branch, _) = branch_result?;
+            if let Some(name) = branch.name()? {
+                if let Some((_remote, branch_name)) = name.split_once('/') {
+                    if branch_name != "HEAD" {
+                        branches.push(branch_name.to_string());
+                    }
+                }
+            }
+        }
+
         branches.sort();
+        branches.dedup();
         Ok(branches)
     }
 
