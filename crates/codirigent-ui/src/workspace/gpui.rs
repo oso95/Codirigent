@@ -63,7 +63,7 @@ use gpui::{
     div, px, App, AppContext, Context, Entity, FocusHandle, Focusable, InteractiveElement,
     IntoElement, KeyDownEvent, ParentElement, Render, Styled, Window,
 };
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
@@ -214,6 +214,8 @@ pub struct WorkspaceView {
     pub(super) settings_page: Option<SettingsPage>,
     /// Whether the settings overlay is visible.
     pub(super) settings_open: bool,
+    /// Cached monospace fonts detected from the system (populated lazily).
+    cached_monospace_fonts: Option<Vec<String>>,
     /// Config service for loading/saving settings to disk.
     config_service: Option<DefaultConfigService>,
     /// Storage service for persisting sessions across restarts.
@@ -237,22 +239,148 @@ pub struct WorkspaceView {
 const KNOWN_GUI_EDITORS: &[&str] = &["code", "zed", "cursor", "windsurf", "codium", "subl"];
 const KNOWN_TERMINAL_EDITORS: &[&str] = &["vim", "nvim", "vi", "nano", "emacs", "helix", "hx", "micro"];
 
+/// Returns additional directories where editor CLI tools are commonly installed,
+/// beyond what the default PATH includes (especially for macOS GUI apps which
+/// inherit a minimal PATH).
+fn extra_editor_dirs() -> Vec<PathBuf> {
+    let mut dirs = Vec::new();
+
+    #[cfg(target_os = "macos")]
+    {
+        dirs.push(PathBuf::from("/usr/local/bin"));
+        dirs.push(PathBuf::from("/opt/homebrew/bin"));
+    }
+
+    #[cfg(target_os = "linux")]
+    {
+        dirs.push(PathBuf::from("/usr/local/bin"));
+        dirs.push(PathBuf::from("/snap/bin"));
+        dirs.push(PathBuf::from("/var/lib/flatpak/exports/bin"));
+        if let Some(home) = std::env::var_os("HOME") {
+            let home = PathBuf::from(home);
+            dirs.push(home.join(".local/bin"));
+            dirs.push(home.join(".local/share/flatpak/exports/bin"));
+        }
+    }
+
+    #[cfg(target_os = "windows")]
+    {
+        if let Some(local) = std::env::var_os("LOCALAPPDATA") {
+            let local = PathBuf::from(local);
+            dirs.push(local.join("Programs/Microsoft VS Code/bin"));
+            dirs.push(local.join("Programs/Cursor/bin"));
+            dirs.push(local.join("Programs/Windsurf/bin"));
+            dirs.push(local.join("Programs/VSCodium/bin"));
+        }
+        if let Some(pf) = std::env::var_os("ProgramFiles") {
+            let pf = PathBuf::from(pf);
+            dirs.push(pf.join("Microsoft VS Code/bin"));
+            dirs.push(pf.join("Sublime Text"));
+            dirs.push(pf.join("Sublime Text 3"));
+        }
+    }
+
+    dirs
+}
+
+/// Checks whether a path exists and is executable.
+#[cfg(unix)]
+fn is_executable(path: &Path) -> bool {
+    use std::os::unix::fs::PermissionsExt;
+    path.is_file()
+        && path
+            .metadata()
+            .map(|m| m.permissions().mode() & 0o111 != 0)
+            .unwrap_or(false)
+}
+
+/// On Windows, existence implies executability for `.exe`/`.cmd` files.
+#[cfg(not(unix))]
+fn is_executable(path: &Path) -> bool {
+    path.is_file()
+}
+
 fn detect_installed_editors() -> Vec<String> {
     let check_cmd = if cfg!(windows) { "where" } else { "which" };
+    let mut found = HashSet::new();
+
+    // Pass 1: use which/where (finds editors already on PATH)
+    for editor in KNOWN_GUI_EDITORS.iter().chain(KNOWN_TERMINAL_EDITORS.iter()) {
+        let on_path = std::process::Command::new(check_cmd)
+            .arg(editor)
+            .stdout(std::process::Stdio::null())
+            .stderr(std::process::Stdio::null())
+            .status()
+            .map(|s| s.success())
+            .unwrap_or(false);
+        if on_path {
+            found.insert(*editor);
+        }
+    }
+
+    // Pass 2: check extra directories for editors not found in Pass 1
+    let extra_dirs = extra_editor_dirs();
+    for editor in KNOWN_GUI_EDITORS.iter().chain(KNOWN_TERMINAL_EDITORS.iter()) {
+        if found.contains(editor) {
+            continue;
+        }
+        for dir in &extra_dirs {
+            if is_executable(&dir.join(editor)) {
+                found.insert(*editor);
+                break;
+            }
+        }
+    }
+
+    // Return in original order (GUI first, then terminal) to keep the dropdown consistent
     KNOWN_GUI_EDITORS
         .iter()
         .chain(KNOWN_TERMINAL_EDITORS.iter())
-        .filter(|editor| {
-            std::process::Command::new(check_cmd)
-                .arg(editor)
-                .stdout(std::process::Stdio::null())
-                .stderr(std::process::Stdio::null())
-                .status()
-                .map(|s| s.success())
-                .unwrap_or(false)
-        })
+        .filter(|e| found.contains(*e))
         .map(|s| s.to_string())
         .collect()
+}
+
+/// Detect installed monospace fonts by querying the GPUI text system.
+///
+/// Enumerates all system fonts and filters for monospace by comparing
+/// the advance width of 'm' vs 'i' — in a monospace font these are equal.
+fn detect_monospace_fonts(text_system: &gpui::TextSystem) -> Vec<String> {
+    use gpui::{Font, FontFeatures, FontStyle, FontWeight};
+
+    let all_names = text_system.all_font_names();
+    let font_size = px(14.0);
+    let mut monospace = Vec::new();
+
+    for name in &all_names {
+        // Skip internal/system fonts (names starting with '.')
+        if name.starts_with('.') {
+            continue;
+        }
+
+        let font = Font {
+            family: name.clone().into(),
+            features: FontFeatures::default(),
+            fallbacks: None,
+            weight: FontWeight::NORMAL,
+            style: FontStyle::Normal,
+        };
+
+        let font_id = text_system.resolve_font(&font);
+
+        let adv_m = text_system.advance(font_id, font_size, 'm');
+        let adv_i = text_system.advance(font_id, font_size, 'i');
+
+        if let (Ok(am), Ok(ai)) = (adv_m, adv_i) {
+            if (f32::from(am.width) - f32::from(ai.width)).abs() < 0.01 {
+                monospace.push(name.clone());
+            }
+        }
+    }
+
+    monospace.sort();
+    monospace.dedup();
+    monospace
 }
 
 fn is_terminal_editor(editor: &str) -> bool {
@@ -405,6 +533,7 @@ impl WorkspaceView {
             selecting_session_id: None,
             settings_page: None,
             settings_open: false,
+            cached_monospace_fonts: None,
             config_service: DefaultConfigService::new().ok(),
             storage: storage.clone(),
             claude_reader: ClaudeSessionReader::new(),
@@ -538,7 +667,10 @@ impl WorkspaceView {
         let mut any_dirty = false;
 
         // Decide once whether to run JSONL checks this cycle (throttled to ~1/second)
-        let check_jsonl = self.claude_reader.is_some()
+        let has_any_reader = self.claude_reader.is_some()
+            || self.codex_reader.is_some()
+            || self.gemini_reader.is_some();
+        let check_jsonl = has_any_reader
             && self.last_jsonl_check.elapsed() >= Duration::from_secs(1);
         if check_jsonl {
             self.last_jsonl_check = Instant::now();
@@ -675,7 +807,9 @@ impl WorkspaceView {
                 if self.idle_poll_count % 120 == 0 {
                     info!(?session_id, ?status, ?idle_time, "Session status poll");
                 }
-                self.workspace.update_session_status(session_id, status);
+                if self.workspace.update_session_status(session_id, status) {
+                    any_dirty = true;
+                }
 
                 // NeedsPermission is NOT treated as idle — session is blocked
                 if matches!(status, SessionStatus::Idle | SessionStatus::WaitingForInput) {
@@ -1606,7 +1740,14 @@ impl WorkspaceView {
             // Prepend "Auto-detect" option represented by empty string
             detected_shells.insert(0, String::new());
 
-            self.settings_page = Some(SettingsPage::new(user_settings, project_config, detected, detected_shells));
+            // Use cached monospace fonts, ensure the user's current font is in the list
+            let mut detected_fonts = self.cached_monospace_fonts.clone().unwrap_or_default();
+            let current_font = &user_settings.terminal.font_family;
+            if !current_font.is_empty() && !detected_fonts.iter().any(|f| f == current_font) {
+                detected_fonts.insert(0, current_font.clone());
+            }
+
+            self.settings_page = Some(SettingsPage::new(user_settings, project_config, detected, detected_shells, detected_fonts));
         }
         self.settings_open = true;
     }
@@ -1974,11 +2115,20 @@ impl WorkspaceView {
                 warn!("No focused terminal session for terminal editor");
             }
         } else {
-            // GUI editor: spawn as separate process
-            match std::process::Command::new(&editor)
-                .arg(&absolute_path)
-                .spawn()
-            {
+            // GUI editor: spawn as separate process, augmenting PATH so editors
+            // installed outside the default PATH (e.g. /opt/homebrew/bin) can be found.
+            let mut cmd = std::process::Command::new(&editor);
+            cmd.arg(&absolute_path);
+            let extra = extra_editor_dirs();
+            if !extra.is_empty() {
+                let mut path_val = std::env::var("PATH").unwrap_or_default();
+                let sep = if cfg!(windows) { ";" } else { ":" };
+                for dir in extra.iter().rev() {
+                    path_val = format!("{}{}{}", dir.display(), sep, path_val);
+                }
+                cmd.env("PATH", path_val);
+            }
+            match cmd.spawn() {
                 Ok(_) => {
                     info!(editor, ?absolute_path, "Opened file in GUI editor");
                 }
@@ -3475,6 +3625,11 @@ impl Render for WorkspaceView {
         // Ensure Lucide icon font is loaded (no-op after first call)
         crate::icons::ensure_font_loaded(window);
 
+        // Lazily detect monospace fonts on first render (text system is available here)
+        if self.cached_monospace_fonts.is_none() {
+            self.cached_monospace_fonts = Some(detect_monospace_fonts(window.text_system()));
+        }
+
         // Scale all rem-based text sizes (text_xs, text_sm, etc.) proportionally
         // to font_size_base. Default rem is 16px when font_size_base is 13.
         let rem = 16.0 * (self.workspace.theme().font_size_base / 13.0);
@@ -3806,5 +3961,62 @@ mod tests {
         // Quick sanity check that we can create a workspace
         let ws = Workspace::new();
         assert!(ws.sessions().is_empty());
+    }
+
+    #[test]
+    fn test_extra_editor_dirs_returns_entries() {
+        let dirs = super::extra_editor_dirs();
+        // On macOS and Linux we always add at least /usr/local/bin;
+        // on Windows we add dirs based on env vars (may be empty in CI).
+        #[cfg(any(target_os = "macos", target_os = "linux"))]
+        assert!(
+            !dirs.is_empty(),
+            "extra_editor_dirs should return entries on macOS/Linux"
+        );
+        // All entries should be absolute paths
+        for d in &dirs {
+            assert!(d.is_absolute(), "expected absolute path, got {:?}", d);
+        }
+    }
+
+    #[test]
+    fn test_detect_installed_editors_no_duplicates() {
+        let editors = super::detect_installed_editors();
+        let unique: std::collections::HashSet<&String> = editors.iter().collect();
+        assert_eq!(
+            editors.len(),
+            unique.len(),
+            "detect_installed_editors returned duplicates: {:?}",
+            editors
+        );
+    }
+
+    #[test]
+    fn test_detect_installed_editors_gui_before_terminal() {
+        let editors = super::detect_installed_editors();
+        let mut seen_terminal = false;
+        for e in &editors {
+            if super::KNOWN_TERMINAL_EDITORS.contains(&e.as_str()) {
+                seen_terminal = true;
+            } else if super::KNOWN_GUI_EDITORS.contains(&e.as_str()) {
+                assert!(
+                    !seen_terminal,
+                    "GUI editor {:?} appeared after a terminal editor in {:?}",
+                    e, editors
+                );
+            }
+        }
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn test_is_executable() {
+        use std::path::Path;
+        // /bin/sh should always exist and be executable on Unix
+        assert!(super::is_executable(Path::new("/bin/sh")));
+        // A non-existent path should not be executable
+        assert!(!super::is_executable(Path::new(
+            "/nonexistent_binary_abc123"
+        )));
     }
 }
