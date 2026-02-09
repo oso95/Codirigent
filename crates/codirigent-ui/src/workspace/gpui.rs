@@ -673,6 +673,26 @@ impl WorkspaceView {
             }
         }
 
+        // Stale proposal cleanup: reject pending assignments whose target session
+        // now has a current_task (became busy), and clear proposals older than 5 min.
+        if let Ok(mut manager) = self.task_manager.lock() {
+            let stale_task_ids: Vec<_> = manager
+                .assignment()
+                .pending_assignments()
+                .iter()
+                .filter(|p| {
+                    self.workspace
+                        .session(p.session_id)
+                        .map_or(true, |s| s.current_task.is_some())
+                })
+                .map(|p| p.task_id.clone())
+                .collect();
+            for tid in stale_task_ids {
+                manager.assignment_mut().reject_assignment(&tid);
+            }
+            manager.assignment_mut().clear_expired(300);
+        }
+
         // Refresh git status every 3 seconds
         if self.last_git_refresh.elapsed() >= Duration::from_secs(3) {
             self.last_git_refresh = Instant::now();
@@ -823,8 +843,9 @@ impl WorkspaceView {
                 task_id,
                 session_id: target_id,
             }) => {
-                // TODO: Show confirmation UI (Phase 2)
-                info!(?task_id, ?target_id, "Task awaiting confirmation");
+                // Pending assignment is stored in AssignmentManager.pending;
+                // the UI will render the confirmation banner on next frame.
+                info!(?task_id, ?target_id, "Task proposed — awaiting user confirmation");
             }
             Some(AssignmentAction::NoTask) | None => {}
         }
@@ -1489,10 +1510,12 @@ impl WorkspaceView {
             crate::task_board::TaskBoardEvent::TabSelected(tab) => {
                 info!(?tab, "Task board tab selected");
             }
-            crate::task_board::TaskBoardEvent::AutoAssignToggled(enabled) => {
-                info!(enabled, "Auto-assign toggled");
+            crate::task_board::TaskBoardEvent::AutoAssignModeChanged(mode) => {
+                info!(?mode, "Auto-assign mode changed");
+                let (auto, confirm) = mode.to_config();
                 if let Ok(mut manager) = self.task_manager.lock() {
-                    manager.assignment_mut().set_auto_assign(enabled);
+                    manager.assignment_mut().set_auto_assign(auto);
+                    manager.assignment_mut().set_confirm_before_assign(confirm);
                 }
             }
             crate::task_board::TaskBoardEvent::AddTaskClicked => {
@@ -1668,6 +1691,71 @@ impl WorkspaceView {
                         warn!("Task action failed: {}", e);
                     }
                 }
+            }
+            crate::task_board::TaskBoardEvent::ConfirmAssignment { task_id } => {
+                info!(%task_id, "Confirming pending assignment");
+                let task_id = TaskId(task_id);
+
+                // Confirm the pending assignment and get the prompt
+                let (prompt, session_id) = {
+                    let mut manager = match self.task_manager.lock() {
+                        Ok(m) => m,
+                        Err(_) => {
+                            cx.notify();
+                            return;
+                        }
+                    };
+                    match manager.assignment_mut().confirm_assignment(&task_id) {
+                        Ok(assignment) => {
+                            // Also assign the task in the queue
+                            if let Err(e) =
+                                manager.queue_mut().assign_task(&task_id, assignment.session_id)
+                            {
+                                warn!("Failed to assign task in queue: {}", e);
+                                cx.notify();
+                                return;
+                            }
+                            (assignment.prompt, assignment.session_id)
+                        }
+                        Err(e) => {
+                            warn!("Failed to confirm assignment: {}", e);
+                            cx.notify();
+                            return;
+                        }
+                    }
+                };
+
+                // Update session's current_task
+                if let Ok(mgr) = self.session_manager.lock() {
+                    mgr.with_session_state_mut(session_id, |state| {
+                        state.session.current_task = Some(task_id.clone());
+                    });
+                }
+                if let Some(ws_session) = self.workspace.session_mut(session_id) {
+                    ws_session.current_task = Some(task_id.clone());
+                }
+
+                // Send prompt to PTY
+                let cli_type = self.clipboard_service.get_session_cli_type(session_id);
+                let input = Self::format_task_input(&prompt, cli_type);
+                if let Ok(mgr) = self.session_manager.lock() {
+                    if let Err(e) = mgr.send_input(session_id, input.as_bytes()) {
+                        warn!(
+                            "Failed to send confirmed task prompt to session {}: {}",
+                            session_id, e
+                        );
+                    }
+                }
+
+                info!(?task_id, ?session_id, "Confirmed and sent task to session");
+            }
+            crate::task_board::TaskBoardEvent::RejectAssignment { task_id } => {
+                info!(%task_id, "Rejecting pending assignment");
+                let task_id = TaskId(task_id);
+                if let Ok(mut manager) = self.task_manager.lock() {
+                    manager.assignment_mut().reject_assignment(&task_id);
+                }
+                info!(?task_id, "Rejected assignment — task remains queued");
             }
         }
         cx.notify();

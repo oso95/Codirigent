@@ -334,6 +334,25 @@ impl AssignmentManager {
         self.config.auto_assign = enabled;
     }
 
+    /// Set whether confirmation is required before auto-assigning.
+    ///
+    /// When disabling, clears any pending proposals to avoid orphaned assignments.
+    ///
+    /// # Arguments
+    ///
+    /// * `enabled` - Whether to require confirmation before auto-assign
+    pub fn set_confirm_before_assign(&mut self, enabled: bool) {
+        self.config.confirm_before_assign = enabled;
+        if !enabled {
+            self.pending.clear();
+        }
+    }
+
+    /// Check if there is a pending assignment for a given session.
+    pub fn has_pending_for_session(&self, session_id: SessionId) -> bool {
+        self.pending.iter().any(|p| p.session_id == session_id)
+    }
+
     /// Generate prompt for a task.
     ///
     /// Replaces all placeholders in the prompt template with actual task values.
@@ -516,6 +535,21 @@ impl AssignmentManager {
         let prompt = self.generate_prompt(task);
 
         if self.config.confirm_before_assign {
+            // Duplicate proposal guard: skip if we already have a pending entry
+            // for the same task or the same session (polling loop protection)
+            if self.pending.iter().any(|p| p.task_id == task_id) {
+                return Some(AssignmentAction::AwaitConfirmation {
+                    task_id,
+                    session_id: session.id,
+                });
+            }
+            if self.has_pending_for_session(session.id) {
+                return Some(AssignmentAction::AwaitConfirmation {
+                    task_id,
+                    session_id: session.id,
+                });
+            }
+
             // Add to pending and wait for confirmation
             let pending = PendingAssignment {
                 task_id: task_id.clone(),
@@ -624,13 +658,8 @@ impl AssignmentManager {
     /// ```
     pub fn reject_assignment(&mut self, task_id: &TaskId) {
         if let Some(idx) = self.pending.iter().position(|p| &p.task_id == task_id) {
-            let assignment = self.pending.remove(idx);
-
-            // Publish rejection event (using TaskCompleted with success=false as proxy)
-            self.event_bus.publish(CodirigentEvent::TaskCompleted {
-                task_id: assignment.task_id,
-                success: false,
-            });
+            // Simply remove — the task was never assigned, it stays Queued
+            self.pending.remove(idx);
         }
     }
 

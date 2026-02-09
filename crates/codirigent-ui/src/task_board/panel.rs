@@ -2,13 +2,67 @@
 
 use crate::sidebar::Color;
 
+/// Three-state auto-assign mode.
+///
+/// Off: no auto-assignment
+/// Confirm: auto-assign proposes tasks but waits for user to click "Send"
+/// Auto: immediate assignment (original behavior)
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum AutoAssignMode {
+    /// Auto-assign is disabled.
+    #[default]
+    Off,
+    /// Auto-assign proposes tasks but waits for confirmation.
+    Confirm,
+    /// Auto-assign sends tasks immediately.
+    Auto,
+}
+
+impl AutoAssignMode {
+    /// Cycle to the next mode: Off -> Confirm -> Auto -> Off.
+    pub fn next(self) -> Self {
+        match self {
+            Self::Off => Self::Confirm,
+            Self::Confirm => Self::Auto,
+            Self::Auto => Self::Off,
+        }
+    }
+
+    /// Display label for the mode.
+    pub fn label(self) -> &'static str {
+        match self {
+            Self::Off => "Off",
+            Self::Confirm => "Confirm",
+            Self::Auto => "Auto",
+        }
+    }
+
+    /// Derive the mode from the (auto_assign, confirm_before_assign) pair.
+    pub fn from_config(auto_assign: bool, confirm_before_assign: bool) -> Self {
+        match (auto_assign, confirm_before_assign) {
+            (true, true) => Self::Confirm,
+            (true, false) => Self::Auto,
+            _ => Self::Off,
+        }
+    }
+
+    /// Convert mode to the (auto_assign, confirm_before_assign) pair.
+    pub fn to_config(self) -> (bool, bool) {
+        match self {
+            Self::Off => (false, false),
+            Self::Confirm => (true, true),
+            Self::Auto => (true, false),
+        }
+    }
+}
+
 /// Task board panel events.
 #[derive(Debug, Clone, PartialEq)]
 pub enum TaskBoardEvent {
     /// Tab was selected.
     TabSelected(TaskBoardTab),
-    /// Auto-assign toggle changed.
-    AutoAssignToggled(bool),
+    /// Auto-assign mode changed (three-state cycle).
+    AutoAssignModeChanged(AutoAssignMode),
     /// Add task button clicked.
     AddTaskClicked,
     /// Task was selected.
@@ -19,6 +73,16 @@ pub enum TaskBoardEvent {
         task_id: String,
         /// Action type.
         action: TaskAction,
+    },
+    /// User confirmed a pending assignment (clicked "Send").
+    ConfirmAssignment {
+        /// Task ID to confirm.
+        task_id: String,
+    },
+    /// User rejected a pending assignment (clicked "Skip").
+    RejectAssignment {
+        /// Task ID to reject.
+        task_id: String,
     },
 }
 
@@ -115,26 +179,49 @@ impl TabButton {
 }
 
 /// Auto-assign toggle state.
-#[derive(Debug, Clone, Copy, Default)]
+#[derive(Debug, Clone, Copy)]
 pub struct AutoAssignToggle {
-    /// Whether auto-assign is enabled.
-    pub enabled: bool,
+    /// Current auto-assign mode.
+    pub mode: AutoAssignMode,
     /// Whether the toggle is hovered.
     pub is_hovered: bool,
 }
 
-impl AutoAssignToggle {
-    /// Create a new toggle.
-    pub fn new(enabled: bool) -> Self {
+impl Default for AutoAssignToggle {
+    fn default() -> Self {
         Self {
-            enabled,
+            mode: AutoAssignMode::Off,
+            is_hovered: false,
+        }
+    }
+}
+
+impl AutoAssignToggle {
+    /// Create a new toggle with the given mode.
+    pub fn new(mode: AutoAssignMode) -> Self {
+        Self {
+            mode,
             is_hovered: false,
         }
     }
 
-    /// Get the background color based on state.
+    /// Whether auto-assign is active (Confirm or Auto mode).
+    pub fn is_active(&self) -> bool {
+        !matches!(self.mode, AutoAssignMode::Off)
+    }
+
+    /// Get the dot color based on mode.
+    pub fn dot_color(&self) -> Color {
+        match self.mode {
+            AutoAssignMode::Off => Color::from_hex("#6b7280"),    // Gray
+            AutoAssignMode::Confirm => Color::from_hex("#f59e0b"), // Amber
+            AutoAssignMode::Auto => Color::from_hex("#4ECDC4"),    // Teal
+        }
+    }
+
+    /// Get the background color based on state (legacy compat).
     pub fn background_color(&self) -> Color {
-        if self.enabled {
+        if self.is_active() {
             Color::from_hex("#4ECDC4") // Teal when enabled
         } else {
             Color::from_hex("#1a1a1f") // Border color when disabled
@@ -239,25 +326,46 @@ impl TaskBoardPanel {
         &mut self.auto_assign
     }
 
-    /// Toggle auto-assign.
-    pub fn toggle_auto_assign(&mut self) {
-        self.auto_assign.enabled = !self.auto_assign.enabled;
+    /// Cycle auto-assign mode: Off -> Confirm -> Auto -> Off.
+    pub fn cycle_auto_assign_mode(&mut self) {
+        self.auto_assign.mode = self.auto_assign.mode.next();
         self.pending_events
-            .push(TaskBoardEvent::AutoAssignToggled(self.auto_assign.enabled));
+            .push(TaskBoardEvent::AutoAssignModeChanged(self.auto_assign.mode));
     }
 
-    /// Set auto-assign state.
-    pub fn set_auto_assign(&mut self, enabled: bool) {
-        if self.auto_assign.enabled != enabled {
-            self.auto_assign.enabled = enabled;
+    /// Set auto-assign mode directly.
+    pub fn set_auto_assign_mode(&mut self, mode: AutoAssignMode) {
+        if self.auto_assign.mode != mode {
+            self.auto_assign.mode = mode;
             self.pending_events
-                .push(TaskBoardEvent::AutoAssignToggled(enabled));
+                .push(TaskBoardEvent::AutoAssignModeChanged(mode));
         }
     }
 
-    /// Is auto-assign enabled?
-    pub fn is_auto_assign_enabled(&self) -> bool {
-        self.auto_assign.enabled
+    /// Is auto-assign active (Confirm or Auto)?
+    pub fn is_auto_assign_active(&self) -> bool {
+        self.auto_assign.is_active()
+    }
+
+    /// Get current auto-assign mode.
+    pub fn auto_assign_mode(&self) -> AutoAssignMode {
+        self.auto_assign.mode
+    }
+
+    /// Emit a ConfirmAssignment event.
+    pub fn confirm_pending_assignment(&mut self, task_id: impl Into<String>) {
+        self.pending_events
+            .push(TaskBoardEvent::ConfirmAssignment {
+                task_id: task_id.into(),
+            });
+    }
+
+    /// Emit a RejectAssignment event.
+    pub fn reject_pending_assignment(&mut self, task_id: impl Into<String>) {
+        self.pending_events
+            .push(TaskBoardEvent::RejectAssignment {
+                task_id: task_id.into(),
+            });
     }
 
     /// Click the add task button.

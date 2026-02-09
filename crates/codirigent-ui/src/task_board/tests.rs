@@ -9,7 +9,7 @@ use crate::sidebar::Color;
 fn test_task_board_panel_new() {
     let panel = TaskBoardPanel::new();
     assert_eq!(panel.active_tab(), TaskBoardTab::Queue);
-    assert!(!panel.is_auto_assign_enabled());
+    assert!(!panel.is_auto_assign_active());
     assert!(!panel.is_expanded()); // Panel starts collapsed by default
 }
 
@@ -49,29 +49,35 @@ fn test_click_tab() {
 }
 
 #[test]
-fn test_toggle_auto_assign() {
+fn test_cycle_auto_assign_mode() {
     let mut panel = TaskBoardPanel::new();
-    assert!(!panel.is_auto_assign_enabled());
+    assert_eq!(panel.auto_assign_mode(), AutoAssignMode::Off);
 
-    panel.toggle_auto_assign();
-    assert!(panel.is_auto_assign_enabled());
+    panel.cycle_auto_assign_mode();
+    assert_eq!(panel.auto_assign_mode(), AutoAssignMode::Confirm);
 
     let events = panel.take_events();
     assert!(matches!(
         &events[0],
-        TaskBoardEvent::AutoAssignToggled(true)
+        TaskBoardEvent::AutoAssignModeChanged(AutoAssignMode::Confirm)
     ));
+
+    panel.cycle_auto_assign_mode();
+    assert_eq!(panel.auto_assign_mode(), AutoAssignMode::Auto);
+
+    panel.cycle_auto_assign_mode();
+    assert_eq!(panel.auto_assign_mode(), AutoAssignMode::Off);
 }
 
 #[test]
-fn test_set_auto_assign() {
+fn test_set_auto_assign_mode() {
     let mut panel = TaskBoardPanel::new();
-    panel.set_auto_assign(true);
-    assert!(panel.is_auto_assign_enabled());
+    panel.set_auto_assign_mode(AutoAssignMode::Auto);
+    assert!(panel.is_auto_assign_active());
 
     // Setting to same value should not emit event
     panel.take_events();
-    panel.set_auto_assign(true);
+    panel.set_auto_assign_mode(AutoAssignMode::Auto);
     assert!(panel.take_events().is_empty());
 }
 
@@ -140,11 +146,11 @@ fn test_trigger_task_action() {
 fn test_render_hints() {
     let mut panel = TaskBoardPanel::new();
     panel.set_task_counts(3, 1, 0, 5);
-    panel.toggle_auto_assign();
+    panel.cycle_auto_assign_mode(); // Off -> Confirm
 
     let hints = panel.render_hints();
     assert_eq!(hints.active_tab, TaskBoardTab::Queue);
-    assert!(hints.auto_assign.enabled);
+    assert!(hints.auto_assign.is_active());
     assert!(!hints.is_expanded); // Panel starts collapsed by default
     assert_eq!(hints.tabs.len(), 4);
 }
@@ -160,12 +166,15 @@ fn test_tab_button_new() {
 
 #[test]
 fn test_auto_assign_toggle_colors() {
-    let enabled = AutoAssignToggle::new(true);
-    let disabled = AutoAssignToggle::new(false);
+    let auto_mode = AutoAssignToggle::new(AutoAssignMode::Auto);
+    let off_mode = AutoAssignToggle::new(AutoAssignMode::Off);
+    let confirm_mode = AutoAssignToggle::new(AutoAssignMode::Confirm);
 
-    // Different colors for enabled/disabled
-    assert!(enabled.background_color().g > 0.7); // Teal has high green
-    assert!(disabled.background_color().g < 0.2); // Border color is dark
+    // Different colors for different modes
+    assert!(auto_mode.background_color().g > 0.7); // Teal has high green
+    assert!(off_mode.background_color().g < 0.2); // Border color is dark
+    assert!(confirm_mode.is_active()); // Confirm is active
+    assert!(!off_mode.is_active()); // Off is not active
 }
 
 #[test]

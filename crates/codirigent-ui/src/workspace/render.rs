@@ -5029,7 +5029,7 @@ impl WorkspaceView {
         let panel_icon_y_offset = 1.0;
 
         // Fetch real task data from TaskManager
-        let (running_items, queued_items, review_items, done_items, auto_assign_enabled) =
+        let (running_items, queued_items, review_items, done_items, auto_assign_mode, pending_assignments) =
             if let Ok(manager) = self.task_manager.lock() {
                 let all_tasks = manager.list_tasks();
 
@@ -5071,7 +5071,26 @@ impl WorkspaceView {
                     .filter(|t| t.status == codirigent_core::TaskStatus::Done)
                     .map(|t| self.core_task_to_ui_item(t))
                     .collect();
-                let auto_assign = manager.assignment().config().auto_assign;
+                let config = manager.assignment().config();
+                let mode = crate::task_board::AutoAssignMode::from_config(
+                    config.auto_assign,
+                    config.confirm_before_assign,
+                );
+
+                // Collect pending assignments for the confirmation banner
+                let pending: Vec<_> = manager
+                    .assignment()
+                    .pending_assignments()
+                    .iter()
+                    .map(|p| {
+                        let task_title = all_tasks
+                            .iter()
+                            .find(|t| t.id == p.task_id)
+                            .map(|t| t.title.clone())
+                            .unwrap_or_else(|| p.task_id.to_string());
+                        (p.task_id.to_string(), p.session_id.0, task_title)
+                    })
+                    .collect();
 
                 let queue_count = queued.len();
                 let in_progress_count = running.len();
@@ -5085,9 +5104,9 @@ impl WorkspaceView {
                     done_count,
                 );
 
-                (running, queued, review, done, auto_assign)
+                (running, queued, review, done, mode, pending)
             } else {
-                (Vec::new(), Vec::new(), Vec::new(), Vec::new(), true)
+                (Vec::new(), Vec::new(), Vec::new(), Vec::new(), crate::task_board::AutoAssignMode::Off, Vec::new())
             };
 
         let running_count = running_items.len();
@@ -5095,15 +5114,25 @@ impl WorkspaceView {
         let review_count = review_items.len();
         let done_count = done_items.len();
 
-        // Auto-assign badge colors
-        let auto_dot_color = if auto_assign_enabled {
-            primary
-        } else {
-            muted.opacity(0.4)
+        // Auto-assign badge colors based on three-state mode
+        let amber: gpui::Hsla = gpui::hsla(0.11, 0.95, 0.55, 1.0); // Amber for Confirm
+        let (auto_dot_color, auto_text_opacity, auto_bg_opacity, auto_border_opacity, auto_label) =
+            match auto_assign_mode {
+                crate::task_board::AutoAssignMode::Off => {
+                    (muted.opacity(0.4), 0.4, 0.05, 0.1, "Off")
+                }
+                crate::task_board::AutoAssignMode::Confirm => {
+                    (amber, 0.8, 0.1, 0.2, "Confirm")
+                }
+                crate::task_board::AutoAssignMode::Auto => {
+                    (primary, 0.8, 0.1, 0.2, "Auto")
+                }
+            };
+        let auto_badge_accent = match auto_assign_mode {
+            crate::task_board::AutoAssignMode::Off => muted,
+            crate::task_board::AutoAssignMode::Confirm => amber,
+            crate::task_board::AutoAssignMode::Auto => primary,
         };
-        let auto_text_opacity = if auto_assign_enabled { 0.8 } else { 0.4 };
-        let auto_bg_opacity = if auto_assign_enabled { 0.1 } else { 0.05 };
-        let auto_border_opacity = if auto_assign_enabled { 0.2 } else { 0.1 };
 
         // Render task cards for each section
         let theme_ref = self.workspace().theme().clone();
@@ -5182,14 +5211,22 @@ impl WorkspaceView {
                             .px_2()
                             .py(px(2.0))
                             .rounded_md()
-                            .bg(primary.opacity(auto_bg_opacity))
+                            .bg(auto_badge_accent.opacity(auto_bg_opacity))
                             .border_1()
-                            .border_color(primary.opacity(auto_border_opacity))
+                            .border_color(auto_badge_accent.opacity(auto_border_opacity))
                             .cursor_pointer()
                             .on_click(cx.listener(move |this, _: &ClickEvent, _window, _cx| {
+                                // Cycle: Off -> Confirm -> Auto -> Off
                                 if let Ok(mut manager) = this.task_manager.lock() {
-                                    let current = manager.assignment().config().auto_assign;
-                                    manager.assignment_mut().set_auto_assign(!current);
+                                    let config = manager.assignment().config().clone();
+                                    let current = crate::task_board::AutoAssignMode::from_config(
+                                        config.auto_assign,
+                                        config.confirm_before_assign,
+                                    );
+                                    let next = current.next();
+                                    let (auto, confirm) = next.to_config();
+                                    manager.assignment_mut().set_auto_assign(auto);
+                                    manager.assignment_mut().set_confirm_before_assign(confirm);
                                 }
                             }))
                             .child(
@@ -5207,12 +5244,112 @@ impl WorkspaceView {
                                     .child(
                                         div()
                                             .text_size(px(panel_label_size))
-                                            .text_color(primary.opacity(auto_text_opacity))
-                                            .child("Auto"),
+                                            .text_color(auto_badge_accent.opacity(auto_text_opacity))
+                                            .child(auto_label),
                                     ),
                             ),
                     ),
             )
+            // Pending assignment confirmation banners
+            .children(pending_assignments.into_iter().map(|(task_id, session_num, task_title)| {
+                let confirm_task_id = task_id.clone();
+                let reject_task_id = task_id.clone();
+                let amber_bg: gpui::Hsla = gpui::hsla(0.11, 0.95, 0.55, 0.08);
+                let amber_border: gpui::Hsla = gpui::hsla(0.11, 0.95, 0.55, 0.25);
+                let amber_text: gpui::Hsla = gpui::hsla(0.11, 0.95, 0.55, 0.9);
+                let green_bg: gpui::Hsla = gpui::hsla(0.40, 0.7, 0.45, 0.20);
+                let green_fg: gpui::Hsla = gpui::hsla(0.40, 0.8, 0.60, 1.0);
+
+                div()
+                    .id(SharedString::from(format!("pending-confirm-{}", task_id)))
+                    .mx_2()
+                    .mt_2()
+                    .p_2()
+                    .rounded_md()
+                    .bg(amber_bg)
+                    .border_1()
+                    .border_color(amber_border)
+                    .flex()
+                    .flex_col()
+                    .gap(px(6.0))
+                    // Row 1: pause icon + task title + "Proposed for Session N"
+                    .child(
+                        div()
+                            .flex()
+                            .items_center()
+                            .gap(px(6.0))
+                            .child(
+                                div()
+                                    .text_size(px(11.0))
+                                    .text_color(amber_text)
+                                    .child("⏸"),
+                            )
+                            .child(
+                                div()
+                                    .flex_1()
+                                    .overflow_hidden()
+                                    .child(
+                                        div()
+                                            .text_size(px(12.0))
+                                            .font_weight(FontWeight::MEDIUM)
+                                            .text_color(amber_text)
+                                            .child(task_title),
+                                    ),
+                            )
+                            .child(
+                                div()
+                                    .text_size(px(10.0))
+                                    .text_color(muted.opacity(0.7))
+                                    .child(format!("→ Session {}", session_num)),
+                            ),
+                    )
+                    // Row 2: Send + Skip buttons
+                    .child(
+                        div()
+                            .flex()
+                            .items_center()
+                            .gap(px(6.0))
+                            .child(
+                                div()
+                                    .id(SharedString::from(format!("confirm-send-{}", confirm_task_id)))
+                                    .px(px(10.0))
+                                    .py(px(3.0))
+                                    .rounded(px(4.0))
+                                    .bg(green_bg)
+                                    .cursor_pointer()
+                                    .hover(|style| style.bg(gpui::hsla(0.40, 0.7, 0.45, 0.35)))
+                                    .on_click(cx.listener(move |this, _: &ClickEvent, _window, _cx| {
+                                        this.task_board.confirm_pending_assignment(confirm_task_id.clone());
+                                    }))
+                                    .child(
+                                        div()
+                                            .text_size(px(11.0))
+                                            .font_weight(FontWeight::MEDIUM)
+                                            .text_color(green_fg)
+                                            .child("Send"),
+                                    ),
+                            )
+                            .child(
+                                div()
+                                    .id(SharedString::from(format!("confirm-skip-{}", reject_task_id)))
+                                    .px(px(10.0))
+                                    .py(px(3.0))
+                                    .rounded(px(4.0))
+                                    .bg(active_bg.opacity(0.4))
+                                    .cursor_pointer()
+                                    .hover(|style| style.bg(gpui::hsla(0.0, 0.0, 0.5, 0.15)))
+                                    .on_click(cx.listener(move |this, _: &ClickEvent, _window, _cx| {
+                                        this.task_board.reject_pending_assignment(reject_task_id.clone());
+                                    }))
+                                    .child(
+                                        div()
+                                            .text_size(px(11.0))
+                                            .text_color(muted.opacity(0.7))
+                                            .child("Skip"),
+                                    ),
+                            ),
+                    )
+            }))
             // Scrollable content - Running + Queue sections
             .child(
                 div()
