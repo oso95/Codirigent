@@ -445,6 +445,14 @@ fn test_status_badge_for_error() {
     assert!(!badge.animated);
 }
 
+#[test]
+fn test_status_badge_for_needs_permission() {
+    let colors = StatusColors::default();
+    let badge = StatusBadge::for_status(SessionStatus::NeedsPermission, &colors);
+    assert_eq!(badge.text, "Permission");
+    assert!(badge.animated);
+}
+
 fn create_session_with_context(
     id: u64,
     name: &str,

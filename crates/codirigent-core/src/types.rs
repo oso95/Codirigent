@@ -46,6 +46,8 @@ pub enum SessionStatus {
     Working,
     /// Process is waiting for user input.
     WaitingForInput,
+    /// Session is blocked on a tool permission prompt (Claude Code).
+    NeedsPermission,
     /// Task completed successfully.
     Done,
     /// Error detected in output.
@@ -971,6 +973,7 @@ mod tests {
             SessionStatus::Idle,
             SessionStatus::Working,
             SessionStatus::WaitingForInput,
+            SessionStatus::NeedsPermission,
             SessionStatus::Done,
             SessionStatus::Error,
         ];

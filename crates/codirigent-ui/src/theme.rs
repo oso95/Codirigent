@@ -306,6 +306,8 @@ pub struct CodirigentTheme {
     pub session_working: Hsla,
     /// Color for sessions waiting for input.
     pub session_waiting: Hsla,
+    /// Color for sessions needing tool permission.
+    pub session_needs_permission: Hsla,
     /// Color for completed sessions.
     pub session_done: Hsla,
     /// Color for sessions with errors.
@@ -417,6 +419,7 @@ impl CodirigentTheme {
             session_idle: hex("#52525b"),    // Zinc-600 for idle
             session_working: hex("#f59e0b"), // Amber-500 for working
             session_waiting: hex("#f43f5e"), // Rose-500 for waiting input
+            session_needs_permission: hex("#f97316"), // Orange-500 for permission
             session_done: hex("#10b981"),    // Emerald-500 for done
             session_error: hex("#ef4444"),   // Red-500 for error
 
@@ -512,6 +515,7 @@ impl CodirigentTheme {
             session_idle: hex("#71717a"),    // Zinc-500
             session_working: hex("#d97706"), // Amber-600
             session_waiting: hex("#e11d48"), // Rose-600
+            session_needs_permission: hex("#ea580c"), // Orange-600
             session_done: hex("#059669"),    // Emerald-600
             session_error: hex("#dc2626"),   // Red-600
 
@@ -572,6 +576,7 @@ impl CodirigentTheme {
             SessionStatus::Idle => self.session_idle,
             SessionStatus::Working => self.session_working,
             SessionStatus::WaitingForInput => self.session_waiting,
+            SessionStatus::NeedsPermission => self.session_needs_permission,
             SessionStatus::Done => self.session_done,
             SessionStatus::Error => self.session_error,
         }
@@ -593,6 +598,7 @@ impl CodirigentTheme {
             SessionStatus::Idle => "Idle",
             SessionStatus::Working => "Working",
             SessionStatus::WaitingForInput => "Waiting",
+            SessionStatus::NeedsPermission => "Permission",
             SessionStatus::Done => "Done",
             SessionStatus::Error => "Error",
         }
@@ -701,6 +707,7 @@ mod tests {
             SessionStatus::Idle,
             SessionStatus::Working,
             SessionStatus::WaitingForInput,
+            SessionStatus::NeedsPermission,
             SessionStatus::Done,
             SessionStatus::Error,
         ];

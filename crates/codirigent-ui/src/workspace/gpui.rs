@@ -53,6 +53,7 @@ use codirigent_core::{
 };
 use codirigent_detector::InputDetector;
 use codirigent_filetree::FileTree;
+use codirigent_session::claude_session_reader::{ClaudeSessionReader, ClaudeSessionStatus};
 use codirigent_session::clipboard_service::{ClipboardService, DefaultClipboardService};
 use codirigent_session::DefaultSessionManager;
 use gpui::{
@@ -214,6 +215,10 @@ pub struct WorkspaceView {
     config_service: Option<DefaultConfigService>,
     /// Storage service for persisting sessions across restarts.
     storage: Arc<dyn codirigent_core::StorageService>,
+    /// Claude Code JSONL session reader for high-fidelity status detection.
+    claude_reader: Option<ClaudeSessionReader>,
+    /// Last time JSONL status was checked (throttled to ~1/second).
+    last_jsonl_check: Instant,
 }
 
 impl WorkspaceView {
@@ -363,6 +368,8 @@ impl WorkspaceView {
             settings_open: false,
             config_service: DefaultConfigService::new().ok(),
             storage: storage.clone(),
+            claude_reader: ClaudeSessionReader::new(),
+            last_jsonl_check: Instant::now(),
         };
 
         // Restore sessions from previous run
@@ -483,6 +490,13 @@ impl WorkspaceView {
         let session_ids: Vec<SessionId> = self.terminals.keys().copied().collect();
         let mut any_dirty = false;
 
+        // Decide once whether to run JSONL checks this cycle (throttled to ~1/second)
+        let check_jsonl = self.claude_reader.is_some()
+            && self.last_jsonl_check.elapsed() >= Duration::from_secs(1);
+        if check_jsonl {
+            self.last_jsonl_check = Instant::now();
+        }
+
         for session_id in session_ids {
             // Try to drain output from the session manager
             let output = {
@@ -565,21 +579,49 @@ impl WorkspaceView {
             }
 
             // Update session status from detector
-            let (status, idle_time) = {
+            let (mut status, idle_time) = {
                 let detector = self.detector.lock().unwrap();
                 (
                     detector.get_status(session_id),
                     detector.get_idle_time(session_id),
                 )
             };
+
+            // Overlay JSONL-based Claude Code status (throttled to ~1/second)
+            if check_jsonl {
+                if let Some(session) = self.workspace.session(session_id) {
+                    let working_dir = session.working_directory.clone();
+                    if let Some(ref mut reader) = self.claude_reader {
+                        match reader.get_status(&working_dir) {
+                            ClaudeSessionStatus::NeedsPermission { ref tool_name } => {
+                                status = Some(SessionStatus::NeedsPermission);
+                                // Only fire event on transition, not every poll
+                                if session.status != SessionStatus::NeedsPermission {
+                                    self.event_bus.publish(CodirigentEvent::PermissionRequired {
+                                        session_id,
+                                        tool_name: tool_name.clone(),
+                                    });
+                                }
+                            }
+                            ClaudeSessionStatus::Working => {
+                                status = Some(SessionStatus::Working);
+                            }
+                            ClaudeSessionStatus::WaitingForInput => {
+                                status = Some(SessionStatus::WaitingForInput);
+                            }
+                            ClaudeSessionStatus::Unknown => {} // fall through to detector
+                        }
+                    }
+                }
+            }
+
             if let Some(status) = status {
-                // DEBUG: log status + idle time every ~2 seconds
                 if self.idle_poll_count % 120 == 0 {
                     info!(?session_id, ?status, ?idle_time, "Session status poll");
                 }
                 self.workspace.update_session_status(session_id, status);
 
-                // Trigger auto-assignment when session becomes Idle or WaitingForInput
+                // NeedsPermission is NOT treated as idle — session is blocked
                 if matches!(status, SessionStatus::Idle | SessionStatus::WaitingForInput) {
                     self.try_auto_assign(session_id);
                 }

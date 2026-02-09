@@ -46,6 +46,7 @@
 #![warn(clippy::all)]
 
 pub mod broadcast_service;
+pub mod claude_session_reader;
 pub mod cli_detector;
 pub mod clipboard_service;
 pub mod git_status;
@@ -59,6 +60,7 @@ pub mod skill_manager;
 pub mod worktree;
 
 pub use broadcast_service::DefaultBroadcastService;
+pub use claude_session_reader::{ClaudeSessionReader, ClaudeSessionStatus};
 pub use cli_detector::{CliDetector, DefaultCliDetector};
 pub use clipboard_service::{ClipboardService, DefaultClipboardService};
 pub use git_status::GitStatusService;

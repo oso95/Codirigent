@@ -125,6 +125,8 @@ pub struct StatusColors {
     pub working: Color,
     /// Color for WaitingForInput status.
     pub waiting_for_input: Color,
+    /// Color for NeedsPermission status.
+    pub needs_permission: Color,
     /// Color for Done status.
     pub done: Color,
     /// Color for Error status.
@@ -137,6 +139,7 @@ impl Default for StatusColors {
             idle: Color::from_hex("#6c7086"),              // Gray
             working: Color::from_hex("#f9e2af"),           // Yellow
             waiting_for_input: Color::from_hex("#fab387"), // Orange
+            needs_permission: Color::from_hex("#f97316"),  // Amber/Orange
             done: Color::from_hex("#a6e3a1"),              // Green
             error: Color::from_hex("#f38ba8"),             // Red
         }
@@ -150,6 +153,7 @@ impl StatusColors {
             SessionStatus::Idle => self.idle,
             SessionStatus::Working => self.working,
             SessionStatus::WaitingForInput => self.waiting_for_input,
+            SessionStatus::NeedsPermission => self.needs_permission,
             SessionStatus::Done => self.done,
             SessionStatus::Error => self.error,
         }
@@ -241,6 +245,12 @@ impl StatusBadge {
                 text: "Waiting",
                 bg_color: Color::rgba(1.0, 0.42, 0.42, 0.15), // Red @ 15%
                 text_color: status_colors.waiting_for_input,
+                animated: true,
+            },
+            SessionStatus::NeedsPermission => Self {
+                text: "Permission",
+                bg_color: Color::rgba(0.98, 0.45, 0.09, 0.15), // Orange @ 15%
+                text_color: status_colors.needs_permission,
                 animated: true,
             },
             SessionStatus::Done => Self {

@@ -175,6 +175,11 @@ impl StatusIndicator {
                 color: Color::from_hex("#f43f5e"),
                 animated: true,
             },
+            SessionStatus::NeedsPermission => Self {
+                text: "Permission",
+                color: Color::from_hex("#f97316"),
+                animated: true,
+            },
             SessionStatus::Done => Self {
                 text: "Done",
                 color: Color::from_hex("#10b981"),

@@ -204,6 +204,7 @@ fn test_session_with_all_status_types() {
         SessionStatus::Idle,
         SessionStatus::Working,
         SessionStatus::WaitingForInput,
+        SessionStatus::NeedsPermission,
         SessionStatus::Done,
         SessionStatus::Error,
     ];

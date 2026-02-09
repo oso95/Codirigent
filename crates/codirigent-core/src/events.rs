@@ -120,6 +120,14 @@ pub enum CodirigentEvent {
         session_id: SessionId,
     },
 
+    /// A Claude Code session needs tool permission approval.
+    PermissionRequired {
+        /// The session ID.
+        session_id: SessionId,
+        /// The tool name that needs permission, if known.
+        tool_name: Option<String>,
+    },
+
     // === Layout Events ===
     /// Layout mode changed.
     LayoutChanged {
@@ -1129,6 +1137,10 @@ mod tests {
             },
             CodirigentEvent::InputProvided {
                 session_id: SessionId(1),
+            },
+            CodirigentEvent::PermissionRequired {
+                session_id: SessionId(1),
+                tool_name: Some("Bash".to_string()),
             },
             CodirigentEvent::LayoutChanged {
                 mode: LayoutMode::Single,
