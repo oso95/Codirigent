@@ -49,8 +49,8 @@ use codirigent_core::config_service::{ConfigService, DefaultConfigService};
 use codirigent_core::ClipboardContent;
 use codirigent_core::{
     AssignmentAction, CodirigentEvent, DefaultEventBus, EventBus, FileStorageService, GridPosition,
-    ProcessMonitor, Session, SessionId, SessionManager, SessionStatus, SplitDirection, Task,
-    TaskId, TaskManager, TaskManagerConfig,
+    ProcessMonitor, Session, SessionId, SessionManager, SessionStatus, SlotId, SplitDirection,
+    Task, TaskId, TaskManager, TaskManagerConfig,
 };
 use codirigent_detector::InputDetector;
 use codirigent_filetree::FileTree;
@@ -1091,6 +1091,106 @@ impl WorkspaceView {
         self.create_session(cx);
     }
 
+    /// Create a new session in a specific split tree slot.
+    pub fn create_session_in_slot(&mut self, slot: SlotId, cx: &mut Context<Self>) {
+        let existing_numbers: std::collections::HashSet<u64> = self
+            .workspace
+            .sessions()
+            .iter()
+            .filter_map(|s| {
+                s.name
+                    .strip_prefix("Session ")
+                    .and_then(|n| n.parse::<u64>().ok())
+            })
+            .collect();
+        let mut num = 1u64;
+        while existing_numbers.contains(&num) {
+            num += 1;
+        }
+        let name = format!("Session {}", num);
+        self.next_session_id = num + 1;
+
+        let working_dir = self
+            .config_service
+            .as_ref()
+            .and_then(|cs| cs.load_user_settings().ok())
+            .and_then(|s| s.general.default_working_dir)
+            .map(PathBuf::from)
+            .filter(|p| p.is_dir())
+            .or_else(|| self.project_root.clone())
+            .or_else(|| std::env::current_dir().ok())
+            .unwrap_or_else(|| PathBuf::from("/tmp"));
+
+        let shell = self
+            .config_service
+            .as_ref()
+            .and_then(|cs| cs.load_user_settings().ok())
+            .map(|s| s.general.default_shell)
+            .filter(|s| !s.is_empty());
+
+        let session_id = {
+            let manager = self.session_manager.lock().unwrap();
+            match manager.create_session(name.clone(), working_dir.clone(), shell) {
+                Ok(id) => id,
+                Err(e) => {
+                    warn!("Failed to create session: {}", e);
+                    return;
+                }
+            }
+        };
+
+        let child_pid = {
+            let manager = self.session_manager.lock().unwrap();
+            manager.get_child_pid(session_id)
+        };
+
+        if let Some(pid) = child_pid {
+            let mut detector = self.detector.lock().unwrap();
+            if let Err(e) = detector.start_monitoring(session_id, pid) {
+                warn!("Failed to start monitoring session {}: {}", session_id, e);
+            }
+        }
+
+        let terminal = Terminal::new(24, 80, session_id);
+        let theme = self.workspace.theme();
+        let terminal_view = TerminalView::new(terminal, theme.clone());
+        self.terminals.insert(session_id, terminal_view);
+
+        let session = {
+            let manager = self.session_manager.lock().unwrap();
+            manager
+                .get_session(session_id)
+                .unwrap_or_else(|| Session::new(session_id, name.clone(), working_dir))
+        };
+
+        if self.workspace.add_session_to_slot(session.clone(), slot) {
+            let mut header = TerminalHeader::new(&name, SessionStatus::Idle);
+
+            if let Some(ref gi) = session.git_info {
+                header = header.with_git_info(gi.branch.clone(), gi.dirty_count);
+            }
+
+            let dir_name = session
+                .git_info
+                .as_ref()
+                .and_then(|gi| gi.repo_root.file_name())
+                .or_else(|| session.working_directory.file_name())
+                .and_then(|n| n.to_str())
+                .unwrap_or("unknown");
+            header = header.with_project_name(dir_name);
+
+            self.terminal_headers.push((session_id, header));
+
+            self.resize_terminals_to_grid();
+
+            self.select_session(session_id);
+
+            info!(%name, ?slot, "Created new session in slot with PTY");
+            self.save_state_to_disk();
+            cx.notify();
+        }
+    }
+
     /// Restore sessions from disk on startup.
     fn restore_sessions_from_disk(&mut self, cx: &mut Context<Self>) {
         let state = match self.storage.load_state() {
@@ -1578,7 +1678,16 @@ impl WorkspaceView {
             if detected.is_empty() {
                 detected.push("code".to_string());
             }
-            self.settings_page = Some(SettingsPage::new(user_settings, project_config, detected));
+
+            let mut detected_shells = codirigent_session::detect_available_shells();
+            let current_shell = &user_settings.general.default_shell;
+            if !current_shell.is_empty() && !detected_shells.iter().any(|s| s == current_shell) {
+                detected_shells.insert(0, current_shell.clone());
+            }
+            // Prepend "Auto-detect" option represented by empty string
+            detected_shells.insert(0, String::new());
+
+            self.settings_page = Some(SettingsPage::new(user_settings, project_config, detected, detected_shells));
         }
         self.settings_open = true;
     }
@@ -2465,9 +2574,17 @@ impl WorkspaceView {
         cx: &mut Context<Self>,
     ) {
         info!("ClosePane action triggered");
+        // Get the session in the focused slot BEFORE closing the pane
+        let session_to_close = self.workspace.focused_session_id();
+
         if self.workspace.close_pane() {
             info!("Closed focused pane");
-            cx.notify();
+            // If the closed pane had a session, clean it up fully
+            if let Some(id) = session_to_close {
+                self.close_session(id, cx);
+            } else {
+                cx.notify();
+            }
         }
     }
 

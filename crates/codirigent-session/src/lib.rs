@@ -33,6 +33,7 @@
 //! let id = manager.create_session(
 //!     "My Session".to_string(),
 //!     std::path::PathBuf::from("/tmp"),
+//!     None,
 //! ).unwrap();
 //!
 //! // Send input to the session
@@ -71,7 +72,10 @@ pub use git_status::GitStatusService;
 pub use manager::DefaultSessionManager;
 pub use osc133::{extract_osc133_events, ShellState};
 pub use osc7::extract_osc7_path;
-pub use pty::{spawn_output_reader, OutputReader, PtyHandle, PtySize};
+pub use pty::{
+    detect_available_shells, resolve_shell, spawn_output_reader, OutputReader, PtyHandle, PtySize,
+    ShellCommand,
+};
 pub use ralph_controller::{DefaultRalphLoopController, LoopStats};
 pub use session::SessionState;
 pub use skill_manager::DefaultSkillManager;

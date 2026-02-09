@@ -38,7 +38,7 @@ fn create_test_session(
     name: &str,
 ) -> SessionId {
     integration
-        .create_session(name.to_string(), temp.path().to_path_buf())
+        .create_session(name.to_string(), temp.path().to_path_buf(), None)
         .unwrap()
 }
 
@@ -142,10 +142,10 @@ fn test_state_persistence() {
             CodirigentIntegration::with_config(temp.path().to_path_buf(), config).unwrap();
 
         integration
-            .create_session("Persistent Session".to_string(), temp.path().to_path_buf())
+            .create_session("Persistent Session".to_string(), temp.path().to_path_buf(), None)
             .unwrap();
         integration
-            .create_session("Another Session".to_string(), temp.path().to_path_buf())
+            .create_session("Another Session".to_string(), temp.path().to_path_buf(), None)
             .unwrap();
 
         integration.save_state().unwrap();
@@ -184,10 +184,10 @@ fn test_session_restoration() {
             CodirigentIntegration::with_config(temp.path().to_path_buf(), config).unwrap();
 
         integration
-            .create_session("Restorable 1".to_string(), temp.path().to_path_buf())
+            .create_session("Restorable 1".to_string(), temp.path().to_path_buf(), None)
             .unwrap();
         integration
-            .create_session("Restorable 2".to_string(), temp.path().to_path_buf())
+            .create_session("Restorable 2".to_string(), temp.path().to_path_buf(), None)
             .unwrap();
 
         integration.save_state().unwrap();
@@ -255,7 +255,7 @@ fn test_custom_input_patterns() {
         CodirigentIntegration::with_config(temp.path().to_path_buf(), config).unwrap();
 
     let id = integration
-        .create_session("Custom Pattern Test".to_string(), temp.path().to_path_buf())
+        .create_session("Custom Pattern Test".to_string(), temp.path().to_path_buf(), None)
         .unwrap();
 
     // Process output with custom pattern
@@ -282,7 +282,7 @@ fn test_multiple_pattern_types() {
 
     for (name, output) in test_cases {
         let id = integration
-            .create_session(name.to_string(), temp.path().to_path_buf())
+            .create_session(name.to_string(), temp.path().to_path_buf(), None)
             .unwrap();
 
         integration.process_output(id, output).unwrap();
@@ -328,7 +328,7 @@ fn test_session_creation_publishes_event() {
 
     let manager = DefaultSessionManager::new(event_bus.clone());
     let id = manager
-        .create_session("Test".to_string(), temp.path().to_path_buf())
+        .create_session("Test".to_string(), temp.path().to_path_buf(), None)
         .unwrap();
 
     // Should receive SessionCreated event
@@ -347,7 +347,7 @@ fn test_session_closure_publishes_event() {
 
     let manager = DefaultSessionManager::new(event_bus.clone());
     let id = manager
-        .create_session("Test".to_string(), temp.path().to_path_buf())
+        .create_session("Test".to_string(), temp.path().to_path_buf(), None)
         .unwrap();
 
     // Consume create event
@@ -369,7 +369,7 @@ fn test_status_change_publishes_event() {
 
     let manager = DefaultSessionManager::new(event_bus.clone());
     let id = manager
-        .create_session("Test".to_string(), temp.path().to_path_buf())
+        .create_session("Test".to_string(), temp.path().to_path_buf(), None)
         .unwrap();
 
     // Consume create event
@@ -556,6 +556,7 @@ fn test_invalid_working_directory() {
     let result = integration.create_session(
         "Bad Session".to_string(),
         PathBuf::from("/nonexistent/path/that/does/not/exist"),
+        None,
     );
 
     assert!(result.is_err());
@@ -580,10 +581,10 @@ fn test_complete_workflow() {
 
     // Step 2: Create sessions
     let claude_id = integration
-        .create_session("Claude Code".to_string(), temp.path().to_path_buf())
+        .create_session("Claude Code".to_string(), temp.path().to_path_buf(), None)
         .unwrap();
     let codex_id = integration
-        .create_session("Codex CLI".to_string(), temp.path().to_path_buf())
+        .create_session("Codex CLI".to_string(), temp.path().to_path_buf(), None)
         .unwrap();
 
     assert_eq!(integration.session_count().unwrap(), 2);

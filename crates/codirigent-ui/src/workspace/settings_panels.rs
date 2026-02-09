@@ -324,6 +324,15 @@ impl super::gpui::WorkspaceView {
 
         let editor_options: Vec<&str> = page.detected_editors.iter().map(|s| s.as_str()).collect();
 
+        // Build shell options: empty string displays as "(Auto-detect)"
+        let shell_display_options: Vec<String> = page
+            .detected_shells
+            .iter()
+            .map(|s| if s.is_empty() { "(Auto-detect)".to_string() } else { s.clone() })
+            .collect();
+        let shell_option_refs: Vec<&str> = shell_display_options.iter().map(|s| s.as_str()).collect();
+        let shell_display = if shell.is_empty() { "(Auto-detect)".to_string() } else { shell.clone() };
+
         div()
             .flex()
             .flex_col()
@@ -353,12 +362,14 @@ impl super::gpui::WorkspaceView {
                 theme,
                 self.render_dropdown_control(
                     "dd-shell",
-                    &["powershell", "cmd", "bash", "zsh", "fish"],
-                    &shell,
+                    &shell_option_refs,
+                    &shell_display,
                     cx,
                     |this, val, _, _| {
                         if let Some(page) = this.settings_page.as_mut() {
-                            page.user_settings.general.default_shell = val;
+                            // Map "(Auto-detect)" back to empty string
+                            let stored = if val == "(Auto-detect)" { String::new() } else { val };
+                            page.user_settings.general.default_shell = stored;
                             page.user_save_pending = true;
                         }
                     },

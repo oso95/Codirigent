@@ -25,6 +25,7 @@
 //! let session_id = integration.create_session(
 //!     "My Session".to_string(),
 //!     PathBuf::from("/tmp"),
+//!     None,
 //! ).unwrap();
 //!
 //! // The session is automatically monitored for input detection
@@ -359,10 +360,10 @@ impl CodirigentIntegration {
     /// # Errors
     ///
     /// Returns an error if session creation or monitoring setup fails.
-    pub fn create_session(&self, name: String, working_dir: PathBuf) -> Result<SessionId> {
+    pub fn create_session(&self, name: String, working_dir: PathBuf, shell: Option<String>) -> Result<SessionId> {
         let session_id = {
             let manager = self.lock_session_manager()?;
-            manager.create_session(name, working_dir)?
+            manager.create_session(name, working_dir, shell)?
         };
 
         // Get child PID and start monitoring
@@ -558,7 +559,7 @@ impl CodirigentIntegration {
 
         let mut restored = 0;
         for session in state.sessions {
-            match self.create_session(session.name.clone(), session.working_directory.clone()) {
+            match self.create_session(session.name.clone(), session.working_directory.clone(), None) {
                 Ok(id) => {
                     // Restore group/color if present
                     if session.group.is_some() || session.color.is_some() {
@@ -848,7 +849,7 @@ mod tests {
         let (integration, temp) = create_test_integration();
 
         let id = integration
-            .create_session("Test Session".to_string(), temp.path().to_path_buf())
+            .create_session("Test Session".to_string(), temp.path().to_path_buf(), None)
             .unwrap();
 
         assert_eq!(integration.session_count().unwrap(), 1);
@@ -862,7 +863,7 @@ mod tests {
         let (integration, temp) = create_test_integration();
 
         let id = integration
-            .create_session("Test Session".to_string(), temp.path().to_path_buf())
+            .create_session("Test Session".to_string(), temp.path().to_path_buf(), None)
             .unwrap();
 
         integration.close_session(id).unwrap();
@@ -874,10 +875,10 @@ mod tests {
         let (integration, temp) = create_test_integration();
 
         integration
-            .create_session("Session 1".to_string(), temp.path().to_path_buf())
+            .create_session("Session 1".to_string(), temp.path().to_path_buf(), None)
             .unwrap();
         integration
-            .create_session("Session 2".to_string(), temp.path().to_path_buf())
+            .create_session("Session 2".to_string(), temp.path().to_path_buf(), None)
             .unwrap();
 
         let sessions = integration.list_sessions().unwrap();
@@ -889,7 +890,7 @@ mod tests {
         let (integration, temp) = create_test_integration();
 
         let id = integration
-            .create_session("Test Session".to_string(), temp.path().to_path_buf())
+            .create_session("Test Session".to_string(), temp.path().to_path_buf(), None)
             .unwrap();
 
         let result = integration.send_input(id, b"echo hello\n");
@@ -901,7 +902,7 @@ mod tests {
         let (integration, temp) = create_test_integration();
 
         let id = integration
-            .create_session("Test Session".to_string(), temp.path().to_path_buf())
+            .create_session("Test Session".to_string(), temp.path().to_path_buf(), None)
             .unwrap();
 
         let result = integration.resize_session(id, 48, 120);
@@ -913,7 +914,7 @@ mod tests {
         let (integration, temp) = create_test_integration();
 
         let id = integration
-            .create_session("Original".to_string(), temp.path().to_path_buf())
+            .create_session("Original".to_string(), temp.path().to_path_buf(), None)
             .unwrap();
 
         integration
@@ -929,7 +930,7 @@ mod tests {
         let (integration, temp) = create_test_integration();
 
         let id = integration
-            .create_session("Test Session".to_string(), temp.path().to_path_buf())
+            .create_session("Test Session".to_string(), temp.path().to_path_buf(), None)
             .unwrap();
 
         integration
@@ -946,7 +947,7 @@ mod tests {
         let (integration, temp) = create_test_integration();
 
         let id = integration
-            .create_session("Test Session".to_string(), temp.path().to_path_buf())
+            .create_session("Test Session".to_string(), temp.path().to_path_buf(), None)
             .unwrap();
 
         let status = integration.get_session_status(id).unwrap();
@@ -958,7 +959,7 @@ mod tests {
         let (integration, temp) = create_test_integration();
 
         let id = integration
-            .create_session("Test Session".to_string(), temp.path().to_path_buf())
+            .create_session("Test Session".to_string(), temp.path().to_path_buf(), None)
             .unwrap();
 
         let result = integration.process_output(id, b"Continue? [y/n]");
@@ -973,7 +974,7 @@ mod tests {
         let (integration, temp) = create_test_integration();
 
         integration
-            .create_session("Session 1".to_string(), temp.path().to_path_buf())
+            .create_session("Session 1".to_string(), temp.path().to_path_buf(), None)
             .unwrap();
 
         integration.save_state().unwrap();
@@ -997,7 +998,7 @@ mod tests {
                 CodirigentIntegration::with_config(temp.path().to_path_buf(), config).unwrap();
 
             integration
-                .create_session("Persistent Session".to_string(), temp.path().to_path_buf())
+                .create_session("Persistent Session".to_string(), temp.path().to_path_buf(), None)
                 .unwrap();
 
             integration.save_state().unwrap();
@@ -1108,7 +1109,7 @@ mod tests {
                 CodirigentIntegration::with_config(temp.path().to_path_buf(), config).unwrap();
 
             let id = integration
-                .create_session("Grouped Session".to_string(), temp.path().to_path_buf())
+                .create_session("Grouped Session".to_string(), temp.path().to_path_buf(), None)
                 .unwrap();
 
             integration
@@ -1143,13 +1144,13 @@ mod tests {
 
         // Create multiple sessions
         let id1 = integration
-            .create_session("Session 1".to_string(), temp.path().to_path_buf())
+            .create_session("Session 1".to_string(), temp.path().to_path_buf(), None)
             .unwrap();
         let id2 = integration
-            .create_session("Session 2".to_string(), temp.path().to_path_buf())
+            .create_session("Session 2".to_string(), temp.path().to_path_buf(), None)
             .unwrap();
         let id3 = integration
-            .create_session("Session 3".to_string(), temp.path().to_path_buf())
+            .create_session("Session 3".to_string(), temp.path().to_path_buf(), None)
             .unwrap();
 
         assert_eq!(integration.session_count().unwrap(), 3);
@@ -1270,7 +1271,7 @@ mod tests {
         let (integration, temp) = create_test_integration();
 
         let id = integration
-            .create_session("Test Session".to_string(), temp.path().to_path_buf())
+            .create_session("Test Session".to_string(), temp.path().to_path_buf(), None)
             .unwrap();
 
         // Drain should work even if empty
@@ -1363,7 +1364,7 @@ mod tests {
         let (integration, temp) = create_test_integration();
 
         let id = integration
-            .create_session("Compact Test".to_string(), temp.path().to_path_buf())
+            .create_session("Compact Test".to_string(), temp.path().to_path_buf(), None)
             .unwrap();
 
         // Try to compact with context above threshold
@@ -1377,7 +1378,7 @@ mod tests {
         let (integration, temp) = create_test_integration();
 
         let id = integration
-            .create_session("Guard Test".to_string(), temp.path().to_path_buf())
+            .create_session("Guard Test".to_string(), temp.path().to_path_buf(), None)
             .unwrap();
 
         // First compact should succeed
@@ -1404,7 +1405,7 @@ mod tests {
             CodirigentIntegration::with_config(temp.path().to_path_buf(), config).unwrap();
 
         let id = integration
-            .create_session("Disabled Test".to_string(), temp.path().to_path_buf())
+            .create_session("Disabled Test".to_string(), temp.path().to_path_buf(), None)
             .unwrap();
 
         let result = integration.try_compact_session(id, Some(0.9));

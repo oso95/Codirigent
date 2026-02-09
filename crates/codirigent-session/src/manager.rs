@@ -41,6 +41,7 @@ const DEFAULT_PTY_COLS: u16 = 80;
 /// let id = manager.create_session(
 ///     "My Session".to_string(),
 ///     std::path::PathBuf::from("/tmp"),
+///     None,
 /// ).unwrap();
 ///
 /// manager.send_input(id, b"echo hello\n").unwrap();
@@ -281,9 +282,9 @@ impl SessionManager for DefaultSessionManager {
         self.lock_sessions().get(&id).map(|s| s.session.clone())
     }
 
-    fn create_session(&self, name: String, working_dir: PathBuf) -> Result<SessionId> {
+    fn create_session(&self, name: String, working_dir: PathBuf, shell: Option<String>) -> Result<SessionId> {
         let id = self.next_session_id();
-        info!(%id, %name, ?working_dir, "Creating session");
+        info!(%id, %name, ?working_dir, ?shell, "Creating session");
 
         // Validate working directory exists and is a directory
         if !working_dir.exists() {
@@ -299,9 +300,21 @@ impl SessionManager for DefaultSessionManager {
             ));
         }
 
-        // Spawn PTY with default terminal size
-        let mut pty = PtyHandle::spawn(&working_dir, DEFAULT_PTY_ROWS, DEFAULT_PTY_COLS, &[])
-            .context("Failed to spawn PTY")?;
+        // Spawn PTY: use specific shell if provided, otherwise auto-detect
+        let mut pty = if let Some(ref shell_name) = shell {
+            if !shell_name.is_empty() {
+                let shell_cmd = crate::pty::resolve_shell(shell_name);
+                let args: Vec<&str> = shell_cmd.args.iter().map(|a| a.as_str()).collect();
+                PtyHandle::spawn_command(&working_dir, &shell_cmd.program, &args, DEFAULT_PTY_ROWS, DEFAULT_PTY_COLS, &[])
+                    .context("Failed to spawn PTY with selected shell")?
+            } else {
+                PtyHandle::spawn(&working_dir, DEFAULT_PTY_ROWS, DEFAULT_PTY_COLS, &[])
+                    .context("Failed to spawn PTY")?
+            }
+        } else {
+            PtyHandle::spawn(&working_dir, DEFAULT_PTY_ROWS, DEFAULT_PTY_COLS, &[])
+                .context("Failed to spawn PTY")?
+        };
 
         // Take reader and spawn output task
         let reader = pty
@@ -479,7 +492,7 @@ mod tests {
         let manager = create_manager();
 
         let id = manager
-            .create_session("Test Session".to_string(), std::env::temp_dir())
+            .create_session("Test Session".to_string(), std::env::temp_dir(), None)
             .unwrap();
 
         assert!(manager.get_session(id).is_some());
@@ -492,13 +505,13 @@ mod tests {
         let manager = create_manager();
 
         let id1 = manager
-            .create_session("Session 1".to_string(), std::env::temp_dir())
+            .create_session("Session 1".to_string(), std::env::temp_dir(), None)
             .unwrap();
         let id2 = manager
-            .create_session("Session 2".to_string(), std::env::temp_dir())
+            .create_session("Session 2".to_string(), std::env::temp_dir(), None)
             .unwrap();
         let id3 = manager
-            .create_session("Session 3".to_string(), std::env::temp_dir())
+            .create_session("Session 3".to_string(), std::env::temp_dir(), None)
             .unwrap();
 
         assert_ne!(id1, id2);
@@ -512,7 +525,7 @@ mod tests {
         let mut rx = event_bus.subscribe();
 
         let id = manager
-            .create_session("Test".to_string(), std::env::temp_dir())
+            .create_session("Test".to_string(), std::env::temp_dir(), None)
             .unwrap();
 
         let event = rx.try_recv().unwrap();
@@ -526,7 +539,7 @@ mod tests {
         let manager = create_manager();
 
         let id = manager
-            .create_session("Test".to_string(), std::env::temp_dir())
+            .create_session("Test".to_string(), std::env::temp_dir(), None)
             .unwrap();
 
         manager.close_session(id).unwrap();
@@ -540,7 +553,7 @@ mod tests {
         let mut rx = event_bus.subscribe();
 
         let id = manager
-            .create_session("Test".to_string(), std::env::temp_dir())
+            .create_session("Test".to_string(), std::env::temp_dir(), None)
             .unwrap();
 
         // Consume create event
@@ -567,7 +580,7 @@ mod tests {
         let manager = create_manager();
 
         let id = manager
-            .create_session("Test Session".to_string(), std::env::temp_dir())
+            .create_session("Test Session".to_string(), std::env::temp_dir(), None)
             .unwrap();
 
         let session = manager.get_session(id).unwrap();
@@ -586,10 +599,10 @@ mod tests {
         let manager = create_manager();
 
         manager
-            .create_session("Session 1".to_string(), std::env::temp_dir())
+            .create_session("Session 1".to_string(), std::env::temp_dir(), None)
             .unwrap();
         manager
-            .create_session("Session 2".to_string(), std::env::temp_dir())
+            .create_session("Session 2".to_string(), std::env::temp_dir(), None)
             .unwrap();
 
         let sessions = manager.list_sessions();
@@ -601,7 +614,7 @@ mod tests {
         let manager = create_manager();
 
         let id = manager
-            .create_session("Test".to_string(), std::env::temp_dir())
+            .create_session("Test".to_string(), std::env::temp_dir(), None)
             .unwrap();
 
         let result = manager.send_input(id, b"echo hello\n");
@@ -621,7 +634,7 @@ mod tests {
         let manager = create_manager();
 
         let id = manager
-            .create_session("Test".to_string(), std::env::temp_dir())
+            .create_session("Test".to_string(), std::env::temp_dir(), None)
             .unwrap();
 
         let result = manager.resize(id, 48, 120);
@@ -641,7 +654,7 @@ mod tests {
         let manager = create_manager();
 
         let id = manager
-            .create_session("Test".to_string(), std::env::temp_dir())
+            .create_session("Test".to_string(), std::env::temp_dir(), None)
             .unwrap();
 
         manager.update_status(id, SessionStatus::Working);
@@ -656,7 +669,7 @@ mod tests {
         let mut rx = event_bus.subscribe();
 
         let id = manager
-            .create_session("Test".to_string(), std::env::temp_dir())
+            .create_session("Test".to_string(), std::env::temp_dir(), None)
             .unwrap();
 
         // Consume create event
@@ -681,7 +694,7 @@ mod tests {
         let mut rx = event_bus.subscribe();
 
         let id = manager
-            .create_session("Test".to_string(), std::env::temp_dir())
+            .create_session("Test".to_string(), std::env::temp_dir(), None)
             .unwrap();
 
         // Consume create event
@@ -707,7 +720,7 @@ mod tests {
         let manager = create_manager();
 
         let id = manager
-            .create_session("Original".to_string(), std::env::temp_dir())
+            .create_session("Original".to_string(), std::env::temp_dir(), None)
             .unwrap();
 
         manager.rename_session(id, "Renamed".to_string()).unwrap();
@@ -722,7 +735,7 @@ mod tests {
         let mut rx = event_bus.subscribe();
 
         let id = manager
-            .create_session("Original".to_string(), std::env::temp_dir())
+            .create_session("Original".to_string(), std::env::temp_dir(), None)
             .unwrap();
 
         // Consume create event
@@ -754,7 +767,7 @@ mod tests {
         let manager = create_manager();
 
         let id = manager
-            .create_session("Test".to_string(), std::env::temp_dir())
+            .create_session("Test".to_string(), std::env::temp_dir(), None)
             .unwrap();
 
         manager
@@ -775,7 +788,7 @@ mod tests {
         let manager = create_manager();
 
         let id = manager
-            .create_session("Test".to_string(), std::env::temp_dir())
+            .create_session("Test".to_string(), std::env::temp_dir(), None)
             .unwrap();
 
         // Set group
@@ -797,7 +810,7 @@ mod tests {
         let mut rx = event_bus.subscribe();
 
         let id = manager
-            .create_session("Test".to_string(), std::env::temp_dir())
+            .create_session("Test".to_string(), std::env::temp_dir(), None)
             .unwrap();
 
         // Consume create event
@@ -831,7 +844,7 @@ mod tests {
         let manager = create_manager();
 
         let id = manager
-            .create_session("Test".to_string(), std::env::temp_dir())
+            .create_session("Test".to_string(), std::env::temp_dir(), None)
             .unwrap();
 
         let session_id = manager.with_session_state(id, |state| state.id());
@@ -843,7 +856,7 @@ mod tests {
         let manager = create_manager();
 
         let id = manager
-            .create_session("Test".to_string(), std::env::temp_dir())
+            .create_session("Test".to_string(), std::env::temp_dir(), None)
             .unwrap();
 
         manager.with_session_state_mut(id, |state| {
@@ -859,7 +872,7 @@ mod tests {
         let manager = create_manager();
 
         let id = manager
-            .create_session("Test".to_string(), std::env::temp_dir())
+            .create_session("Test".to_string(), std::env::temp_dir(), None)
             .unwrap();
 
         assert!(manager.session_exists(id));
@@ -871,10 +884,10 @@ mod tests {
         let manager = create_manager();
 
         let id1 = manager
-            .create_session("Session 1".to_string(), std::env::temp_dir())
+            .create_session("Session 1".to_string(), std::env::temp_dir(), None)
             .unwrap();
         let id2 = manager
-            .create_session("Session 2".to_string(), std::env::temp_dir())
+            .create_session("Session 2".to_string(), std::env::temp_dir(), None)
             .unwrap();
 
         let ids = manager.session_ids();
@@ -888,7 +901,7 @@ mod tests {
         let manager = create_manager();
 
         let id = manager
-            .create_session("Test".to_string(), std::env::temp_dir())
+            .create_session("Test".to_string(), std::env::temp_dir(), None)
             .unwrap();
 
         let pid = manager.get_child_pid(id).unwrap();
@@ -906,7 +919,7 @@ mod tests {
         let manager = create_manager();
 
         let id = manager
-            .create_session("Test".to_string(), std::env::temp_dir())
+            .create_session("Test".to_string(), std::env::temp_dir(), None)
             .unwrap();
 
         // Send a command
@@ -935,7 +948,7 @@ mod tests {
         let manager = create_manager();
 
         let id = manager
-            .create_session("Test".to_string(), std::env::temp_dir())
+            .create_session("Test".to_string(), std::env::temp_dir(), None)
             .unwrap();
 
         // Drain immediately - might be empty or have shell prompt
@@ -948,13 +961,13 @@ mod tests {
         let manager = create_manager();
 
         let id1 = manager
-            .create_session("1".to_string(), std::env::temp_dir())
+            .create_session("1".to_string(), std::env::temp_dir(), None)
             .unwrap();
         let id2 = manager
-            .create_session("2".to_string(), std::env::temp_dir())
+            .create_session("2".to_string(), std::env::temp_dir(), None)
             .unwrap();
         let id3 = manager
-            .create_session("3".to_string(), std::env::temp_dir())
+            .create_session("3".to_string(), std::env::temp_dir(), None)
             .unwrap();
 
         assert_eq!(id1.0 + 1, id2.0);
@@ -968,6 +981,7 @@ mod tests {
         let result = manager.create_session(
             "Test".to_string(),
             PathBuf::from("/nonexistent/path/that/does/not/exist"),
+            None,
         );
 
         assert!(result.is_err());
@@ -989,7 +1003,7 @@ mod tests {
             file.write_all(b"test").unwrap();
         }
 
-        let result = manager.create_session("Test".to_string(), temp_file.clone());
+        let result = manager.create_session("Test".to_string(), temp_file.clone(), None);
 
         // Clean up
         let _ = std::fs::remove_file(&temp_file);
@@ -1004,7 +1018,7 @@ mod tests {
         let manager = create_manager();
 
         let id = manager
-            .create_session("Test".to_string(), std::env::temp_dir())
+            .create_session("Test".to_string(), std::env::temp_dir(), None)
             .unwrap();
 
         assert!(manager.get_session(id).unwrap().context_usage.is_none());

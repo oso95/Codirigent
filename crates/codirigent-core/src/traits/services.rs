@@ -86,11 +86,12 @@ pub trait SessionManager: Send + Sync {
     ///
     /// * `name` - Human-readable name for the session
     /// * `working_dir` - Initial working directory for the shell
+    /// * `shell` - Optional shell name (e.g. "zsh", "bash"). `None` = auto-detect.
     ///
     /// # Returns
     ///
     /// The ID of the newly created session, or an error if creation failed.
-    fn create_session(&self, name: String, working_dir: std::path::PathBuf) -> Result<SessionId>;
+    fn create_session(&self, name: String, working_dir: std::path::PathBuf, shell: Option<String>) -> Result<SessionId>;
 
     /// Close and cleanup a session.
     ///
@@ -536,6 +537,7 @@ mod tests {
             &self,
             name: String,
             working_dir: std::path::PathBuf,
+            _shell: Option<String>,
         ) -> Result<SessionId> {
             let mut sessions = self.sessions.lock().unwrap();
             let id = SessionId(sessions.len() as u64);
@@ -604,7 +606,7 @@ mod tests {
         };
 
         let id = manager
-            .create_session("Test".to_string(), std::path::PathBuf::from("/tmp"))
+            .create_session("Test".to_string(), std::path::PathBuf::from("/tmp"), None)
             .unwrap();
         assert_eq!(id, SessionId(0));
 
@@ -620,7 +622,7 @@ mod tests {
         };
 
         let id = manager
-            .create_session("Test".to_string(), std::path::PathBuf::from("/tmp"))
+            .create_session("Test".to_string(), std::path::PathBuf::from("/tmp"), None)
             .unwrap();
 
         assert!(manager.get_session(id).is_some());
@@ -634,7 +636,7 @@ mod tests {
         };
 
         let id = manager
-            .create_session("Test".to_string(), std::path::PathBuf::from("/tmp"))
+            .create_session("Test".to_string(), std::path::PathBuf::from("/tmp"), None)
             .unwrap();
         assert_eq!(manager.list_sessions().len(), 1);
 
@@ -649,7 +651,7 @@ mod tests {
         };
 
         let id = manager
-            .create_session("Test".to_string(), std::path::PathBuf::from("/tmp"))
+            .create_session("Test".to_string(), std::path::PathBuf::from("/tmp"), None)
             .unwrap();
 
         manager.update_status(id, SessionStatus::Working);
@@ -666,7 +668,7 @@ mod tests {
         };
 
         let id = manager
-            .create_session("Old".to_string(), std::path::PathBuf::from("/tmp"))
+            .create_session("Old".to_string(), std::path::PathBuf::from("/tmp"), None)
             .unwrap();
 
         manager.rename_session(id, "New".to_string()).unwrap();
@@ -680,7 +682,7 @@ mod tests {
         };
 
         let id = manager
-            .create_session("Test".to_string(), std::path::PathBuf::from("/tmp"))
+            .create_session("Test".to_string(), std::path::PathBuf::from("/tmp"), None)
             .unwrap();
 
         manager
@@ -699,7 +701,7 @@ mod tests {
         };
 
         let id = manager
-            .create_session("Test".to_string(), std::path::PathBuf::from("/tmp"))
+            .create_session("Test".to_string(), std::path::PathBuf::from("/tmp"), None)
             .unwrap();
 
         assert!(manager.get_session(id).unwrap().context_usage.is_none());

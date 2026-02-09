@@ -321,9 +321,11 @@ impl PtyHandle {
 
 /// Shell command and arguments selected for a PTY session.
 #[derive(Debug, Clone, PartialEq, Eq)]
-struct ShellCommand {
-    program: String,
-    args: Vec<String>,
+pub struct ShellCommand {
+    /// The shell executable path or name.
+    pub program: String,
+    /// Arguments to pass to the shell.
+    pub args: Vec<String>,
 }
 
 /// Detect the default shell for the current platform.
@@ -433,6 +435,178 @@ fn detect_shell_command() -> ShellCommand {
             program: "/bin/sh".to_string(),
             args: Vec::new(),
         }
+    }
+}
+
+/// Detect shells available on the system.
+///
+/// On Unix, parses `/etc/shells` (skipping comments), extracts basenames, and deduplicates.
+/// On Windows, probes for `pwsh.exe`, `powershell.exe`, and `cmd.exe`.
+pub fn detect_available_shells() -> Vec<String> {
+    let mut shells = Vec::new();
+
+    #[cfg(unix)]
+    {
+        if let Ok(contents) = std::fs::read_to_string("/etc/shells") {
+            let mut seen = std::collections::HashSet::new();
+            for line in contents.lines() {
+                let line = line.trim();
+                if line.is_empty() || line.starts_with('#') {
+                    continue;
+                }
+                if let Some(basename) = std::path::Path::new(line).file_name().and_then(|n| n.to_str()) {
+                    if seen.insert(basename.to_string()) {
+                        shells.push(basename.to_string());
+                    }
+                }
+            }
+        }
+        // Fallback if /etc/shells is empty or missing
+        if shells.is_empty() {
+            shells = vec!["bash".to_string(), "sh".to_string()];
+        }
+    }
+
+    #[cfg(windows)]
+    {
+        use std::process::Command;
+        if Command::new("pwsh.exe").arg("--version").output().is_ok() {
+            shells.push("pwsh".to_string());
+        }
+        if Command::new("powershell.exe")
+            .arg("-Command")
+            .arg("exit")
+            .output()
+            .is_ok()
+        {
+            shells.push("powershell".to_string());
+        }
+        shells.push("cmd".to_string());
+    }
+
+    #[cfg(not(any(unix, windows)))]
+    {
+        shells.push("sh".to_string());
+    }
+
+    shells
+}
+
+/// Resolve a shell name to a full `ShellCommand`.
+///
+/// If `shell_name` is empty, falls through to the default `detect_shell_command()`.
+/// The `CODIRIGENT_SHELL` env var always takes priority (checked inside `detect_shell_command`).
+///
+/// On Unix, looks up `/etc/shells` for a path ending in `shell_name`, then falls
+/// back to `which {shell_name}`, then to `detect_shell_command()`.
+///
+/// On Windows, maps known names (`pwsh`, `powershell`, `cmd`) to executables with
+/// appropriate arguments.
+pub fn resolve_shell(shell_name: &str) -> ShellCommand {
+    // CODIRIGENT_SHELL env var override — always takes priority
+    if std::env::var("CODIRIGENT_SHELL").is_ok() {
+        return detect_shell_command();
+    }
+
+    // Empty name → auto-detect
+    if shell_name.is_empty() {
+        return detect_shell_command();
+    }
+
+    #[cfg(unix)]
+    {
+        // Try to find in /etc/shells
+        if let Ok(contents) = std::fs::read_to_string("/etc/shells") {
+            for line in contents.lines() {
+                let line = line.trim();
+                if line.is_empty() || line.starts_with('#') {
+                    continue;
+                }
+                if let Some(basename) = std::path::Path::new(line).file_name().and_then(|n| n.to_str()) {
+                    if basename == shell_name {
+                        return ShellCommand {
+                            program: line.to_string(),
+                            args: Vec::new(),
+                        };
+                    }
+                }
+            }
+        }
+
+        // Fallback to `which`
+        if let Ok(output) = std::process::Command::new("which")
+            .arg(shell_name)
+            .output()
+        {
+            if output.status.success() {
+                let path = String::from_utf8_lossy(&output.stdout).trim().to_string();
+                if !path.is_empty() {
+                    return ShellCommand {
+                        program: path,
+                        args: Vec::new(),
+                    };
+                }
+            }
+        }
+
+        detect_shell_command()
+    }
+
+    #[cfg(windows)]
+    {
+        // PowerShell init command (reuse the same pattern as detect_shell_command)
+        let ps_init = concat!(
+            "[Console]::OutputEncoding=[System.Text.Encoding]::UTF8; ",
+            "$OutputEncoding=[System.Text.Encoding]::UTF8; ",
+            "function prompt { ",
+            "$gle = $global:LASTEXITCODE; ",
+            "if ($null -eq $gle) { $gle = 0 }; ",
+            "$p = $executionContext.SessionState.Path.CurrentLocation.ProviderPath; ",
+            "$h = [System.Net.Dns]::GetHostName(); ",
+            "$u = $p.Replace('\\','/'); ",
+            "\"$([char]27)]133;D;$gle$([char]7)\" + ",
+            "\"$([char]27)]133;A$([char]7)\" + ",
+            "\"$([char]27)]7;file://$h/$u$([char]27)\\\" + ",
+            "\"PS $($executionContext.SessionState.Path.CurrentLocation)> \" + ",
+            "\"$([char]27)]133;B$([char]7)\" ",
+            "}",
+        );
+
+        match shell_name {
+            "pwsh" => ShellCommand {
+                program: "pwsh.exe".to_string(),
+                args: vec![
+                    "-NoLogo".to_string(),
+                    "-NoProfile".to_string(),
+                    "-NoExit".to_string(),
+                    "-Command".to_string(),
+                    ps_init.to_string(),
+                ],
+            },
+            "powershell" => ShellCommand {
+                program: "powershell.exe".to_string(),
+                args: vec![
+                    "-NoLogo".to_string(),
+                    "-NoProfile".to_string(),
+                    "-NoExit".to_string(),
+                    "-Command".to_string(),
+                    ps_init.to_string(),
+                ],
+            },
+            "cmd" => {
+                let program = std::env::var("COMSPEC").unwrap_or_else(|_| "cmd.exe".to_string());
+                ShellCommand {
+                    program,
+                    args: vec!["/K".to_string(), "chcp".to_string(), "65001".to_string()],
+                }
+            }
+            _ => detect_shell_command(),
+        }
+    }
+
+    #[cfg(not(any(unix, windows)))]
+    {
+        detect_shell_command()
     }
 }
 

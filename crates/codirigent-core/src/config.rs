@@ -247,11 +247,7 @@ impl Default for GeneralSettings {
     fn default() -> Self {
         Self {
             editor_command: "code".to_string(),
-            default_shell: if cfg!(windows) {
-                "powershell".to_string()
-            } else {
-                "bash".to_string()
-            },
+            default_shell: String::new(),
             default_working_dir: None,
             show_splash: true,
         }
