@@ -77,6 +77,8 @@ pub struct SettingsPage {
     pub detected_editors: Vec<String>,
     /// Shells detected on the system.
     pub detected_shells: Vec<String>,
+    /// Monospace fonts detected on the system.
+    pub detected_fonts: Vec<String>,
 }
 
 impl SettingsPage {
@@ -86,6 +88,7 @@ impl SettingsPage {
         project_config: ProjectConfig,
         detected_editors: Vec<String>,
         detected_shells: Vec<String>,
+        detected_fonts: Vec<String>,
     ) -> Self {
         Self {
             active_category: SettingsCategory::General,
@@ -100,6 +103,7 @@ impl SettingsPage {
             project_save_pending: false,
             detected_editors,
             detected_shells,
+            detected_fonts,
         }
     }
 
@@ -200,7 +204,7 @@ mod tests {
 
     #[test]
     fn test_settings_page_new() {
-        let page = SettingsPage::new(UserSettings::default(), ProjectConfig::default(), vec!["code".to_string()], vec!["bash".to_string(), "zsh".to_string()]);
+        let page = SettingsPage::new(UserSettings::default(), ProjectConfig::default(), vec!["code".to_string()], vec!["bash".to_string(), "zsh".to_string()], vec!["Menlo".to_string(), "Courier New".to_string()]);
         assert_eq!(page.active_category(), SettingsCategory::General);
         assert!(!page.is_user_dirty());
         assert!(!page.is_project_dirty());
@@ -209,14 +213,14 @@ mod tests {
 
     #[test]
     fn test_set_category() {
-        let mut page = SettingsPage::new(UserSettings::default(), ProjectConfig::default(), vec!["code".to_string()], vec!["bash".to_string(), "zsh".to_string()]);
+        let mut page = SettingsPage::new(UserSettings::default(), ProjectConfig::default(), vec!["code".to_string()], vec!["bash".to_string(), "zsh".to_string()], vec!["Menlo".to_string(), "Courier New".to_string()]);
         page.set_category(SettingsCategory::Terminal);
         assert_eq!(page.active_category(), SettingsCategory::Terminal);
     }
 
     #[test]
     fn test_dirty_detection() {
-        let mut page = SettingsPage::new(UserSettings::default(), ProjectConfig::default(), vec!["code".to_string()], vec!["bash".to_string(), "zsh".to_string()]);
+        let mut page = SettingsPage::new(UserSettings::default(), ProjectConfig::default(), vec!["code".to_string()], vec!["bash".to_string(), "zsh".to_string()], vec!["Menlo".to_string(), "Courier New".to_string()]);
         assert!(!page.is_user_dirty());
         page.user_settings.general.editor_command = "vim".to_string();
         assert!(page.is_user_dirty());
@@ -224,7 +228,7 @@ mod tests {
 
     #[test]
     fn test_project_dirty_detection() {
-        let mut page = SettingsPage::new(UserSettings::default(), ProjectConfig::default(), vec!["code".to_string()], vec!["bash".to_string(), "zsh".to_string()]);
+        let mut page = SettingsPage::new(UserSettings::default(), ProjectConfig::default(), vec!["code".to_string()], vec!["bash".to_string(), "zsh".to_string()], vec!["Menlo".to_string(), "Courier New".to_string()]);
         assert!(!page.is_project_dirty());
         page.project_config.sessions.max_concurrent = 16;
         assert!(page.is_project_dirty());
@@ -232,7 +236,7 @@ mod tests {
 
     #[test]
     fn test_reset_user_category() {
-        let mut page = SettingsPage::new(UserSettings::default(), ProjectConfig::default(), vec!["code".to_string()], vec!["bash".to_string(), "zsh".to_string()]);
+        let mut page = SettingsPage::new(UserSettings::default(), ProjectConfig::default(), vec!["code".to_string()], vec!["bash".to_string(), "zsh".to_string()], vec!["Menlo".to_string(), "Courier New".to_string()]);
         page.user_settings.general.editor_command = "vim".to_string();
         assert!(page.is_user_dirty());
         page.set_category(SettingsCategory::General);
@@ -243,7 +247,7 @@ mod tests {
 
     #[test]
     fn test_reset_project_category() {
-        let mut page = SettingsPage::new(UserSettings::default(), ProjectConfig::default(), vec!["code".to_string()], vec!["bash".to_string(), "zsh".to_string()]);
+        let mut page = SettingsPage::new(UserSettings::default(), ProjectConfig::default(), vec!["code".to_string()], vec!["bash".to_string(), "zsh".to_string()], vec!["Menlo".to_string(), "Courier New".to_string()]);
         page.project_config.sessions.max_concurrent = 16;
         page.set_category(SettingsCategory::Sessions);
         page.reset_project_category();
@@ -253,7 +257,7 @@ mod tests {
 
     #[test]
     fn test_mark_saved() {
-        let mut page = SettingsPage::new(UserSettings::default(), ProjectConfig::default(), vec!["code".to_string()], vec!["bash".to_string(), "zsh".to_string()]);
+        let mut page = SettingsPage::new(UserSettings::default(), ProjectConfig::default(), vec!["code".to_string()], vec!["bash".to_string(), "zsh".to_string()], vec!["Menlo".to_string(), "Courier New".to_string()]);
         page.user_settings.general.editor_command = "vim".to_string();
         page.user_save_pending = true;
         page.mark_user_saved();

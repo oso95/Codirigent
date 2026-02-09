@@ -541,6 +541,7 @@ impl super::gpui::WorkspaceView {
         let font_size = page.user_settings.terminal.font_size;
         let cursor_style = page.user_settings.terminal.cursor_style.clone();
         let line_height = page.user_settings.terminal.line_height;
+        let font_options: Vec<&str> = page.detected_fonts.iter().map(|s| s.as_str()).collect();
         let theme = self.workspace.theme();
 
         div()
@@ -554,13 +555,7 @@ impl super::gpui::WorkspaceView {
                 theme,
                 self.render_dropdown_control(
                     "dd-font-family",
-                    &[
-                        "JetBrains Mono",
-                        "Cascadia Code",
-                        "Fira Code",
-                        "Consolas",
-                        "Courier New",
-                    ],
+                    &font_options,
                     &font_family,
                     cx,
                     |this, val, _, _| {
