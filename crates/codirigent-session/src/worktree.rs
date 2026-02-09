@@ -102,8 +102,13 @@ impl WorktreeManager {
     pub fn new(repo_path: &Path) -> Result<Self> {
         let repo_path = normalize_path(repo_path);
 
-        // Verify it's a git repository
-        Repository::open(&repo_path).context("Not a git repository")?;
+        // Use discover() to find the repo root from any subdirectory,
+        // consistent with GitStatusService::detect() and detect_git_branch().
+        let repo = Repository::discover(&repo_path).context("Not a git repository")?;
+        let repo_path = repo
+            .workdir()
+            .map(normalize_path)
+            .unwrap_or(repo_path);
 
         let mut manager = Self {
             repo_path,
