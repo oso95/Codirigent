@@ -1231,7 +1231,7 @@ impl WorkspaceView {
 
         // Build a map of slot -> (session_id, is_focused, session_name, session_status)
         let cells = self.workspace().cell_info();
-        let focused_session = self.workspace().focused_session();
+        let focused_session = self.workspace().focused_session_id();
         let split_state = self.workspace().layout_state().as_split_tree();
         let slot_sessions: std::collections::HashMap<SlotId, (SessionId, bool, String, codirigent_core::SessionStatus)> =
             if let Some(state) = split_state {
@@ -1392,7 +1392,7 @@ impl WorkspaceView {
             .justify_center()
             .gap_2()
             .cursor_pointer()
-            .on_click(cx.listener(move |this, _: &ClickEvent, _window, cx| {
+            .on_click(cx.listener(move |_this, _: &ClickEvent, _window, cx| {
                 info!(?slot, "Empty split slot clicked");
                 cx.notify();
             }))
@@ -3867,7 +3867,7 @@ impl WorkspaceView {
     fn render_drawer_sessions_content(&mut self, cx: &mut Context<Self>) -> impl IntoElement {
         let theme = self.workspace().theme().clone();
         let muted: gpui::Hsla = theme.muted.into();
-        let fg: gpui::Hsla = theme.foreground.into();
+        let _fg: gpui::Hsla = theme.foreground.into();
         let border_color: gpui::Hsla = theme.border.into();
         let header_bg: gpui::Hsla = theme.header_background.into();
 
