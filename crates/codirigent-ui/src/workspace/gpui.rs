@@ -44,12 +44,13 @@ use crate::clipboard;
 use crate::clipboard_preview::ClipboardPreview;
 use crate::settings::SettingsPage;
 use crate::smart_clipboard::SmartClipboardProvider;
+use codirigent_core::compaction::{CompactionConfig, CompactionService};
 use codirigent_core::config_service::{ConfigService, DefaultConfigService};
 use codirigent_core::ClipboardContent;
 use codirigent_core::{
     AssignmentAction, CodirigentEvent, DefaultEventBus, EventBus, FileStorageService, GridPosition,
     ProcessMonitor, Session, SessionId, SessionManager, SessionStatus, SplitDirection, Task,
-    TaskId, TaskManager, TaskManagerConfig, WorktreeCreateOptions,
+    TaskId, TaskManager, TaskManagerConfig,
 };
 use codirigent_detector::InputDetector;
 use codirigent_filetree::FileTree;
@@ -225,6 +226,10 @@ pub struct WorkspaceView {
     gemini_reader: Option<GeminiSessionReader>,
     /// Last time JSONL status was checked (throttled to ~1/second).
     last_jsonl_check: Instant,
+    /// Compaction service for auto-compacting before verification.
+    compaction: Arc<Mutex<CompactionService>>,
+    /// Tracks when compaction started per session (for timeout).
+    compaction_start_times: HashMap<SessionId, Instant>,
 }
 
 /// Returns `true` if the editor command refers to a terminal-based editor
@@ -406,6 +411,8 @@ impl WorkspaceView {
             codex_reader: CodexSessionReader::new(),
             gemini_reader: GeminiSessionReader::new(),
             last_jsonl_check: Instant::now(),
+            compaction: Arc::new(Mutex::new(CompactionService::new(CompactionConfig::default()))),
+            compaction_start_times: HashMap::new(),
         };
 
         // Restore sessions from previous run
@@ -474,11 +481,15 @@ impl WorkspaceView {
             if let Ok(mut mgr) = manager.lock() {
                 let _: Result<(), anyhow::Error> = mgr.refresh();
                 self.worktree_panel.set_worktrees(mgr.list().to_vec());
+                if let Ok(branches) = mgr.list_local_branches() {
+                    self.worktree_panel.set_available_branches(branches);
+                }
                 return;
             }
         }
 
         self.worktree_panel.set_worktrees(Vec::new());
+        self.worktree_panel.set_available_branches(Vec::new());
     }
 
     /// Set the current project root and update dependent UI.
@@ -668,9 +679,55 @@ impl WorkspaceView {
 
                 // NeedsPermission is NOT treated as idle — session is blocked
                 if matches!(status, SessionStatus::Idle | SessionStatus::WaitingForInput) {
+                    let is_compacting = self.compaction.lock()
+                        .map(|svc| svc.is_compacting(session_id))
+                        .unwrap_or(false);
+
+                    if is_compacting {
+                        // Compaction just finished — session returned to Idle
+                        if let Ok(mut svc) = self.compaction.lock() {
+                            svc.end_compaction(session_id);
+                        }
+                        self.compaction_start_times.remove(&session_id);
+                        self.event_bus.publish(CodirigentEvent::CompactionCompleted {
+                            session_id,
+                            success: true,
+                        });
+                        info!(?session_id, "Compaction completed successfully");
+                        // Fall through to try_auto_assign
+                    } else {
+                        // Not compacting — check if we should compact before proceeding
+                        let has_task = self.workspace.session(session_id)
+                            .map_or(false, |s| s.current_task.is_some());
+                        if has_task && self.try_compact(session_id) {
+                            // Compaction started — skip auto-assign this cycle
+                            continue;
+                        }
+                    }
+
                     self.try_auto_assign(session_id);
                 }
             }
+        }
+
+        // Compaction timeout: end compaction for sessions that exceeded the limit
+        let timeout_secs = self.compaction.lock()
+            .map(|svc| svc.timeout_secs())
+            .unwrap_or(120);
+        let timed_out: Vec<SessionId> = self.compaction_start_times.iter()
+            .filter(|(_, start)| start.elapsed() > Duration::from_secs(timeout_secs))
+            .map(|(id, _)| *id)
+            .collect();
+        for session_id in timed_out {
+            if let Ok(mut svc) = self.compaction.lock() {
+                svc.end_compaction(session_id);
+            }
+            self.compaction_start_times.remove(&session_id);
+            self.event_bus.publish(CodirigentEvent::CompactionCompleted {
+                session_id,
+                success: false,
+            });
+            warn!(?session_id, "Compaction timed out");
         }
 
         // Stale proposal cleanup: reject pending assignments whose target session
@@ -760,6 +817,50 @@ impl WorkspaceView {
         if any_dirty {
             cx.notify();
         }
+    }
+
+    /// Try to compact a session before verification.
+    /// Returns true if compaction was started, false if skipped.
+    fn try_compact(&mut self, session_id: SessionId) -> bool {
+        let context_usage = self.workspace.session(session_id)
+            .and_then(|s| s.context_usage);
+
+        let command = {
+            let mut svc = match self.compaction.lock() {
+                Ok(s) => s,
+                Err(_) => return false,
+            };
+            if !svc.should_compact(session_id, context_usage) {
+                return false;
+            }
+            if !svc.begin_compaction(session_id) {
+                return false;
+            }
+            svc.compact_command()
+        };
+
+        // Send /compact via PTY stdin
+        if let Ok(mgr) = self.session_manager.lock() {
+            if let Err(e) = mgr.send_input(session_id, command.as_bytes()) {
+                warn!(?session_id, error = %e, "Failed to send /compact command");
+                if let Ok(mut svc) = self.compaction.lock() {
+                    svc.end_compaction(session_id);
+                }
+                return false;
+            }
+        }
+
+        self.compaction_start_times.insert(session_id, Instant::now());
+
+        let focus = self.compaction.lock().ok()
+            .and_then(|svc| svc.config().focus_instructions.clone());
+        self.event_bus.publish(CodirigentEvent::CompactionStarted {
+            session_id,
+            focus,
+        });
+
+        info!(?session_id, "Compaction started");
+        true
     }
 
     /// Try to auto-assign a queued task to a session that just became idle.
@@ -900,10 +1001,18 @@ impl WorkspaceView {
             .or_else(|| std::env::current_dir().ok())
             .unwrap_or_else(|| PathBuf::from("/tmp"));
 
+        // Determine shell from user settings (empty string = auto-detect)
+        let shell = self
+            .config_service
+            .as_ref()
+            .and_then(|cs| cs.load_user_settings().ok())
+            .map(|s| s.general.default_shell)
+            .filter(|s| !s.is_empty());
+
         // Create session with real PTY via session manager (from main branch)
         let session_id = {
             let manager = self.session_manager.lock().unwrap();
-            match manager.create_session(name.clone(), working_dir.clone()) {
+            match manager.create_session(name.clone(), working_dir.clone(), shell) {
                 Ok(id) => id,
                 Err(e) => {
                     warn!("Failed to create session: {}", e);
@@ -1008,9 +1117,17 @@ impl WorkspaceView {
                     .unwrap_or_else(|| PathBuf::from("."))
             };
 
+            // Determine shell from user settings (empty string = auto-detect)
+            let shell = self
+                .config_service
+                .as_ref()
+                .and_then(|cs| cs.load_user_settings().ok())
+                .map(|s| s.general.default_shell)
+                .filter(|s| !s.is_empty());
+
             let session_id = {
                 let manager = self.session_manager.lock().unwrap();
-                match manager.create_session(saved.name.clone(), working_dir.clone()) {
+                match manager.create_session(saved.name.clone(), working_dir.clone(), shell) {
                     Ok(id) => id,
                     Err(e) => {
                         warn!(name = %saved.name, "Failed to restore session: {}", e);
@@ -1115,6 +1232,12 @@ impl WorkspaceView {
                 }
             }
 
+            // Clean up compaction state
+            if let Ok(mut svc) = self.compaction.lock() {
+                svc.end_compaction(id);
+            }
+            self.compaction_start_times.remove(&id);
+
             // Remove the terminal header for this session (from feature branch)
             self.terminal_headers.retain(|(sid, _)| *sid != id);
 
@@ -1144,6 +1267,12 @@ impl WorkspaceView {
                 warn!("Failed to close session {}: {}", id, e);
             }
         }
+
+        // Clean up compaction state
+        if let Ok(mut svc) = self.compaction.lock() {
+            svc.end_compaction(id);
+        }
+        self.compaction_start_times.remove(&id);
 
         // Remove the terminal header for this session
         self.terminal_headers.retain(|(sid, _)| *sid != id);
@@ -1888,22 +2017,6 @@ impl WorkspaceView {
     /// Handle worktree panel events.
     pub(super) fn handle_worktree_event(&mut self, event: WorktreeEvent, cx: &mut Context<Self>) {
         match event {
-            WorktreeEvent::CreateClicked => {
-                info!("Create worktree clicked");
-                self.worktree_panel.open_create_modal();
-                // Fetch available branches if we have a manager
-                if let Some(ref manager) = self.worktree_manager {
-                    if let Ok(_mgr) = manager.lock() {
-                        // For now, just use a default list
-                        // TODO: Fetch actual branches from git
-                        self.worktree_panel.set_available_branches(vec![
-                            "main".to_string(),
-                            "develop".to_string(),
-                            "staging".to_string(),
-                        ]);
-                    }
-                }
-            }
             WorktreeEvent::RemoveRequested(path) => {
                 info!(?path, "Remove worktree requested");
                 if let Some(ref manager) = self.worktree_manager {
@@ -1967,37 +2080,6 @@ impl WorkspaceView {
                         self.worktree_panel.set_worktrees(mgr.list().to_vec());
                     }
                 }
-            }
-            WorktreeEvent::ConfirmCreate {
-                branch,
-                base_branch,
-            } => {
-                info!(?branch, ?base_branch, "Confirm create worktree");
-                if let Some(ref manager) = self.worktree_manager {
-                    if let Ok(mut mgr) = manager.lock() {
-                        let options = WorktreeCreateOptions {
-                            branch: branch.clone(),
-                            base_branch,
-                            path: None,
-                        };
-                        match mgr.create(options) {
-                            Ok(_) => {
-                                info!("Created worktree for branch: {}", branch);
-                                // Refresh and close modal
-                                let _: Result<(), anyhow::Error> = mgr.refresh();
-                                self.worktree_panel.set_worktrees(mgr.list().to_vec());
-                                self.worktree_panel.close_create_modal();
-                            }
-                            Err(e) => {
-                                warn!("Failed to create worktree: {}", e);
-                            }
-                        }
-                    }
-                }
-            }
-            WorktreeEvent::CancelCreate => {
-                info!("Cancel create worktree");
-                self.worktree_panel.close_create_modal();
             }
         }
         cx.notify();
@@ -2967,9 +3049,6 @@ impl WorkspaceView {
         if self.handle_custom_layout_key_down(event, cx) {
             return true;
         }
-        if self.handle_worktree_key_down(event, cx) {
-            return true;
-        }
         false
     }
 
@@ -3268,55 +3347,6 @@ impl WorkspaceView {
         true
     }
 
-    fn handle_worktree_key_down(&mut self, event: &KeyDownEvent, cx: &mut Context<Self>) -> bool {
-        if !self.worktree_panel.is_create_modal_open() {
-            return false;
-        }
-
-        let key = event.keystroke.key.to_lowercase();
-        match key.as_str() {
-            "escape" => {
-                self.handle_worktree_event(crate::sidebar::WorktreeEvent::CancelCreate, cx);
-                return true;
-            }
-            "tab" => {
-                let current = self.worktree_panel.focused_input().unwrap_or(0);
-                let next = if current == 0 { 1 } else { 0 };
-                self.worktree_panel.set_focus(next);
-                cx.notify();
-                return true;
-            }
-            "backspace" => {
-                self.worktree_panel.handle_backspace();
-                cx.notify();
-                return true;
-            }
-            "space" => {
-                self.worktree_panel.handle_char_input(' ');
-                cx.notify();
-                return true;
-            }
-            _ => {}
-        }
-
-        if event.keystroke.modifiers.control
-            || event.keystroke.modifiers.alt
-            || event.keystroke.modifiers.platform
-        {
-            return true;
-        }
-
-        if let Some(ref key_char) = event.keystroke.key_char {
-            if let Some(ch) = key_char.chars().next() {
-                if ch.is_ascii_graphic() || ch == ' ' {
-                    self.worktree_panel.handle_char_input(ch);
-                    cx.notify();
-                }
-            }
-        }
-
-        true
-    }
 }
 
 impl Focusable for WorkspaceView {
@@ -3577,12 +3607,7 @@ impl Render for WorkspaceView {
             container = container.child(modal);
         }
 
-        // 9. Worktree create modal (if open)
-        if let Some(modal) = self.render_worktree_modal(cx) {
-            container = container.child(modal);
-        }
-
-        // 10. File tree context menu (if open)
+        // 9. File tree context menu (if open)
         if let Some(menu) = self.render_file_tree_context_menu(cx) {
             container = container.child(menu);
         }
