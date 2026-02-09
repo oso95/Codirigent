@@ -78,18 +78,18 @@ pub struct WorktreeManager {
 impl WorktreeManager {
     /// Create a new worktree manager for the given repository.
     ///
-    /// This will verify that the path is a valid git repository and
-    /// refresh the list of worktrees.
+    /// Uses `Repository::discover()` to find the git repository root,
+    /// so the path can be any subdirectory within a repository.
     ///
     /// # Arguments
     ///
-    /// * `repo_path` - Path to the git repository
+    /// * `repo_path` - Path to the git repository or any subdirectory within it
     ///
     /// # Errors
     ///
     /// Returns an error if:
-    /// - The path cannot be canonicalized
-    /// - The path is not a valid git repository
+    /// - No git repository can be found at or above the given path
+    /// - The worktree list cannot be refreshed
     ///
     /// # Example
     ///
@@ -587,10 +587,22 @@ mod tests {
     }
 
     #[test]
-    fn test_worktree_manager_new() {
+    fn test_worktree_manager_new_from_root() {
         let (_temp, path) = setup_test_repo();
         let manager = WorktreeManager::new(&path);
         assert!(manager.is_ok());
+    }
+
+    #[test]
+    fn test_worktree_manager_new_from_subdirectory() {
+        let (_temp, path) = setup_test_repo();
+        let subdir = path.join("src").join("nested");
+        std::fs::create_dir_all(&subdir).unwrap();
+
+        let manager = WorktreeManager::new(&subdir).unwrap();
+        // repo_path should resolve to the repo root, not the subdirectory
+        let expected = normalize_path(&path);
+        assert_eq!(manager.repo_path(), expected);
     }
 
     #[test]
