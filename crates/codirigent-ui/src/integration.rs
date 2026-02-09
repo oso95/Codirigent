@@ -35,7 +35,7 @@ use codirigent_core::{
     AppState, CodirigentEvent, DefaultEventBus, EventBus, FileStorageService, ProcessMonitor,
     Session, SessionId, SessionManager, SessionStatus, StorageService,
 };
-use codirigent_detector::{DetectorConfig, InputDetector};
+use codirigent_detector::{notify_input_required, DetectorConfig, InputDetector};
 use codirigent_session::DefaultSessionManager;
 use std::path::PathBuf;
 use std::sync::{Arc, Mutex, MutexGuard};
@@ -166,6 +166,7 @@ impl CodirigentIntegration {
         let session_manager = self.session_manager.clone();
         let storage = self.storage.clone();
         let auto_save = self.config.auto_save_enabled;
+        let notifications_enabled = self.config.detector_config.notifications_enabled;
 
         thread::spawn(move || {
             let rt = match tokio::runtime::Runtime::new() {
@@ -182,7 +183,13 @@ impl CodirigentIntegration {
                 loop {
                     match rx.recv().await {
                         Ok(event) => {
-                            Self::handle_event(&event, &session_manager, &storage, auto_save);
+                            Self::handle_event(
+                            &event,
+                            &session_manager,
+                            &storage,
+                            auto_save,
+                            notifications_enabled,
+                        );
                         }
                         Err(broadcast::error::RecvError::Closed) => {
                             info!("Event bus closed, stopping event loop");
@@ -204,6 +211,7 @@ impl CodirigentIntegration {
         session_manager: &Arc<Mutex<DefaultSessionManager>>,
         storage: &Arc<FileStorageService>,
         auto_save: bool,
+        notifications_enabled: bool,
     ) {
         debug!(?event, "Handling event");
 
@@ -228,6 +236,15 @@ impl CodirigentIntegration {
                 pattern,
             } => {
                 info!(%session_id, ?pattern, "Input required");
+                if notifications_enabled {
+                    let session_name = session_manager
+                        .lock()
+                        .ok()
+                        .and_then(|mgr| mgr.get_session(*session_id))
+                        .map(|s| s.name.clone())
+                        .unwrap_or_else(|| format!("Session {}", session_id.0));
+                    notify_input_required(*session_id, &session_name);
+                }
             }
             CodirigentEvent::InputProvided { session_id } => {
                 debug!(%session_id, "Input provided");
@@ -925,7 +942,7 @@ mod tests {
         let storage = Arc::new(FileStorageService::new(temp.path()).unwrap());
 
         let event = CodirigentEvent::SessionCreated { id: SessionId(1) };
-        CodirigentIntegration::handle_event(&event, &session_manager, &storage, false);
+        CodirigentIntegration::handle_event(&event, &session_manager, &storage, false, false);
         // Should not panic
     }
 
@@ -937,7 +954,7 @@ mod tests {
         let storage = Arc::new(FileStorageService::new(temp.path()).unwrap());
 
         let event = CodirigentEvent::SessionClosed { id: SessionId(1) };
-        CodirigentIntegration::handle_event(&event, &session_manager, &storage, false);
+        CodirigentIntegration::handle_event(&event, &session_manager, &storage, false, false);
         // Should not panic
     }
 
@@ -953,7 +970,7 @@ mod tests {
             old: SessionStatus::Idle,
             new: SessionStatus::Working,
         };
-        CodirigentIntegration::handle_event(&event, &session_manager, &storage, false);
+        CodirigentIntegration::handle_event(&event, &session_manager, &storage, false, false);
         // Should not panic
     }
 
@@ -968,7 +985,7 @@ mod tests {
             session_id: SessionId(1),
             pattern: Some("[y/n]".to_string()),
         };
-        CodirigentIntegration::handle_event(&event, &session_manager, &storage, false);
+        CodirigentIntegration::handle_event(&event, &session_manager, &storage, false, false);
         // Should not panic
     }
 
@@ -982,7 +999,7 @@ mod tests {
         let event = CodirigentEvent::InputProvided {
             session_id: SessionId(1),
         };
-        CodirigentIntegration::handle_event(&event, &session_manager, &storage, false);
+        CodirigentIntegration::handle_event(&event, &session_manager, &storage, false, false);
         // Should not panic
     }
 
@@ -998,7 +1015,7 @@ mod tests {
             old_name: "Old".to_string(),
             new_name: "New".to_string(),
         };
-        CodirigentIntegration::handle_event(&event, &session_manager, &storage, false);
+        CodirigentIntegration::handle_event(&event, &session_manager, &storage, false, false);
         // Should not panic
     }
 
@@ -1014,7 +1031,7 @@ mod tests {
             group: Some("backend".to_string()),
             color: Some("#ff0000".to_string()),
         };
-        CodirigentIntegration::handle_event(&event, &session_manager, &storage, false);
+        CodirigentIntegration::handle_event(&event, &session_manager, &storage, false, false);
         // Should not panic
     }
 
@@ -1053,6 +1070,7 @@ mod tests {
             &integration.session_manager,
             &integration.storage,
             false,
+            false,
         );
     }
 
@@ -1069,6 +1087,7 @@ mod tests {
             &event,
             &integration.session_manager,
             &integration.storage,
+            false,
             false,
         );
     }

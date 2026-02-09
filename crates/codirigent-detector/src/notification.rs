@@ -52,6 +52,13 @@ pub const DEFAULT_TITLE: &str = "Codirigent - Input Required";
 /// send_notification("Alert", "Something happened!");
 /// ```
 pub fn send_notification(title: &str, body: &str) {
+    // Skip real OS notifications during test builds to avoid
+    // spamming the desktop when running cargo test.
+    if cfg!(test) {
+        debug!("Test mode: skipping notification '{}': {}", title, body);
+        return;
+    }
+
     #[cfg(target_os = "macos")]
     send_macos_notification(title, body);
 
