@@ -61,7 +61,7 @@ use std::sync::Arc;
 /// # Returns
 ///
 /// `true` if the session directory is within the project directory.
-fn session_matches_project(session_dir: &Path, project_dir: &Path) -> bool {
+pub fn session_matches_project(session_dir: &Path, project_dir: &Path) -> bool {
     let canon_session =
         std::fs::canonicalize(session_dir).unwrap_or_else(|_| session_dir.to_path_buf());
     let canon_project =

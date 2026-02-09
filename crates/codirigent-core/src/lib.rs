@@ -118,7 +118,7 @@ pub use context::{
 pub use error::{CodirigentError, Result};
 pub use event_bus::DefaultEventBus;
 pub use events::{ClipboardContentType, CodirigentEvent};
-pub use scheduler::{SchedulerConfig, SchedulerMode, TaskQueue, TaskQueueService};
+pub use scheduler::{SchedulerConfig, SchedulerMode, TaskQueue, TaskQueueService, session_matches_project};
 pub use skill::{Skill, SkillPreset, SkillType, TokenBudget};
 pub use storage::{ContextFileData, FileStorageService};
 pub use traits::{

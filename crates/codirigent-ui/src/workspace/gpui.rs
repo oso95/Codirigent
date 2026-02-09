@@ -1788,8 +1788,10 @@ impl WorkspaceView {
                         }
                         TaskAction::Assign => {
                             info!("Assign action triggered for task {}", task_id);
-                            // Only assign to sessions with a detected CLI running
-                            let target = self.find_assignable_session();
+                            // Get task for directory matching
+                            let task = manager.get_task(&task_id).cloned();
+                            let target = task.as_ref()
+                                .and_then(|t| self.find_assignable_session_for_task(t));
 
                             if let Some(session) = target {
                                 match manager.direct_assign(&task_id, session.id) {
@@ -1835,7 +1837,7 @@ impl WorkspaceView {
                                     }
                                 }
                             } else {
-                                warn!("No session with an active CLI available for assignment");
+                                warn!("No matching session available for assignment (check directory matching)");
                                 Ok(())
                             }
                         }
@@ -2818,17 +2820,49 @@ impl WorkspaceView {
     ///
     /// Only returns idle sessions with a known CLI running (not GenericShell).
     /// Never assigns to bare shell sessions — the CLI must be detected first.
-    fn find_assignable_session(&self) -> Option<Session> {
-        self.workspace
+    /// Find the best assignable session for a given task.
+    ///
+    /// Filters sessions by:
+    /// 1. Idle status, no current task, known CLI type
+    /// 2. Directory matching (session working_directory under task's project_dir)
+    ///
+    /// Among matching sessions, prefers:
+    /// 1. The currently focused session (if it matches)
+    /// 2. Otherwise, the session with the lowest context_usage (freshest context)
+    fn find_assignable_session_for_task(&self, task: &codirigent_core::Task) -> Option<Session> {
+        let candidates: Vec<_> = self.workspace
             .sessions()
             .iter()
-            .find(|s| {
+            .filter(|s| {
                 s.status == codirigent_core::SessionStatus::Idle
                     && s.current_task.is_none()
                     && self.clipboard_service.get_session_cli_type(s.id)
                         != codirigent_core::CliType::GenericShell
+                    && task.project_dir.as_ref().map_or(true, |pd| {
+                        codirigent_core::session_matches_project(&s.working_directory, pd)
+                    })
             })
             .cloned()
+            .collect();
+
+        if candidates.is_empty() {
+            return None;
+        }
+
+        // Prefer the focused session if it's among candidates
+        if let Some(focused_id) = self.workspace.focused_session_id() {
+            if let Some(session) = candidates.iter().find(|s| s.id == focused_id) {
+                return Some(session.clone());
+            }
+        }
+
+        // Among remaining, pick the session with lowest context_usage (freshest context window)
+        candidates.into_iter()
+            .min_by(|a, b| {
+                let usage_a = a.context_usage.unwrap_or(0.0);
+                let usage_b = b.context_usage.unwrap_or(0.0);
+                usage_a.partial_cmp(&usage_b).unwrap_or(std::cmp::Ordering::Equal)
+            })
     }
 
     /// Detect CLI type from PTY output by scanning for known banners.
