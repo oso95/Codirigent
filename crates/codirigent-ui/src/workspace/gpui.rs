@@ -54,14 +54,14 @@ use codirigent_core::{
 };
 use codirigent_detector::InputDetector;
 use codirigent_filetree::FileTree;
-use codirigent_session::claude_session_reader::{ClaudeSessionReader, ClaudeSessionStatus};
-use codirigent_session::codex_session_reader::{CodexSessionReader, CodexSessionStatus};
-use codirigent_session::gemini_session_reader::{GeminiSessionReader, GeminiSessionStatus};
+use codirigent_session::claude_session_reader::ClaudeSessionReader;
+use codirigent_session::codex_session_reader::CodexSessionReader;
+use codirigent_session::gemini_session_reader::GeminiSessionReader;
 use codirigent_session::clipboard_service::{ClipboardService, DefaultClipboardService};
 use codirigent_session::DefaultSessionManager;
 use gpui::{
-    div, px, App, AppContext, Context, Entity, FocusHandle, Focusable, InteractiveElement,
-    IntoElement, KeyDownEvent, ParentElement, Render, Styled, Window,
+    div, px, App, AppContext, ClickEvent, Context, Entity, FocusHandle, Focusable, InteractiveElement,
+    IntoElement, KeyDownEvent, ParentElement, Render, StatefulInteractiveElement, Styled, Window,
 };
 use std::collections::{HashMap, HashSet};
 use std::path::{Path, PathBuf};
@@ -556,6 +556,14 @@ impl WorkspaceView {
 
         view.refresh_file_tree_panel();
         view.refresh_worktree_panel();
+
+        // Load saved layout profiles from user settings
+        if let Some(ref config_service) = view.config_service {
+            if let Ok(user_settings) = config_service.load_user_settings() {
+                view.top_bar.load_saved_profiles(user_settings.saved_layouts);
+            }
+        }
+
         view
     }
 
@@ -783,22 +791,22 @@ impl WorkspaceView {
                         codirigent_core::CliType::ClaudeCode => self
                             .claude_reader
                             .as_mut()
-                            .and_then(|r| map_claude_status(r.get_status(&working_dir))),
+                            .and_then(|r| r.get_status(&working_dir).to_session_status()),
                         codirigent_core::CliType::CodexCli => self
                             .codex_reader
                             .as_mut()
-                            .and_then(|r| map_codex_status(r.get_status(&working_dir))),
+                            .and_then(|r| r.get_status(&working_dir).to_session_status()),
                         codirigent_core::CliType::GeminiCli => self
                             .gemini_reader
                             .as_mut()
-                            .and_then(|r| map_gemini_status(r.get_status(&working_dir))),
+                            .and_then(|r| r.get_status(&working_dir).to_session_status()),
                         codirigent_core::CliType::GenericShell => {
                             // CLI type not yet detected from banner — probe all
                             // JSONL readers to auto-detect from session files.
                             if let Some(s) = self
                                 .claude_reader
                                 .as_mut()
-                                .and_then(|r| map_claude_status(r.get_status(&working_dir)))
+                                .and_then(|r| r.get_status(&working_dir).to_session_status())
                             {
                                 self.clipboard_service.set_session_cli_type(
                                     session_id,
@@ -808,7 +816,7 @@ impl WorkspaceView {
                             } else if let Some(s) = self
                                 .codex_reader
                                 .as_mut()
-                                .and_then(|r| map_codex_status(r.get_status(&working_dir)))
+                                .and_then(|r| r.get_status(&working_dir).to_session_status())
                             {
                                 self.clipboard_service.set_session_cli_type(
                                     session_id,
@@ -818,7 +826,7 @@ impl WorkspaceView {
                             } else if let Some(s) = self
                                 .gemini_reader
                                 .as_mut()
-                                .and_then(|r| map_gemini_status(r.get_status(&working_dir)))
+                                .and_then(|r| r.get_status(&working_dir).to_session_status())
                             {
                                 self.clipboard_service.set_session_cli_type(
                                     session_id,
@@ -862,8 +870,15 @@ impl WorkspaceView {
                 if self.idle_poll_count % 120 == 0 {
                     info!(?session_id, ?status, ?idle_time, "Session status poll");
                 }
+                let old_status = self.workspace.session(session_id).map(|s| s.status);
                 if self.workspace.update_session_status(session_id, status) {
                     any_dirty = true;
+                    // Sync task board with the canonical (JSONL-corrected) status
+                    if let Some(old) = old_status {
+                        if let Ok(mut task_mgr) = self.task_manager.lock() {
+                            task_mgr.on_session_status_changed(session_id, old, status);
+                        }
+                    }
                 }
 
                 // NeedsPermission is NOT treated as idle — session is blocked
@@ -1411,6 +1426,24 @@ impl WorkspaceView {
         };
         if let Err(e) = self.storage.save_state(&state) {
             warn!("Failed to save state: {}", e);
+        }
+    }
+
+    /// Save layout profiles to user settings.
+    fn save_layout_profiles_to_settings(&self) {
+        if let Some(ref config_service) = self.config_service {
+            // Load current user settings
+            let mut user_settings = config_service
+                .load_user_settings()
+                .unwrap_or_default();
+
+            // Update saved_layouts with current profiles
+            user_settings.saved_layouts = self.top_bar.export_user_profiles();
+
+            // Save back to disk
+            if let Err(e) = config_service.save_user_settings(&user_settings) {
+                warn!("Failed to save layout profiles: {}", e);
+            }
         }
     }
 
@@ -3558,6 +3591,8 @@ impl WorkspaceView {
                             );
                             self.top_bar.profile_manager.add_profile(saved);
                             self.top_bar.set_active_profile_id(&id);
+                            // Persist to disk
+                            self.save_layout_profiles_to_settings();
                         }
                     }
                     CustomLayoutMode::Split => {
@@ -3574,6 +3609,8 @@ impl WorkspaceView {
                             self.workspace.set_split_tree(tree);
                             self.top_bar.profile_manager.add_profile(saved);
                             self.top_bar.set_active_profile_id(&id);
+                            // Persist to disk
+                            self.save_layout_profiles_to_settings();
                         }
                     }
                 }
@@ -3663,51 +3700,6 @@ impl WorkspaceView {
 impl Focusable for WorkspaceView {
     fn focus_handle(&self, _cx: &App) -> FocusHandle {
         self.focus_handle.clone()
-    }
-}
-
-/// Map Claude session status to a unified `SessionStatus` + optional tool name.
-/// Returns `None` for `Unknown` to fall through to the generic detector.
-fn map_claude_status(
-    status: ClaudeSessionStatus,
-) -> Option<(SessionStatus, Option<String>)> {
-    match status {
-        ClaudeSessionStatus::Working => Some((SessionStatus::Working, None)),
-        ClaudeSessionStatus::WaitingForInput => Some((SessionStatus::WaitingForInput, None)),
-        ClaudeSessionStatus::NeedsPermission { tool_name } => {
-            Some((SessionStatus::NeedsPermission, tool_name))
-        }
-        ClaudeSessionStatus::Unknown => None,
-    }
-}
-
-/// Map Codex session status to a unified `SessionStatus` + optional tool name.
-/// Returns `None` for `Unknown` to fall through to the generic detector.
-fn map_codex_status(
-    status: CodexSessionStatus,
-) -> Option<(SessionStatus, Option<String>)> {
-    match status {
-        CodexSessionStatus::Working => Some((SessionStatus::Working, None)),
-        CodexSessionStatus::WaitingForInput => Some((SessionStatus::WaitingForInput, None)),
-        CodexSessionStatus::NeedsPermission { tool_name } => {
-            Some((SessionStatus::NeedsPermission, tool_name))
-        }
-        CodexSessionStatus::Unknown => None,
-    }
-}
-
-/// Map Gemini session status to a unified `SessionStatus` + optional tool name.
-/// Returns `None` for `Unknown` to fall through to the generic detector.
-fn map_gemini_status(
-    status: GeminiSessionStatus,
-) -> Option<(SessionStatus, Option<String>)> {
-    match status {
-        GeminiSessionStatus::Working => Some((SessionStatus::Working, None)),
-        GeminiSessionStatus::WaitingForInput => Some((SessionStatus::WaitingForInput, None)),
-        GeminiSessionStatus::NeedsPermission { tool_name } => {
-            Some((SessionStatus::NeedsPermission, tool_name))
-        }
-        GeminiSessionStatus::Unknown => None,
     }
 }
 
@@ -3888,6 +3880,8 @@ impl Render for WorkspaceView {
                 div()
                     .id("session-grid-container")
                     .flex_1()
+                    .flex()
+                    .flex_col()
                     .p(px(grid_gap))
                     .overflow_hidden() // Clip content
                     .min_h(px(0.0)) // Allow shrinking
@@ -3975,6 +3969,105 @@ impl Render for WorkspaceView {
                         .child(div().text_xs().text_color(muted).child("Ctrl+V to paste")),
                 );
             }
+        }
+
+        // Profile deletion confirmation dialog (if pending)
+        if let Some((tab_idx, profile_name)) = &self.pending_profile_deletion {
+            let theme = self.workspace.theme();
+            let panel_bg: gpui::Hsla = theme.panel_background.into();
+            let border_color: gpui::Hsla = theme.border.into();
+            let fg: gpui::Hsla = theme.foreground.into();
+            let muted: gpui::Hsla = theme.muted.into();
+
+            let idx_for_confirm = *tab_idx;
+
+            container = container.child(
+                // Semi-transparent overlay
+                div()
+                    .absolute()
+                    .inset_0()
+                    .bg(gpui::Hsla { h: 0.0, s: 0.0, l: 0.0, a: 0.5 })
+                    .flex()
+                    .items_center()
+                    .justify_center()
+                    .child(
+                        // Dialog box
+                        div()
+                            .bg(panel_bg)
+                            .border_1()
+                            .border_color(border_color)
+                            .rounded_lg()
+                            .p_4()
+                            .flex()
+                            .flex_col()
+                            .gap_3()
+                            .min_w(px(320.0))
+                            .max_w(px(400.0))
+                            // Title
+                            .child(
+                                div()
+                                    .text_base()
+                                    .font_weight(gpui::FontWeight::SEMIBOLD)
+                                    .text_color(fg)
+                                    .child("Delete Layout Profile?")
+                            )
+                            // Message
+                            .child(
+                                div()
+                                    .text_sm()
+                                    .text_color(muted)
+                                    .child(format!("Are you sure you want to delete the layout profile '{}'? This action cannot be undone.", profile_name))
+                            )
+                            // Buttons
+                            .child(
+                                div()
+                                    .flex()
+                                    .gap_2()
+                                    .justify_end()
+                                    .child(
+                                        // Cancel button
+                                        div()
+                                            .id("delete-profile-cancel")
+                                            .px_4()
+                                            .py_2()
+                                            .rounded_md()
+                                            .bg(gpui::Hsla::transparent_black())
+                                            .border_1()
+                                            .border_color(border_color)
+                                            .text_sm()
+                                            .text_color(fg)
+                                            .cursor_pointer()
+                                            .hover(|style| style.bg(gpui::Hsla { h: 0.0, s: 0.0, l: 1.0, a: 0.1 }))
+                                            .on_click(cx.listener(move |this, _: &ClickEvent, _window, cx| {
+                                                this.pending_profile_deletion = None;
+                                                cx.notify();
+                                            }))
+                                            .child("Cancel")
+                                    )
+                                    .child(
+                                        // Delete button (red)
+                                        div()
+                                            .id("delete-profile-confirm")
+                                            .px_4()
+                                            .py_2()
+                                            .rounded_md()
+                                            .bg(gpui::Hsla { h: 0.0, s: 0.8, l: 0.5, a: 1.0 })
+                                            .text_sm()
+                                            .text_color(gpui::Hsla { h: 0.0, s: 0.0, l: 1.0, a: 1.0 })
+                                            .cursor_pointer()
+                                            .hover(|style| style.bg(gpui::Hsla { h: 0.0, s: 0.8, l: 0.4, a: 1.0 }))
+                                            .on_click(cx.listener(move |this, _: &ClickEvent, _window, cx| {
+                                                this.pending_profile_deletion = None;
+                                                this.top_bar.remove_tab(idx_for_confirm);
+                                                // Persist to disk
+                                                this.save_layout_profiles_to_settings();
+                                                cx.notify();
+                                            }))
+                                            .child("Delete")
+                                    )
+                            )
+                    )
+            );
         }
 
         container

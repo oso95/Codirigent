@@ -9,6 +9,7 @@
 //! - Whether it has a pending tool use awaiting permission
 //! - Whether it has finished its turn and is idle
 
+use crate::CliSessionStatus;
 use serde::Deserialize;
 use std::fs;
 use std::io::{Read, Seek, SeekFrom};
@@ -17,20 +18,7 @@ use std::time::SystemTime;
 use tracing::{debug, trace};
 
 /// Status derived from Claude Code's JSONL logs.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub enum ClaudeSessionStatus {
-    /// Claude is actively working (streaming, tool executing).
-    Working,
-    /// Claude is waiting for user input (end of turn).
-    WaitingForInput,
-    /// A tool needs permission approval.
-    NeedsPermission {
-        /// The tool name that needs approval.
-        tool_name: Option<String>,
-    },
-    /// Could not determine status from JSONL (fall through to other detectors).
-    Unknown,
-}
+pub type ClaudeSessionStatus = CliSessionStatus;
 
 /// Reads Claude Code session data to determine status.
 pub struct ClaudeSessionReader {

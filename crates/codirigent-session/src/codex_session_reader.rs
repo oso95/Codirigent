@@ -11,6 +11,7 @@
 //! - `response_item` — messages and function calls
 //! - `event_msg` — events like turn completion
 
+use crate::CliSessionStatus;
 use serde::Deserialize;
 use std::collections::HashMap;
 use std::fs;
@@ -20,20 +21,7 @@ use std::time::SystemTime;
 use tracing::{debug, trace};
 
 /// Status derived from Codex CLI's JSONL rollout logs.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub enum CodexSessionStatus {
-    /// Codex is actively working (tool executing, auto-approved).
-    Working,
-    /// Codex is waiting for user input (end of turn).
-    WaitingForInput,
-    /// A tool needs permission approval.
-    NeedsPermission {
-        /// The tool name that needs approval.
-        tool_name: Option<String>,
-    },
-    /// Could not determine status from JSONL (fall through to other detectors).
-    Unknown,
-}
+pub type CodexSessionStatus = CliSessionStatus;
 
 /// Reads Codex CLI session data to determine status.
 pub struct CodexSessionReader {

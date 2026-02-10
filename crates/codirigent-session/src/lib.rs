@@ -46,6 +46,37 @@
 #![warn(missing_docs)]
 #![warn(clippy::all)]
 
+use codirigent_core::SessionStatus;
+
+/// Unified status from any CLI session reader (Claude, Codex, Gemini).
+/// Maps to `Option<(SessionStatus, Option<String>)>` via `to_session_status()`.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum CliSessionStatus {
+    /// CLI is actively working (streaming, tool executing).
+    Working,
+    /// CLI is waiting for user input (end of turn).
+    WaitingForInput,
+    /// A tool needs permission approval.
+    NeedsPermission {
+        /// The tool name that needs approval.
+        tool_name: Option<String>,
+    },
+    /// Could not determine status from logs (fall through to other detectors).
+    Unknown,
+}
+
+impl CliSessionStatus {
+    /// Convert to unified SessionStatus. Returns None for Unknown (fall through to detector).
+    pub fn to_session_status(self) -> Option<(SessionStatus, Option<String>)> {
+        match self {
+            Self::Working => Some((SessionStatus::Working, None)),
+            Self::WaitingForInput => Some((SessionStatus::WaitingForInput, None)),
+            Self::NeedsPermission { tool_name } => Some((SessionStatus::NeedsPermission, tool_name)),
+            Self::Unknown => None,
+        }
+    }
+}
+
 pub mod broadcast_service;
 pub mod claude_session_reader;
 pub mod cli_detector;

@@ -9,6 +9,7 @@
 //! The JSON schema contains `sessionId`, `lastUpdated`, and a `messages` array
 //! where each message has a `type` and optional `toolCalls`.
 
+use crate::CliSessionStatus;
 use serde::Deserialize;
 use std::collections::HashMap;
 use std::fs;
@@ -17,20 +18,7 @@ use std::time::SystemTime;
 use tracing::{debug, trace, warn};
 
 /// Status derived from Gemini CLI's JSON session files.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub enum GeminiSessionStatus {
-    /// Gemini is actively working (processing user input or executing tools).
-    Working,
-    /// Gemini is waiting for user input (end of turn).
-    WaitingForInput,
-    /// A tool needs permission approval.
-    NeedsPermission {
-        /// The tool name that needs approval.
-        tool_name: Option<String>,
-    },
-    /// Could not determine status from JSON (fall through to other detectors).
-    Unknown,
-}
+pub type GeminiSessionStatus = CliSessionStatus;
 
 /// Reads Gemini CLI session data to determine status.
 pub struct GeminiSessionReader {
