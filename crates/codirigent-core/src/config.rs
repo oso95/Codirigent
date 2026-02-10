@@ -17,6 +17,7 @@
 //! and module-specific preferences.
 
 use crate::scheduler::SchedulerConfig;
+use crate::LayoutMode;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 
@@ -289,6 +290,20 @@ impl Default for TerminalSettings {
 // User Settings
 // ============================================================================
 
+/// A saved layout configuration for persistence.
+///
+/// Stores layout profiles that users have created via the custom layout picker.
+/// Used in `UserSettings.saved_layouts` for serialization to settings.json.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub struct SavedLayout {
+    /// Unique identifier.
+    pub id: String,
+    /// Display name shown in the top bar tab.
+    pub name: String,
+    /// The layout mode configuration.
+    pub layout: LayoutMode,
+}
+
 /// Global user settings stored in `~/.config/dirigent/settings.json`.
 ///
 /// These settings apply across all projects and control user preferences.
@@ -319,6 +334,9 @@ pub struct UserSettings {
     /// Keyboard shortcuts.
     #[serde(default = "UserSettings::default_keybindings")]
     pub keybindings: HashMap<String, String>,
+    /// User-saved custom layout profiles.
+    #[serde(default)]
+    pub saved_layouts: Vec<SavedLayout>,
 }
 
 impl Default for UserSettings {
@@ -330,6 +348,7 @@ impl Default for UserSettings {
             notifications: NotificationSettings::default(),
             modules: ModuleSettings::default(),
             keybindings: Self::default_keybindings(),
+            saved_layouts: Vec::new(),
         }
     }
 }

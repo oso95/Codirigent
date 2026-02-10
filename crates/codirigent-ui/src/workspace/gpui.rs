@@ -57,6 +57,7 @@ use codirigent_filetree::FileTree;
 use codirigent_session::claude_session_reader::ClaudeSessionReader;
 use codirigent_session::codex_session_reader::CodexSessionReader;
 use codirigent_session::gemini_session_reader::GeminiSessionReader;
+use codirigent_session::cli_detector::CliDetector;
 use codirigent_session::clipboard_service::{ClipboardService, DefaultClipboardService};
 use codirigent_session::DefaultSessionManager;
 use gpui::{
@@ -226,6 +227,8 @@ pub struct WorkspaceView {
     codex_reader: Option<CodexSessionReader>,
     /// Gemini CLI JSON session reader for high-fidelity status detection.
     gemini_reader: Option<GeminiSessionReader>,
+    /// Process-tree CLI detector for gating JSONL auto-probe on GenericShell sessions.
+    cli_detector: codirigent_session::DefaultCliDetector,
     /// Last time JSONL status was checked (throttled to ~1/second).
     last_jsonl_check: Instant,
     /// Compaction service for auto-compacting before verification.
@@ -544,6 +547,7 @@ impl WorkspaceView {
             claude_reader: ClaudeSessionReader::new(),
             codex_reader: CodexSessionReader::new(),
             gemini_reader: GeminiSessionReader::new(),
+            cli_detector: codirigent_session::DefaultCliDetector::new(),
             last_jsonl_check: Instant::now(),
             compaction: Arc::new(Mutex::new(CompactionService::new(CompactionConfig::default()))),
             compaction_start_times: HashMap::new(),
@@ -801,38 +805,35 @@ impl WorkspaceView {
                             .as_mut()
                             .and_then(|r| r.get_status(&working_dir).to_session_status()),
                         codirigent_core::CliType::GenericShell => {
-                            // CLI type not yet detected from banner — probe all
-                            // JSONL readers to auto-detect from session files.
-                            if let Some(s) = self
-                                .claude_reader
-                                .as_mut()
-                                .and_then(|r| r.get_status(&working_dir).to_session_status())
-                            {
-                                self.clipboard_service.set_session_cli_type(
-                                    session_id,
-                                    codirigent_core::CliType::ClaudeCode,
-                                );
-                                Some(s)
-                            } else if let Some(s) = self
-                                .codex_reader
-                                .as_mut()
-                                .and_then(|r| r.get_status(&working_dir).to_session_status())
-                            {
-                                self.clipboard_service.set_session_cli_type(
-                                    session_id,
-                                    codirigent_core::CliType::CodexCli,
-                                );
-                                Some(s)
-                            } else if let Some(s) = self
-                                .gemini_reader
-                                .as_mut()
-                                .and_then(|r| r.get_status(&working_dir).to_session_status())
-                            {
-                                self.clipboard_service.set_session_cli_type(
-                                    session_id,
-                                    codirigent_core::CliType::GeminiCli,
-                                );
-                                Some(s)
+                            // Use process tree to detect CLI type before reading JSONL.
+                            // Prevents stale JSONL from previous sessions causing false promotion.
+                            let child_pid = {
+                                let manager = self.session_manager.lock().unwrap();
+                                manager.get_child_pid(session_id)
+                            };
+                            if let Some(pid) = child_pid {
+                                let detected = self.cli_detector.detect_cli_type(pid);
+                                if detected != codirigent_core::CliType::GenericShell {
+                                    self.clipboard_service
+                                        .set_session_cli_type(session_id, detected);
+                                    match detected {
+                                        codirigent_core::CliType::ClaudeCode => self
+                                            .claude_reader
+                                            .as_mut()
+                                            .and_then(|r| r.get_status(&working_dir).to_session_status()),
+                                        codirigent_core::CliType::CodexCli => self
+                                            .codex_reader
+                                            .as_mut()
+                                            .and_then(|r| r.get_status(&working_dir).to_session_status()),
+                                        codirigent_core::CliType::GeminiCli => self
+                                            .gemini_reader
+                                            .as_mut()
+                                            .and_then(|r| r.get_status(&working_dir).to_session_status()),
+                                        _ => None,
+                                    }
+                                } else {
+                                    None
+                                }
                             } else {
                                 None
                             }
@@ -850,6 +851,13 @@ impl WorkspaceView {
                                 self.event_bus.publish(CodirigentEvent::PermissionRequired {
                                     session_id,
                                     tool_name,
+                                });
+                            }
+                        } else if new_status == SessionStatus::WaitingForInput {
+                            if session.status != SessionStatus::WaitingForInput {
+                                self.event_bus.publish(CodirigentEvent::InputRequired {
+                                    session_id,
+                                    pattern: None,
                                 });
                             }
                         }

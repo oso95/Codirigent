@@ -299,6 +299,26 @@ impl CodirigentIntegration {
             CodirigentEvent::InputProvided { session_id } => {
                 debug!(%session_id, "Input provided");
             }
+            CodirigentEvent::PermissionRequired {
+                session_id,
+                tool_name,
+            } => {
+                info!(%session_id, ?tool_name, "Permission required");
+                if notifications_enabled {
+                    let session_name = session_manager
+                        .lock()
+                        .ok()
+                        .and_then(|mgr| mgr.get_session(*session_id))
+                        .map(|s| s.name.clone())
+                        .unwrap_or_else(|| format!("Session {}", session_id.0));
+                    let tool = tool_name.as_deref().unwrap_or("a tool");
+                    let body = format!(
+                        "Session '{}' needs permission for {}",
+                        session_name, tool
+                    );
+                    codirigent_detector::send_notification("Codirigent - Permission Required", &body);
+                }
+            }
             CodirigentEvent::SessionRenamed {
                 id,
                 old_name,

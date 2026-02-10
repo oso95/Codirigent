@@ -4,12 +4,14 @@
 //! and right-panel toggle into a single 48px bar.
 
 use crate::layout::LayoutProfile;
+use crate::layout_profile::{LayoutProfileManager, SavedLayoutProfile};
+use codirigent_core::LayoutMode;
 
 /// Events emitted by the top bar.
 #[derive(Debug, Clone)]
 pub enum TopBarEvent {
-    /// Layout tab clicked.
-    LayoutSelected(LayoutProfile),
+    /// Layout tab clicked — carries the LayoutMode to apply.
+    LayoutSelected(LayoutMode),
     /// Custom layout picker requested.
     CustomLayoutRequested,
     /// Broadcast mode toggled.
@@ -23,20 +25,29 @@ pub enum TopBarEvent {
 /// Layout tab button state.
 #[derive(Debug, Clone)]
 pub struct LayoutTab {
-    /// Layout profile this tab represents.
-    pub profile: LayoutProfile,
+    /// Profile ID in the manager (used for activation).
+    pub profile_id: String,
     /// Display label (e.g., "2x2", "3x2").
     pub label: String,
     /// Whether this tab is currently active.
     pub is_active: bool,
+    /// The layout mode this tab represents.
+    pub layout_mode: LayoutMode,
+    /// Whether this is a user-saved (non-default) profile.
+    pub is_user_saved: bool,
 }
+
+/// IDs of the built-in default profiles.
+const DEFAULT_PROFILE_IDS: &[&str] = &["2x2", "2x3", "single"];
 
 /// Unified top bar state.
 #[derive(Debug)]
 pub struct TopBar {
     /// Currently active layout.
     active_layout: LayoutProfile,
-    /// Available layout tabs.
+    /// Profile manager holding all profiles (defaults + user-saved).
+    pub profile_manager: LayoutProfileManager,
+    /// Available layout tabs (derived from profile manager).
     tabs: Vec<LayoutTab>,
     /// Whether broadcast mode is on.
     broadcast_enabled: bool,
@@ -57,10 +68,24 @@ impl TopBar {
 
     /// Create a new top bar with default state.
     pub fn new() -> Self {
-        let active = LayoutProfile::default();
+        let mut manager = LayoutProfileManager::new();
+        // Add only the three profiles matching the original hardcoded tabs
+        manager.add_profile(
+            SavedLayoutProfile::new("2x2", "2x2", LayoutMode::Grid { rows: 2, cols: 2 }),
+        );
+        manager.add_profile(
+            SavedLayoutProfile::new("2x3", "3x2", LayoutMode::Grid { rows: 2, cols: 3 }),
+        );
+        manager.add_profile(
+            SavedLayoutProfile::new("single", "Focus", LayoutMode::Single),
+        );
+        manager.set_active("2x2");
+
+        let tabs = Self::derive_tabs(&manager);
         Self {
-            tabs: Self::create_tabs(active),
-            active_layout: active,
+            active_layout: LayoutProfile::default(),
+            profile_manager: manager,
+            tabs,
             broadcast_enabled: false,
             right_panel_open: true,
             token_count: "0 tokens".to_string(),
@@ -68,25 +93,28 @@ impl TopBar {
         }
     }
 
-    /// Build the list of layout tabs, marking the active one.
-    fn create_tabs(active: LayoutProfile) -> Vec<LayoutTab> {
-        vec![
-            LayoutTab {
-                profile: LayoutProfile::Grid2x2,
-                label: "2x2".to_string(),
-                is_active: active == LayoutProfile::Grid2x2,
-            },
-            LayoutTab {
-                profile: LayoutProfile::Grid2x3,
-                label: "3x2".to_string(),
-                is_active: active == LayoutProfile::Grid2x3,
-            },
-            LayoutTab {
-                profile: LayoutProfile::Single,
-                label: "Focus".to_string(),
-                is_active: active == LayoutProfile::Single,
-            },
-        ]
+    /// Derive tabs from the profile manager state.
+    fn derive_tabs(manager: &LayoutProfileManager) -> Vec<LayoutTab> {
+        let active_id = manager.active_id();
+        manager
+            .list_profiles()
+            .iter()
+            .map(|p| {
+                let is_default = DEFAULT_PROFILE_IDS.contains(&p.id.as_str());
+                LayoutTab {
+                    profile_id: p.id.clone(),
+                    label: p.name.clone(),
+                    is_active: active_id == Some(p.id.as_str()),
+                    layout_mode: p.layout.clone(),
+                    is_user_saved: !is_default,
+                }
+            })
+            .collect()
+    }
+
+    /// Refresh tabs from the current profile manager state.
+    fn refresh_tabs(&mut self) {
+        self.tabs = Self::derive_tabs(&self.profile_manager);
     }
 
     /// Get the currently active layout.
@@ -97,16 +125,50 @@ impl TopBar {
     /// Set the active layout and refresh tabs.
     pub fn set_active_layout(&mut self, profile: LayoutProfile) {
         self.active_layout = profile;
-        self.tabs = Self::create_tabs(profile);
+        // Try to find a matching profile in the manager
+        let mode = profile.to_mode();
+        let matching_id = self
+            .profile_manager
+            .list_profiles()
+            .iter()
+            .find(|p| p.layout == mode)
+            .map(|p| p.id.clone());
+        if let Some(id) = matching_id {
+            self.profile_manager.set_active(&id);
+        } else {
+            // No matching profile — deactivate all
+            // Use an impossible ID so nothing matches
+            self.profile_manager.set_active("__none__");
+        }
+        self.refresh_tabs();
+    }
+
+    /// Set the active profile by its manager ID and refresh tabs.
+    pub fn set_active_profile_id(&mut self, id: &str) {
+        self.profile_manager.set_active(id);
+        self.refresh_tabs();
     }
 
     /// Click a layout tab by index.
     pub fn click_tab(&mut self, index: usize) {
         if let Some(tab) = self.tabs.get(index) {
-            let profile = tab.profile;
-            self.set_active_layout(profile);
+            let layout_mode = tab.layout_mode.clone();
+            let profile_id = tab.profile_id.clone();
+            self.profile_manager.set_active(&profile_id);
+            self.refresh_tabs();
             self.pending_events
-                .push(TopBarEvent::LayoutSelected(profile));
+                .push(TopBarEvent::LayoutSelected(layout_mode));
+        }
+    }
+
+    /// Remove a user-saved profile by index and refresh tabs.
+    pub fn remove_tab(&mut self, index: usize) {
+        if let Some(tab) = self.tabs.get(index) {
+            if tab.is_user_saved {
+                let id = tab.profile_id.clone();
+                self.profile_manager.remove_profile(&id);
+                self.refresh_tabs();
+            }
         }
     }
 
@@ -157,6 +219,29 @@ impl TopBar {
     pub fn drain_events(&mut self) -> Vec<TopBarEvent> {
         std::mem::take(&mut self.pending_events)
     }
+
+    /// Load saved profiles from UserSettings and add them to the profile manager.
+    pub fn load_saved_profiles(&mut self, saved_layouts: Vec<codirigent_core::SavedLayout>) {
+        for saved in saved_layouts {
+            // Skip if this is a built-in profile (already added in new())
+            if DEFAULT_PROFILE_IDS.contains(&saved.id.as_str()) {
+                continue;
+            }
+            let profile = SavedLayoutProfile::from_saved_layout(saved);
+            self.profile_manager.add_profile(profile);
+        }
+        self.refresh_tabs();
+    }
+
+    /// Export user-saved profiles (non-default) for persistence.
+    pub fn export_user_profiles(&self) -> Vec<codirigent_core::SavedLayout> {
+        self.profile_manager
+            .list_profiles()
+            .iter()
+            .filter(|p| !DEFAULT_PROFILE_IDS.contains(&p.id.as_str()))
+            .map(|p| p.to_saved_layout())
+            .collect()
+    }
 }
 
 impl Default for TopBar {
@@ -182,12 +267,11 @@ mod tests {
     fn click_tab_changes_layout() {
         let mut bar = TopBar::new();
         bar.click_tab(1); // 3x2
-        assert_eq!(bar.active_layout(), LayoutProfile::Grid2x3);
         let events = bar.drain_events();
         assert_eq!(events.len(), 1);
         assert!(matches!(
-            events[0],
-            TopBarEvent::LayoutSelected(LayoutProfile::Grid2x3)
+            &events[0],
+            TopBarEvent::LayoutSelected(LayoutMode::Grid { rows: 2, cols: 3 })
         ));
     }
 
@@ -244,14 +328,14 @@ mod tests {
         assert!(
             bar.tabs()
                 .iter()
-                .find(|t| t.profile == LayoutProfile::Single)
+                .find(|t| t.profile_id == "single")
                 .unwrap()
                 .is_active
         );
         assert!(
             !bar.tabs()
                 .iter()
-                .find(|t| t.profile == LayoutProfile::Grid2x2)
+                .find(|t| t.profile_id == "2x2")
                 .unwrap()
                 .is_active
         );
@@ -263,5 +347,41 @@ mod tests {
         let new = TopBar::new();
         assert_eq!(default.active_layout(), new.active_layout());
         assert_eq!(default.is_broadcast_enabled(), new.is_broadcast_enabled());
+    }
+
+    #[test]
+    fn saved_profile_appears_as_tab() {
+        let mut bar = TopBar::new();
+        let profile = SavedLayoutProfile::new(
+            "custom-3x3",
+            "3x3",
+            LayoutMode::Grid { rows: 3, cols: 3 },
+        );
+        bar.profile_manager.add_profile(profile);
+        bar.refresh_tabs();
+        assert_eq!(bar.tabs().len(), 4);
+        assert_eq!(bar.tabs()[3].label, "3x3");
+        assert!(bar.tabs()[3].is_user_saved);
+    }
+
+    #[test]
+    fn remove_user_saved_tab() {
+        let mut bar = TopBar::new();
+        bar.profile_manager.add_profile(SavedLayoutProfile::new(
+            "custom-3x3",
+            "3x3",
+            LayoutMode::Grid { rows: 3, cols: 3 },
+        ));
+        bar.refresh_tabs();
+        assert_eq!(bar.tabs().len(), 4);
+        bar.remove_tab(3); // Remove the user-saved tab
+        assert_eq!(bar.tabs().len(), 3);
+    }
+
+    #[test]
+    fn cannot_remove_default_tab() {
+        let mut bar = TopBar::new();
+        bar.remove_tab(0); // Try to remove "2x2" (default)
+        assert_eq!(bar.tabs().len(), 3); // Unchanged
     }
 }

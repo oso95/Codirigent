@@ -68,6 +68,26 @@ impl SavedLayoutProfile {
         self.session_positions = Some(positions);
         self
     }
+
+    /// Convert to a SavedLayout for persistence (drops optional fields).
+    pub fn to_saved_layout(&self) -> codirigent_core::SavedLayout {
+        codirigent_core::SavedLayout {
+            id: self.id.clone(),
+            name: self.name.clone(),
+            layout: self.layout.clone(),
+        }
+    }
+
+    /// Create from a SavedLayout (with no optional fields).
+    pub fn from_saved_layout(saved: codirigent_core::SavedLayout) -> Self {
+        Self {
+            id: saved.id,
+            name: saved.name,
+            layout: saved.layout,
+            session_positions: None,
+            shortcut: None,
+        }
+    }
 }
 
 /// Layout profile manager.

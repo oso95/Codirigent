@@ -110,7 +110,7 @@ pub use change_summary::{
     ChangeDetector, ChangeSummary, ChangeType, FileCategory, FileChange, RiskAssessment,
     RiskAssessor, RiskLevel,
 };
-pub use config::{ProjectConfig, UserSettings};
+pub use config::{ProjectConfig, SavedLayout, UserSettings};
 pub use config_service::{ConfigChange, ConfigService, DefaultConfigService, EffectiveConfig};
 pub use context::{
     ContextConfig, ContextPattern, ContextTracker, ContextTrackingService, ContextUsage,

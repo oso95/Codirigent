@@ -753,21 +753,14 @@ impl WorkspaceView {
         let _primary: gpui::Hsla = theme.primary.into();
 
         // Clone tab data and state before building the element tree
-        let tabs: Vec<(usize, String, bool)> = self
+        let tabs: Vec<(usize, String, bool, bool)> = self
             .top_bar
             .tabs()
             .iter()
             .enumerate()
-            .map(|(i, t)| (i, t.label.clone(), t.is_active))
+            .map(|(i, t)| (i, t.label.clone(), t.is_active, t.is_user_saved))
             .collect();
         let right_panel_open = self.top_bar.is_right_panel_open();
-        let is_custom_layout = self.workspace.layout_profile().is_custom();
-        let custom_label =
-            if let LayoutProfile::Custom { rows, cols } = self.workspace.layout_profile() {
-                format!("{}x{}", rows, cols)
-            } else {
-                "Custom".to_string()
-            };
 
         let mut bar = div()
             .id("top-bar")
@@ -783,9 +776,9 @@ impl WorkspaceView {
 
         // --- Left section ---
 
-        // Layout tab pills
+        // Layout tab pills (from profile manager)
         let mut tab_row = div().flex().gap_1().items_center();
-        for (idx, label, is_active) in &tabs {
+        for (idx, label, is_active, is_user_saved) in &tabs {
             let tab_bg = if *is_active {
                 active
             } else {
@@ -794,52 +787,63 @@ impl WorkspaceView {
             let tab_color = if *is_active { fg } else { muted };
             let tab_idx = *idx;
 
-            tab_row = tab_row.child(
-                div()
-                    .id(SharedString::from(format!("top-bar-tab-{}", tab_idx)))
-                    .px_3()
-                    .py_1()
-                    .rounded_md()
-                    .bg(tab_bg)
-                    .text_xs()
-                    .font_weight(if *is_active {
-                        FontWeight::SEMIBOLD
-                    } else {
-                        FontWeight::NORMAL
-                    })
-                    .text_color(tab_color)
-                    .cursor_pointer()
-                    .hover(|style| style.bg(active.opacity(0.5)))
-                    .on_click(cx.listener(move |this, _: &ClickEvent, _window, cx| {
-                        this.top_bar.click_tab(tab_idx);
-                        this.process_top_bar_events();
-                        cx.notify();
-                    }))
-                    .child(label.clone()),
-            );
+            let mut tab_pill = div()
+                .id(SharedString::from(format!("top-bar-tab-{}", tab_idx)))
+                .px_3()
+                .py_1()
+                .rounded_md()
+                .bg(tab_bg)
+                .text_xs()
+                .font_weight(if *is_active {
+                    FontWeight::SEMIBOLD
+                } else {
+                    FontWeight::NORMAL
+                })
+                .text_color(tab_color)
+                .cursor_pointer()
+                .hover(|style| style.bg(active.opacity(0.5)))
+                .flex()
+                .items_center()
+                .gap_1()
+                .on_click(cx.listener(move |this, _: &ClickEvent, _window, cx| {
+                    this.top_bar.click_tab(tab_idx);
+                    this.process_top_bar_events();
+                    cx.notify();
+                }))
+                .child(label.clone());
+
+            // Add remove button for user-saved profiles
+            if *is_user_saved {
+                let label_for_confirm = label.clone();
+                tab_pill = tab_pill.child(
+                    div()
+                        .id(SharedString::from(format!("top-bar-tab-remove-{}", tab_idx)))
+                        .text_xs()
+                        .text_color(muted)
+                        .cursor_pointer()
+                        .hover(|style| style.text_color(gpui::Hsla { h: 0.0, s: 0.8, l: 0.6, a: 1.0 }))
+                        .on_click(cx.listener(move |this, _: &ClickEvent, _window, cx| {
+                            // Set pending deletion to show confirmation dialog
+                            this.pending_profile_deletion = Some((tab_idx, label_for_confirm.clone()));
+                            cx.notify();
+                        }))
+                        .child("\u{00d7}"), // × character
+                );
+            }
+
+            tab_row = tab_row.child(tab_pill);
         }
 
-        // Custom layout button
-        let custom_bg = if is_custom_layout {
-            active
-        } else {
-            gpui::Hsla::transparent_black()
-        };
-        let custom_color = if is_custom_layout { fg } else { muted };
+        // "+" button to open the custom layout picker
         tab_row = tab_row.child(
             div()
                 .id("top-bar-tab-custom")
                 .px_3()
                 .py_1()
                 .rounded_md()
-                .bg(custom_bg)
+                .bg(gpui::Hsla::transparent_black())
                 .text_xs()
-                .font_weight(if is_custom_layout {
-                    FontWeight::SEMIBOLD
-                } else {
-                    FontWeight::NORMAL
-                })
-                .text_color(custom_color)
+                .text_color(muted)
                 .cursor_pointer()
                 .hover(|style| style.bg(active.opacity(0.5)))
                 .flex()
@@ -850,7 +854,7 @@ impl WorkspaceView {
                     this.process_top_bar_events();
                     cx.notify();
                 }))
-                .child(custom_label),
+                .child("+"),
         );
 
         bar = bar.child(tab_row);
@@ -1193,7 +1197,7 @@ impl WorkspaceView {
                         cell_border,
                         border_color,
                         &theme,
-                        cell_height,
+                        Some(cell_height),
                         cx,
                     )
                 } else {
@@ -1293,7 +1297,7 @@ impl WorkspaceView {
                         cell_border,
                         border_color,
                         theme,
-                        cell_height,
+                        None,
                         cx,
                     )
                     .into_any_element()
@@ -1421,7 +1425,7 @@ impl WorkspaceView {
         cell_border: gpui::Hsla,
         border_color: gpui::Hsla,
         theme: &CodirigentTheme,
-        cell_height: f32,
+        cell_height: Option<f32>,
         cx: &mut Context<Self>,
     ) -> gpui::Stateful<gpui::Div> {
         const HEADER_HEIGHT: f32 = 32.0;
@@ -1583,12 +1587,9 @@ impl WorkspaceView {
         let origin_for_down = Rc::clone(&canvas_origin);
         let origin_for_move = Rc::clone(&canvas_origin);
 
-        let terminal_height = cell_height - HEADER_HEIGHT;
-
-        div()
+        let mut outer = div()
             .id(SharedString::from(format!("session-cell-{}", session_id.0)))
             .w_full()
-            .h(px(cell_height))
             .bg(panel_bg)
             .border_1()
             .border_color(cell_border)
@@ -1603,16 +1604,33 @@ impl WorkspaceView {
                     this.select_session(session_id);
                     cx.notify();
                 }),
-            )
+            );
+
+        // Fixed height for grid mode, flexible for split tree mode
+        if let Some(h) = cell_height {
+            outer = outer.h(px(h));
+        } else {
+            outer = outer.size_full().flex_1();
+        }
+
+        let mut terminal_area = div()
+            .id(SharedString::from(format!(
+                "terminal-area-{}",
+                session_id.0
+            )))
+            .w_full();
+
+        // Fixed height for grid mode, flexible for split tree mode
+        if let Some(h) = cell_height {
+            terminal_area = terminal_area.h(px(h - HEADER_HEIGHT));
+        } else {
+            terminal_area = terminal_area.flex_1();
+        }
+
+        outer
             .child(header)
             .child(
-                div()
-                    .id(SharedString::from(format!(
-                        "terminal-area-{}",
-                        session_id.0
-                    )))
-                    .w_full()
-                    .h(px(terminal_height))
+                terminal_area
                     .overflow_hidden()
                     .on_scroll_wheel(cx.listener(
                         move |this, event: &ScrollWheelEvent, _window, cx| {
@@ -2441,6 +2459,8 @@ impl WorkspaceView {
                     .border_color(border_color)
                     .rounded_md()
                     .overflow_hidden()
+                    .flex()
+                    .flex_col()
                     .child(Self::render_split_preview_node(&tree, selected, primary, preview_bg, border_color, cx)),
             )
     }
