@@ -511,7 +511,7 @@ impl WorkspaceView {
             worktree_manager: Self::init_worktree_manager(),
             last_click_position: None,
             _current_branch: Self::detect_git_branch(),
-            last_resize_time: Instant::now(),
+            last_resize_time: Instant::now() - Duration::from_millis(200),
             pending_resize: false,
             last_poll_had_output: false,
             idle_poll_count: 0,
@@ -1263,10 +1263,6 @@ impl WorkspaceView {
 
             self.terminal_headers.push((session_id, header));
 
-            // Immediately resize PTY to match actual grid cell bounds
-            // so the shell knows the correct dimensions from the start
-            self.resize_terminals_to_grid();
-
             // Auto-select the newly created session for natural UX
             self.select_session(session_id);
 
@@ -1370,8 +1366,6 @@ impl WorkspaceView {
                 self.terminal_headers.push((session_id, header));
             }
         }
-
-        self.resize_terminals_to_grid();
 
         // Select the first restored session
         if let Some(first_id) = self.workspace.sessions().first().map(|s| s.id) {
