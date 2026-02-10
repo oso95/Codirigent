@@ -100,7 +100,7 @@ impl CodexSessionReader {
         let approval_mode = self.read_approval_mode(&rollout_path);
 
         // Read tail of file for recent entries
-        let Some(tail) = Self::read_file_tail(&rollout_path, 8192) else {
+        let Some(tail) = Self::read_file_tail(&rollout_path, 131_072) else {
             return CodexSessionStatus::Unknown;
         };
 

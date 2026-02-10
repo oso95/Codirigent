@@ -68,7 +68,7 @@ use std::collections::{HashMap, HashSet};
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
-use tracing::{info, warn};
+use tracing::{debug, info, warn};
 
 /// Predefined group color palette for visual distinction.
 const GROUP_COLOR_PALETTE: &[&str] = &[
@@ -832,6 +832,7 @@ impl WorkspaceView {
                                         _ => None,
                                     }
                                 } else {
+                                    debug!(?session_id, pid, "Process tree detection returned GenericShell — JSONL reader skipped");
                                     None
                                 }
                             } else {
@@ -839,6 +840,8 @@ impl WorkspaceView {
                             }
                         }
                     };
+
+                    debug!(?session_id, ?cli_status, "JSONL reader result");
 
                     if let Some((new_status, tool_name)) = cli_status.clone() {
                         // Cache the JSONL result so it persists between checks

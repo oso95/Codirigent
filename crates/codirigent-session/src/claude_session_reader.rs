@@ -92,12 +92,13 @@ impl ClaudeSessionReader {
     /// project-specific JSONL files under `~/.claude/projects/`.
     pub fn get_status(&mut self, working_dir: &Path) -> ClaudeSessionStatus {
         let Some(session_dir) = self.find_session_dir(working_dir) else {
-            trace!(?working_dir, "No Claude session dir found");
+            debug!(?working_dir, "No Claude session dir found");
             return ClaudeSessionStatus::Unknown;
         };
 
         let entries = self.read_recent_entries(&session_dir, 20);
         if entries.is_empty() {
+            debug!(?session_dir, "JSONL: no entries parsed from session dir");
             return ClaudeSessionStatus::Unknown;
         }
 
@@ -130,7 +131,7 @@ impl ClaudeSessionReader {
         let Some(jsonl_path) = Self::find_most_recent_jsonl(session_dir) else {
             return Vec::new();
         };
-        let Some(tail) = Self::read_file_tail(&jsonl_path, 8192) else {
+        let Some(tail) = Self::read_file_tail(&jsonl_path, 131_072) else {
             return Vec::new();
         };
 
@@ -156,6 +157,11 @@ impl ClaudeSessionReader {
 
         // Reverse so entries are in chronological order
         entries.reverse();
+        debug!(
+            tail_bytes = tail.len(),
+            parsed_entries = entries.len(),
+            "JSONL: read_recent_entries"
+        );
         entries
     }
 
@@ -223,6 +229,12 @@ impl ClaudeSessionReader {
     /// 3. If stop_reason is "end_turn" → WaitingForInput
     /// 4. Otherwise → Unknown (fall through to other detectors)
     fn determine_status(&self, entries: &[JsonlEntry]) -> ClaudeSessionStatus {
+        debug!(
+            entry_count = entries.len(),
+            entry_types = ?entries.iter().map(|e| e.entry_type.as_str()).collect::<Vec<_>>(),
+            "JSONL determine_status input"
+        );
+
         // Walk entries in reverse to find the last meaningful entry
         let mut last_assistant: Option<&JsonlEntry> = None;
         let mut last_assistant_idx: usize = 0;
@@ -253,6 +265,26 @@ impl ClaudeSessionReader {
             }
         }
 
+        // Context-aware refinement: if the last 2 entries are both assistant messages
+        // and the most recent has stop_reason + no pending tools → WaitingForInput.
+        // This catches edge cases where the main heuristic would return Working.
+        if entries.len() >= 2 {
+            let last_two: Vec<_> = entries.iter().rev().take(2).collect();
+            let both_assistant = last_two.iter().all(|e| {
+                e.entry_type == "assistant"
+                    || e.message.as_ref().is_some_and(|m| m.role == "assistant")
+            });
+            if both_assistant {
+                if let Some(msg) = &last_two[0].message {
+                    let has_tools = msg.content.iter().any(|c| c.content_type == "tool_use");
+                    if !has_tools && msg.stop_reason.is_some() {
+                        debug!("JSONL: consecutive assistant messages with stop_reason → WaitingForInput");
+                        return ClaudeSessionStatus::WaitingForInput;
+                    }
+                }
+            }
+        }
+
         let Some(assistant) = last_assistant else {
             return ClaudeSessionStatus::Unknown;
         };
@@ -268,6 +300,18 @@ impl ClaudeSessionReader {
 
                 if !has_result {
                     let tool_name = content.name.as_deref().unwrap_or("unknown");
+
+                    // Auto-approved tools resolve within ~1s. Give a 3s grace period
+                    // before reporting NeedsPermission to avoid brief flash.
+                    // After 3s, the tool genuinely needs permission.
+                    if let Some(ts) = assistant.timestamp.as_deref() {
+                        if Self::is_timestamp_recent(ts, 3) == Some(true) {
+                            debug!(?tool_name, "JSONL: pending tool_use < 3s → Working (grace period)");
+                            return ClaudeSessionStatus::Working;
+                        }
+                    }
+
+                    debug!(?tool_name, "JSONL: pending tool_use ≥ 3s → NeedsPermission");
                     return ClaudeSessionStatus::NeedsPermission {
                         tool_name: Some(tool_name.to_string()),
                     };
@@ -623,6 +667,71 @@ mod tests {
         assert_eq!(
             ClaudeSessionReader::is_timestamp_recent("not-a-timestamp", 10),
             None
+        );
+    }
+
+    #[test]
+    fn test_pending_tool_recent_timestamp_returns_working() {
+        // Pending tool_use with recent timestamp → Working (grace period)
+        let recent = chrono::Utc::now().to_rfc3339();
+        let entries = vec![make_assistant_entry_ts(
+            vec![make_tool_use("Bash", "tu_gp1")],
+            None,
+            &recent,
+        )];
+        let reader = test_reader();
+        assert_eq!(
+            reader.determine_status(&entries),
+            ClaudeSessionStatus::Working
+        );
+    }
+
+    #[test]
+    fn test_pending_tool_old_timestamp_returns_needs_permission() {
+        // Pending tool_use with old timestamp (>3s) → NeedsPermission
+        let old = (chrono::Utc::now() - chrono::Duration::seconds(10)).to_rfc3339();
+        let entries = vec![make_assistant_entry_ts(
+            vec![make_tool_use("Bash", "tu_gp2")],
+            None,
+            &old,
+        )];
+        let reader = test_reader();
+        assert_eq!(
+            reader.determine_status(&entries),
+            ClaudeSessionStatus::NeedsPermission {
+                tool_name: Some("Bash".to_string()),
+            }
+        );
+    }
+
+    #[test]
+    fn test_consecutive_assistant_with_stop_reason_returns_waiting() {
+        // Two assistant messages, latest has stop_reason and no tools → WaitingForInput
+        let entries = vec![
+            make_assistant_entry(vec![make_tool_use("Read", "tu_ca1")], None),
+            make_assistant_entry(vec![], Some("end_turn")),
+        ];
+        let reader = test_reader();
+        assert_eq!(
+            reader.determine_status(&entries),
+            ClaudeSessionStatus::WaitingForInput
+        );
+    }
+
+    #[test]
+    fn test_consecutive_assistant_with_tools_does_not_override() {
+        // Two assistant messages, but latest has tool_use → normal logic applies
+        let entries = vec![
+            make_assistant_entry(vec![], Some("end_turn")),
+            make_assistant_entry(vec![make_tool_use("Bash", "tu_ca2")], None),
+        ];
+        let reader = test_reader();
+        // Latest assistant has pending tool_use with no timestamp → NeedsPermission
+        assert_eq!(
+            reader.determine_status(&entries),
+            ClaudeSessionStatus::NeedsPermission {
+                tool_name: Some("Bash".to_string()),
+            }
         );
     }
 }
