@@ -10,12 +10,11 @@
 //! - Whether it has finished its turn and is idle
 
 use serde::Deserialize;
-use std::collections::HashMap;
 use std::fs;
 use std::io::{Read, Seek, SeekFrom};
 use std::path::{Path, PathBuf};
 use std::time::SystemTime;
-use tracing::{debug, trace, warn};
+use tracing::{debug, trace};
 
 /// Status derived from Claude Code's JSONL logs.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -37,10 +36,6 @@ pub enum ClaudeSessionStatus {
 pub struct ClaudeSessionReader {
     /// Path to ~/.claude
     claude_home: PathBuf,
-    /// Cached settings from ~/.claude/settings.json
-    settings_cache: Option<ClaudeSettings>,
-    /// Last modification time of settings.json for cache invalidation
-    settings_mtime: Option<SystemTime>,
 }
 
 /// Parsed entry from a Claude Code JSONL conversation log.
@@ -55,6 +50,9 @@ struct JsonlEntry {
     /// The message content (for assistant/human entries).
     #[serde(default)]
     message: Option<JsonlMessage>,
+    /// ISO 8601 timestamp of this entry.
+    #[serde(default)]
+    timestamp: Option<String>,
 }
 
 /// Message payload within a JSONL entry.
@@ -88,33 +86,6 @@ struct JsonlContent {
     tool_use_id: Option<String>,
 }
 
-/// Parsed ~/.claude/settings.json for permission rules.
-#[derive(Debug, Deserialize, Clone)]
-struct ClaudeSettings {
-    /// Permission rules mapping tool patterns to "allow"/"deny".
-    #[serde(default, rename = "permissions")]
-    permissions: HashMap<String, String>,
-}
-
-/// Tools that are always auto-approved by Claude Code (read-only or safe tools).
-const ALWAYS_APPROVED_TOOLS: &[&str] = &[
-    "Read",
-    "Glob",
-    "Grep",
-    "WebFetch",
-    "WebSearch",
-    "Task",
-    "AskUserQuestion",
-    "TodoRead",
-    "TodoWrite",
-    "TaskCreate",
-    "TaskUpdate",
-    "TaskGet",
-    "TaskList",
-    "EnterPlanMode",
-    "ExitPlanMode",
-];
-
 impl ClaudeSessionReader {
     /// Create a new reader. Returns `None` if `~/.claude` doesn't exist.
     pub fn new() -> Option<Self> {
@@ -124,11 +95,7 @@ impl ClaudeSessionReader {
             debug!("~/.claude not found, Claude session reader disabled");
             return None;
         }
-        Some(Self {
-            claude_home,
-            settings_cache: None,
-            settings_mtime: None,
-        })
+        Some(Self { claude_home })
     }
 
     /// Get the status of a Claude Code session by reading its JSONL log.
@@ -248,18 +215,32 @@ impl ClaudeSessionReader {
         Some(buf)
     }
 
+    /// Check whether a timestamp string is within `threshold_secs` of now.
+    ///
+    /// Returns `None` if the timestamp cannot be parsed.
+    fn is_timestamp_recent(timestamp: &str, threshold_secs: i64) -> Option<bool> {
+        use chrono::{DateTime, Utc};
+        let parsed = timestamp.parse::<DateTime<Utc>>().ok()?;
+        let elapsed = Utc::now().signed_duration_since(parsed);
+        Some(elapsed.num_seconds() < threshold_secs)
+    }
+
     /// Core status determination algorithm.
     ///
-    /// 1. Find the last meaningful assistant message
-    /// 2. If it contains tool_use with no corresponding tool_result → check permission
+    /// Uses JSONL as the sole source of truth:
+    /// 1. Find the last assistant message
+    /// 2. If it has a tool_use with no tool_result → NeedsPermission
+    ///    (if it's actually auto-approved, the result appears within ~1s
+    ///     and the next poll will update the status)
     /// 3. If stop_reason is "end_turn" → WaitingForInput
-    /// 4. Otherwise → Unknown (fall through)
-    fn determine_status(&mut self, entries: &[JsonlEntry]) -> ClaudeSessionStatus {
+    /// 4. Otherwise → Unknown (fall through to other detectors)
+    fn determine_status(&self, entries: &[JsonlEntry]) -> ClaudeSessionStatus {
         // Walk entries in reverse to find the last meaningful entry
         let mut last_assistant: Option<&JsonlEntry> = None;
+        let mut last_assistant_idx: usize = 0;
         let mut tool_results: Vec<String> = Vec::new();
 
-        for entry in entries.iter().rev() {
+        for (i, entry) in entries.iter().enumerate().rev() {
             // Collect tool_result IDs from human/tool entries
             if let Some(ref msg) = entry.message {
                 for content in &msg.content {
@@ -280,6 +261,7 @@ impl ClaudeSessionReader {
                         .is_some_and(|m| m.role == "assistant"))
             {
                 last_assistant = Some(entry);
+                last_assistant_idx = i;
             }
         }
 
@@ -297,18 +279,10 @@ impl ClaudeSessionReader {
                 let has_result = tool_results.iter().any(|r| r == tool_id);
 
                 if !has_result {
-                    // This tool_use has no result — check if it needs permission
                     let tool_name = content.name.as_deref().unwrap_or("unknown");
-
-                    if self.is_tool_auto_approved(tool_name) {
-                        // Auto-approved tool still running
-                        return ClaudeSessionStatus::Working;
-                    } else {
-                        // Needs manual permission
-                        return ClaudeSessionStatus::NeedsPermission {
-                            tool_name: Some(tool_name.to_string()),
-                        };
-                    }
+                    return ClaudeSessionStatus::NeedsPermission {
+                        tool_name: Some(tool_name.to_string()),
+                    };
                 }
             }
         }
@@ -320,82 +294,41 @@ impl ClaudeSessionReader {
             }
         }
 
+        // Check if there's a human entry after the last assistant (tool results
+        // sent back → Claude is processing the next turn).
+        let has_human_after_assistant = entries[last_assistant_idx + 1..].iter().any(|e| {
+            e.entry_type == "human"
+                || e.message.as_ref().is_some_and(|m| m.role == "user")
+        });
+
+        if has_human_after_assistant {
+            // Tool results were sent back; Claude should be generating.
+            // Use the timestamp of the last entry to gauge recency.
+            if let Some(ts) = entries.last().and_then(|e| e.timestamp.as_deref()) {
+                return match Self::is_timestamp_recent(ts, 15) {
+                    Some(true) => ClaudeSessionStatus::Working,
+                    Some(false) => ClaudeSessionStatus::WaitingForInput,
+                    None => ClaudeSessionStatus::Unknown,
+                };
+            }
+            // No timestamp available — assume working (human just sent input)
+            return ClaudeSessionStatus::Working;
+        }
+
+        // stop_reason is null, no pending tools, no human after assistant.
+        // Claude may still be streaming or may have finished without "end_turn".
+        // Use the assistant entry's timestamp to decide.
+        if let Some(ts) = assistant.timestamp.as_deref() {
+            return match Self::is_timestamp_recent(ts, 10) {
+                Some(true) => ClaudeSessionStatus::Working,
+                Some(false) => ClaudeSessionStatus::WaitingForInput,
+                None => ClaudeSessionStatus::Unknown,
+            };
+        }
+
         ClaudeSessionStatus::Unknown
     }
 
-    /// Check if a tool is auto-approved (never needs manual permission).
-    fn is_tool_auto_approved(&mut self, tool_name: &str) -> bool {
-        // Check always-approved list first
-        if ALWAYS_APPROVED_TOOLS.contains(&tool_name) {
-            return true;
-        }
-
-        // Check user settings
-        if let Some(settings) = self.load_settings() {
-            return Self::matches_settings_rules(tool_name, &settings);
-        }
-
-        false
-    }
-
-    /// Load and cache ~/.claude/settings.json.
-    fn load_settings(&mut self) -> Option<ClaudeSettings> {
-        let settings_path = self.claude_home.join("settings.json");
-
-        // Check if file has been modified since last read
-        let mtime = fs::metadata(&settings_path)
-            .ok()
-            .and_then(|m| m.modified().ok());
-
-        if self.settings_cache.is_some() && mtime == self.settings_mtime {
-            return self.settings_cache.clone();
-        }
-
-        // Read and parse settings
-        match fs::read_to_string(&settings_path) {
-            Ok(content) => match serde_json::from_str::<ClaudeSettings>(&content) {
-                Ok(settings) => {
-                    self.settings_mtime = mtime;
-                    self.settings_cache = Some(settings.clone());
-                    Some(settings)
-                }
-                Err(e) => {
-                    warn!(?e, "Failed to parse ~/.claude/settings.json");
-                    None
-                }
-            },
-            Err(_) => None,
-        }
-    }
-
-    /// Check if a tool matches any allow rules in settings.json.
-    ///
-    /// Settings permissions use patterns like:
-    /// - `"Bash(git add:*)"` → allows Bash with commands starting with "git add:"
-    /// - `"Write(src/**)"` → allows Write to paths under src/
-    /// - `"Bash"` → allows all Bash commands
-    fn matches_settings_rules(tool_name: &str, settings: &ClaudeSettings) -> bool {
-        for (pattern, action) in &settings.permissions {
-            if action != "allow" {
-                continue;
-            }
-
-            // Exact match: "Bash" matches tool_name "Bash"
-            if pattern == tool_name {
-                return true;
-            }
-
-            // Pattern match: "Bash(git:*)" — tool_name "Bash" matches prefix
-            if let Some(paren_pos) = pattern.find('(') {
-                let pattern_tool = &pattern[..paren_pos];
-                if pattern_tool == tool_name {
-                    return true;
-                }
-            }
-        }
-
-        false
-    }
 }
 
 #[cfg(test)]
@@ -412,6 +345,23 @@ mod tests {
                 content,
                 stop_reason: stop_reason.map(|s| s.to_string()),
             }),
+            timestamp: None,
+        }
+    }
+
+    fn make_assistant_entry_ts(
+        content: Vec<JsonlContent>,
+        stop_reason: Option<&str>,
+        timestamp: &str,
+    ) -> JsonlEntry {
+        JsonlEntry {
+            entry_type: "assistant".to_string(),
+            message: Some(JsonlMessage {
+                role: "assistant".to_string(),
+                content,
+                stop_reason: stop_reason.map(|s| s.to_string()),
+            }),
+            timestamp: Some(timestamp.to_string()),
         }
     }
 
@@ -441,17 +391,32 @@ mod tests {
                 content,
                 stop_reason: None,
             }),
+            timestamp: None,
+        }
+    }
+
+    fn make_human_entry_ts(content: Vec<JsonlContent>, timestamp: &str) -> JsonlEntry {
+        JsonlEntry {
+            entry_type: "human".to_string(),
+            message: Some(JsonlMessage {
+                role: "user".to_string(),
+                content,
+                stop_reason: None,
+            }),
+            timestamp: Some(timestamp.to_string()),
+        }
+    }
+
+    fn test_reader() -> ClaudeSessionReader {
+        ClaudeSessionReader {
+            claude_home: PathBuf::from("/nonexistent"),
         }
     }
 
     #[test]
     fn test_end_turn_returns_waiting() {
         let entries = vec![make_assistant_entry(vec![], Some("end_turn"))];
-        let mut reader = ClaudeSessionReader {
-            claude_home: PathBuf::from("/nonexistent"),
-            settings_cache: None,
-            settings_mtime: None,
-        };
+        let reader = test_reader();
         assert_eq!(
             reader.determine_status(&entries),
             ClaudeSessionStatus::WaitingForInput
@@ -459,37 +424,34 @@ mod tests {
     }
 
     #[test]
-    fn test_pending_tool_use_auto_approved() {
-        let entries = vec![make_assistant_entry(
-            vec![make_tool_use("Read", "tu_1")],
-            None,
-        )];
-        let mut reader = ClaudeSessionReader {
-            claude_home: PathBuf::from("/nonexistent"),
-            settings_cache: None,
-            settings_mtime: None,
-        };
-        assert_eq!(
-            reader.determine_status(&entries),
-            ClaudeSessionStatus::Working
-        );
-    }
-
-    #[test]
     fn test_pending_tool_use_needs_permission() {
+        // Any pending tool_use without a result = NeedsPermission
         let entries = vec![make_assistant_entry(
-            vec![make_tool_use("Bash", "tu_2")],
+            vec![make_tool_use("Bash", "tu_1")],
             None,
         )];
-        let mut reader = ClaudeSessionReader {
-            claude_home: PathBuf::from("/nonexistent"),
-            settings_cache: None,
-            settings_mtime: None,
-        };
+        let reader = test_reader();
         assert_eq!(
             reader.determine_status(&entries),
             ClaudeSessionStatus::NeedsPermission {
                 tool_name: Some("Bash".to_string()),
+            }
+        );
+    }
+
+    #[test]
+    fn test_pending_read_tool_also_needs_permission() {
+        // We don't assume any tool is auto-approved — JSONL is source of truth.
+        // If there's no tool_result yet, the tool is pending.
+        let entries = vec![make_assistant_entry(
+            vec![make_tool_use("Read", "tu_1")],
+            None,
+        )];
+        let reader = test_reader();
+        assert_eq!(
+            reader.determine_status(&entries),
+            ClaudeSessionStatus::NeedsPermission {
+                tool_name: Some("Read".to_string()),
             }
         );
     }
@@ -500,92 +462,22 @@ mod tests {
             make_assistant_entry(vec![make_tool_use("Bash", "tu_3")], None),
             make_human_entry(vec![make_tool_result("tu_3")]),
         ];
-        let mut reader = ClaudeSessionReader {
-            claude_home: PathBuf::from("/nonexistent"),
-            settings_cache: None,
-            settings_mtime: None,
-        };
+        let reader = test_reader();
         // The tool_use has a corresponding result, so it's not pending.
-        // No stop_reason → Unknown
+        // Human entry after assistant with no timestamp → Working (assumes processing)
         assert_eq!(
             reader.determine_status(&entries),
-            ClaudeSessionStatus::Unknown
+            ClaudeSessionStatus::Working
         );
     }
 
     #[test]
     fn test_empty_entries_returns_unknown() {
-        let mut reader = ClaudeSessionReader {
-            claude_home: PathBuf::from("/nonexistent"),
-            settings_cache: None,
-            settings_mtime: None,
-        };
+        let reader = test_reader();
         assert_eq!(
             reader.determine_status(&[]),
             ClaudeSessionStatus::Unknown
         );
-    }
-
-    #[test]
-    fn test_always_approved_tools() {
-        let mut reader = ClaudeSessionReader {
-            claude_home: PathBuf::from("/nonexistent"),
-            settings_cache: None,
-            settings_mtime: None,
-        };
-
-        for tool in ALWAYS_APPROVED_TOOLS {
-            assert!(
-                reader.is_tool_auto_approved(tool),
-                "{tool} should be auto-approved"
-            );
-        }
-        assert!(!reader.is_tool_auto_approved("Bash"));
-        assert!(!reader.is_tool_auto_approved("Write"));
-        assert!(!reader.is_tool_auto_approved("Edit"));
-    }
-
-    #[test]
-    fn test_settings_rules_exact_match() {
-        let mut perms = HashMap::new();
-        perms.insert("Bash".to_string(), "allow".to_string());
-        let settings = ClaudeSettings {
-            permissions: perms,
-        };
-        assert!(ClaudeSessionReader::matches_settings_rules(
-            "Bash", &settings
-        ));
-        assert!(!ClaudeSessionReader::matches_settings_rules(
-            "Write", &settings
-        ));
-    }
-
-    #[test]
-    fn test_settings_rules_pattern_match() {
-        let mut perms = HashMap::new();
-        perms.insert("Bash(git:*)".to_string(), "allow".to_string());
-        let settings = ClaudeSettings {
-            permissions: perms,
-        };
-        // Pattern "Bash(git:*)" matches tool_name "Bash" at the prefix level
-        assert!(ClaudeSessionReader::matches_settings_rules(
-            "Bash", &settings
-        ));
-        assert!(!ClaudeSessionReader::matches_settings_rules(
-            "Write", &settings
-        ));
-    }
-
-    #[test]
-    fn test_settings_rules_deny_not_matched() {
-        let mut perms = HashMap::new();
-        perms.insert("Bash".to_string(), "deny".to_string());
-        let settings = ClaudeSettings {
-            permissions: perms,
-        };
-        assert!(!ClaudeSessionReader::matches_settings_rules(
-            "Bash", &settings
-        ));
     }
 
     #[test]
@@ -596,8 +488,6 @@ mod tests {
 
         let reader = ClaudeSessionReader {
             claude_home: tmp.path().to_path_buf(),
-            settings_cache: None,
-            settings_mtime: None,
         };
 
         // No matching dir
@@ -631,11 +521,7 @@ mod tests {
         )
         .unwrap();
 
-        let reader = ClaudeSessionReader {
-            claude_home: PathBuf::from("/nonexistent"),
-            settings_cache: None,
-            settings_mtime: None,
-        };
+        let reader = test_reader();
 
         let entries = reader.read_recent_entries(tmp.path(), 10);
         assert_eq!(entries.len(), 2);
@@ -679,36 +565,76 @@ mod tests {
     }
 
     #[test]
-    fn test_settings_cache_invalidation() {
-        let tmp = TempDir::new().unwrap();
-        let settings_path = tmp.path().join("settings.json");
-        fs::write(
-            &settings_path,
-            r#"{"permissions":{"Bash":"allow"}}"#,
-        )
-        .unwrap();
+    fn test_null_stop_reason_recent_timestamp_returns_working() {
+        // Assistant with no stop_reason but a recent timestamp → Working (still streaming)
+        let recent = chrono::Utc::now().to_rfc3339();
+        let entries = vec![make_assistant_entry_ts(vec![], None, &recent)];
+        let reader = test_reader();
+        assert_eq!(
+            reader.determine_status(&entries),
+            ClaudeSessionStatus::Working
+        );
+    }
 
-        let mut reader = ClaudeSessionReader {
-            claude_home: tmp.path().to_path_buf(),
-            settings_cache: None,
-            settings_mtime: None,
-        };
+    #[test]
+    fn test_null_stop_reason_old_timestamp_returns_waiting() {
+        // Assistant with no stop_reason and an old timestamp → WaitingForInput (done)
+        let old = (chrono::Utc::now() - chrono::Duration::seconds(30)).to_rfc3339();
+        let entries = vec![make_assistant_entry_ts(vec![], None, &old)];
+        let reader = test_reader();
+        assert_eq!(
+            reader.determine_status(&entries),
+            ClaudeSessionStatus::WaitingForInput
+        );
+    }
 
-        // First load
-        let settings = reader.load_settings().unwrap();
-        assert!(settings.permissions.contains_key("Bash"));
+    #[test]
+    fn test_human_after_assistant_recent_returns_working() {
+        // Tool result sent back recently → Claude is processing
+        let recent = chrono::Utc::now().to_rfc3339();
+        let entries = vec![
+            make_assistant_entry(vec![make_tool_use("Bash", "tu_5")], None),
+            make_human_entry_ts(vec![make_tool_result("tu_5")], &recent),
+        ];
+        let reader = test_reader();
+        assert_eq!(
+            reader.determine_status(&entries),
+            ClaudeSessionStatus::Working
+        );
+    }
 
-        // Modify settings
-        std::thread::sleep(std::time::Duration::from_millis(50));
-        fs::write(
-            &settings_path,
-            r#"{"permissions":{"Write":"allow"}}"#,
-        )
-        .unwrap();
+    #[test]
+    fn test_human_after_assistant_old_returns_waiting() {
+        // Tool result sent back long ago → Claude is done
+        let old = (chrono::Utc::now() - chrono::Duration::seconds(30)).to_rfc3339();
+        let entries = vec![
+            make_assistant_entry(vec![make_tool_use("Bash", "tu_6")], None),
+            make_human_entry_ts(vec![make_tool_result("tu_6")], &old),
+        ];
+        let reader = test_reader();
+        assert_eq!(
+            reader.determine_status(&entries),
+            ClaudeSessionStatus::WaitingForInput
+        );
+    }
 
-        // Should reload
-        let settings = reader.load_settings().unwrap();
-        assert!(settings.permissions.contains_key("Write"));
-        assert!(!settings.permissions.contains_key("Bash"));
+    #[test]
+    fn test_is_timestamp_recent() {
+        let now = chrono::Utc::now().to_rfc3339();
+        assert_eq!(
+            ClaudeSessionReader::is_timestamp_recent(&now, 10),
+            Some(true)
+        );
+
+        let old = (chrono::Utc::now() - chrono::Duration::seconds(60)).to_rfc3339();
+        assert_eq!(
+            ClaudeSessionReader::is_timestamp_recent(&old, 10),
+            Some(false)
+        );
+
+        assert_eq!(
+            ClaudeSessionReader::is_timestamp_recent("not-a-timestamp", 10),
+            None
+        );
     }
 }

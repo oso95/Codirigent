@@ -232,6 +232,11 @@ pub struct WorkspaceView {
     compaction: Arc<Mutex<CompactionService>>,
     /// Tracks when compaction started per session (for timeout).
     compaction_start_times: HashMap<SessionId, Instant>,
+    /// Cached JSONL-derived session status, persisted between poll cycles so
+    /// the high-frequency InputDetector does not overwrite it.
+    cached_cli_status: HashMap<SessionId, (SessionStatus, Option<String>)>,
+    /// Pending layout profile deletion: (tab_index, profile_name) awaiting confirmation.
+    pub(super) pending_profile_deletion: Option<(usize, String)>,
 }
 
 /// Returns `true` if the editor command refers to a terminal-based editor
@@ -542,6 +547,8 @@ impl WorkspaceView {
             last_jsonl_check: Instant::now(),
             compaction: Arc::new(Mutex::new(CompactionService::new(CompactionConfig::default()))),
             compaction_start_times: HashMap::new(),
+            cached_cli_status: HashMap::new(),
+            pending_profile_deletion: None,
         };
 
         // Restore sessions from previous run
@@ -824,7 +831,11 @@ impl WorkspaceView {
                         }
                     };
 
-                    if let Some((new_status, tool_name)) = cli_status {
+                    if let Some((new_status, tool_name)) = cli_status.clone() {
+                        // Cache the JSONL result so it persists between checks
+                        self.cached_cli_status
+                            .insert(session_id, (new_status, tool_name.clone()));
+
                         if new_status == SessionStatus::NeedsPermission {
                             // Only fire event on transition, not every poll
                             if session.status != SessionStatus::NeedsPermission {
@@ -835,8 +846,16 @@ impl WorkspaceView {
                             }
                         }
                         status = Some(new_status);
+                    } else {
+                        // JSONL returned Unknown/None — clear cache so detector takes over
+                        self.cached_cli_status.remove(&session_id);
                     }
                 }
+            } else if let Some((cached_status, ref _tool_name)) =
+                self.cached_cli_status.get(&session_id).cloned()
+            {
+                // Non-JSONL cycle: reuse cached JSONL status instead of detector
+                status = Some(cached_status);
             }
 
             if let Some(status) = status {
@@ -1420,6 +1439,7 @@ impl WorkspaceView {
                 svc.end_compaction(id);
             }
             self.compaction_start_times.remove(&id);
+            self.cached_cli_status.remove(&id);
 
             // Remove the terminal header for this session (from feature branch)
             self.terminal_headers.retain(|(sid, _)| *sid != id);
@@ -1456,6 +1476,7 @@ impl WorkspaceView {
             svc.end_compaction(id);
         }
         self.compaction_start_times.remove(&id);
+        self.cached_cli_status.remove(&id);
 
         // Remove the terminal header for this session
         self.terminal_headers.retain(|(sid, _)| *sid != id);
@@ -1654,8 +1675,28 @@ impl WorkspaceView {
         let events = self.top_bar.drain_events();
         for event in events {
             match event {
-                crate::top_bar::TopBarEvent::LayoutSelected(profile) => {
-                    self.workspace.set_layout(profile);
+                crate::top_bar::TopBarEvent::LayoutSelected(layout_mode) => {
+                    match layout_mode {
+                        codirigent_core::LayoutMode::Grid { rows, cols } => {
+                            let profile = match (rows, cols) {
+                                (2, 2) => crate::layout::LayoutProfile::Grid2x2,
+                                (4, 1) => crate::layout::LayoutProfile::Stack1x4,
+                                (2, 3) => crate::layout::LayoutProfile::Grid2x3,
+                                (3, 3) => crate::layout::LayoutProfile::Grid3x3,
+                                _ => crate::layout::LayoutProfile::Custom { rows, cols },
+                            };
+                            self.workspace.set_layout(profile);
+                        }
+                        codirigent_core::LayoutMode::Single => {
+                            self.workspace.set_layout(crate::layout::LayoutProfile::Single);
+                        }
+                        codirigent_core::LayoutMode::SplitTree { root } => {
+                            self.workspace.set_split_tree(root);
+                        }
+                        codirigent_core::LayoutMode::Custom { .. } => {
+                            // Custom positional layouts not used from tabs
+                        }
+                    }
                 }
                 crate::top_bar::TopBarEvent::RightPanelToggled => {
                     // Will be wired in plan 05 (right task board)
@@ -3507,12 +3548,32 @@ impl WorkspaceView {
                             self.custom_picker.close();
                             let profile = crate::layout::LayoutProfile::Custom { rows, cols };
                             self.workspace.set_layout(profile);
+                            // Save as a named profile in the profile manager
+                            let id = format!("custom-{}x{}", rows, cols);
+                            let name = format!("{}x{}", rows, cols);
+                            let saved = crate::layout_profile::SavedLayoutProfile::new(
+                                id.clone(),
+                                name,
+                                codirigent_core::LayoutMode::Grid { rows, cols },
+                            );
+                            self.top_bar.profile_manager.add_profile(saved);
+                            self.top_bar.set_active_profile_id(&id);
                         }
                     }
                     CustomLayoutMode::Split => {
                         if let Some(tree) = self.custom_picker.validate_split() {
                             self.custom_picker.close();
+                            let pane_count = tree.leaf_count();
+                            let id = format!("custom-split-{}", pane_count);
+                            let name = format!("Split ({})", pane_count);
+                            let saved = crate::layout_profile::SavedLayoutProfile::new(
+                                id.clone(),
+                                name,
+                                codirigent_core::LayoutMode::SplitTree { root: tree.clone() },
+                            );
                             self.workspace.set_split_tree(tree);
+                            self.top_bar.profile_manager.add_profile(saved);
+                            self.top_bar.set_active_profile_id(&id);
                         }
                     }
                 }
