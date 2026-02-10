@@ -679,13 +679,19 @@ fi
 # Restore ZDOTDIR so subshells and .zlogin use the user's config
 ZDOTDIR="${CODIRIGENT_ORIG_ZDOTDIR:-$HOME}"
 
-# OSC 133 (shell state) + OSC 7 (CWD tracking) via precmd hook
+# OSC 133 (shell state) + OSC 7 (CWD tracking)
 __codirigent_precmd() {
   local ec=$?
   printf '\e]133;D;%s\a\e]133;A\a' "$ec"
   printf '\e]7;file://%s%s\e\\' "$(hostname)" "$PWD"
 }
 precmd_functions+=(__codirigent_precmd)
+
+# OSC 133;C — marks the moment a command begins executing
+__codirigent_preexec() {
+  printf '\e]133;C\a'
+}
+preexec_functions+=(__codirigent_preexec)
 "#,
     )
     .context("Failed to write .zshrc")?;
@@ -1435,11 +1441,23 @@ mod tests {
         );
         assert!(
             zshrc.contains("133;D"),
-            ".zshrc should emit OSC 133 markers"
+            ".zshrc should emit OSC 133;D (CommandFinished) marker"
         );
         assert!(
             zshrc.contains(r"\e]7;file://"),
             ".zshrc should emit OSC 7 URI"
+        );
+        assert!(
+            zshrc.contains("__codirigent_preexec"),
+            ".zshrc should define the preexec hook"
+        );
+        assert!(
+            zshrc.contains("preexec_functions+="),
+            ".zshrc should append to preexec_functions"
+        );
+        assert!(
+            zshrc.contains("133;C"),
+            ".zshrc should emit OSC 133;C (CommandExecuted) marker"
         );
     }
 

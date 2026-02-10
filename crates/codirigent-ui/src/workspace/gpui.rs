@@ -785,7 +785,43 @@ impl WorkspaceView {
                             .gemini_reader
                             .as_mut()
                             .and_then(|r| map_gemini_status(r.get_status(&working_dir))),
-                        codirigent_core::CliType::GenericShell => None,
+                        codirigent_core::CliType::GenericShell => {
+                            // CLI type not yet detected from banner — probe all
+                            // JSONL readers to auto-detect from session files.
+                            if let Some(s) = self
+                                .claude_reader
+                                .as_mut()
+                                .and_then(|r| map_claude_status(r.get_status(&working_dir)))
+                            {
+                                self.clipboard_service.set_session_cli_type(
+                                    session_id,
+                                    codirigent_core::CliType::ClaudeCode,
+                                );
+                                Some(s)
+                            } else if let Some(s) = self
+                                .codex_reader
+                                .as_mut()
+                                .and_then(|r| map_codex_status(r.get_status(&working_dir)))
+                            {
+                                self.clipboard_service.set_session_cli_type(
+                                    session_id,
+                                    codirigent_core::CliType::CodexCli,
+                                );
+                                Some(s)
+                            } else if let Some(s) = self
+                                .gemini_reader
+                                .as_mut()
+                                .and_then(|r| map_gemini_status(r.get_status(&working_dir)))
+                            {
+                                self.clipboard_service.set_session_cli_type(
+                                    session_id,
+                                    codirigent_core::CliType::GeminiCli,
+                                );
+                                Some(s)
+                            } else {
+                                None
+                            }
+                        }
                     };
 
                     if let Some((new_status, tool_name)) = cli_status {
