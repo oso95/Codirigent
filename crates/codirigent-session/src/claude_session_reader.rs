@@ -131,11 +131,14 @@ impl ClaudeSessionReader {
         let Some(jsonl_path) = Self::find_most_recent_jsonl(session_dir) else {
             return Vec::new();
         };
-        let Some(tail) = Self::read_file_tail(&jsonl_path, 131_072) else {
+        let Some(tail) = Self::read_file_tail(&jsonl_path, 524_288) else {
             return Vec::new();
         };
 
-        // Parse JSONL lines (last N entries)
+        // Parse JSONL lines (last N entries).
+        // Only keep assistant and human entries — progress/system/queue-operation
+        // entries are never used by determine_status() and can flood the buffer
+        // (Claude Code emits many large progress entries during streaming).
         let mut entries = Vec::new();
         for line in tail.lines().rev() {
             let line = line.trim();
@@ -144,6 +147,9 @@ impl ClaudeSessionReader {
             }
             match serde_json::from_str::<JsonlEntry>(line) {
                 Ok(entry) => {
+                    if !matches!(entry.entry_type.as_str(), "assistant" | "human") {
+                        continue;
+                    }
                     entries.push(entry);
                     if entries.len() >= max_entries {
                         break;
@@ -556,6 +562,35 @@ mod tests {
         let reader = test_reader();
 
         let entries = reader.read_recent_entries(tmp.path(), 10);
+        assert_eq!(entries.len(), 2);
+        assert_eq!(entries[0].entry_type, "assistant");
+        assert_eq!(entries[1].entry_type, "human");
+    }
+
+    #[test]
+    fn test_read_recent_entries_filters_progress() {
+        let tmp = TempDir::new().unwrap();
+        let jsonl_path = tmp.path().join("conversation.jsonl");
+
+        let mut file = fs::File::create(&jsonl_path).unwrap();
+        // Write assistant entry, then many progress entries, then human entry
+        writeln!(
+            file,
+            r#"{{"type":"assistant","message":{{"role":"assistant","content":[{{"type":"tool_use","name":"Grep","id":"tu_1"}}]}}}}"#
+        )
+        .unwrap();
+        for _ in 0..50 {
+            writeln!(file, r#"{{"type":"progress","timestamp":"2026-01-01T00:00:00Z"}}"#).unwrap();
+        }
+        writeln!(
+            file,
+            r#"{{"type":"human","message":{{"role":"user","content":[{{"type":"tool_result","tool_use_id":"tu_1"}}]}}}}"#
+        )
+        .unwrap();
+
+        let reader = test_reader();
+        let entries = reader.read_recent_entries(tmp.path(), 10);
+        // Progress entries should be filtered out — only assistant + human remain
         assert_eq!(entries.len(), 2);
         assert_eq!(entries[0].entry_type, "assistant");
         assert_eq!(entries[1].entry_type, "human");
