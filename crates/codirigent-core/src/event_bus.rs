@@ -217,9 +217,9 @@ mod tests {
                 group: Some("test".to_string()),
                 color: None,
             },
-            CodirigentEvent::InputRequired {
+            CodirigentEvent::AttentionRequired {
                 session_id: SessionId(1),
-                pattern: None,
+                detail: None,
             },
             CodirigentEvent::InputProvided {
                 session_id: SessionId(1),

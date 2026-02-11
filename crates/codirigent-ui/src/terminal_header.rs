@@ -27,8 +27,8 @@ pub struct TerminalHeader {
     pub project_name: Option<String>,
     /// CLI engine name (e.g., "Claude", "Gemini 2.0").
     pub cli_name: Option<String>,
-    /// Whether the session is waiting for user input.
-    pub is_waiting_for_input: bool,
+    /// Whether the session needs user attention.
+    pub needs_attention: bool,
     /// AI-generated summary of current activity.
     pub ai_summary: Option<String>,
     /// Git branch name (if in a git repo).
@@ -50,7 +50,7 @@ impl Default for TerminalHeader {
             is_focused: false,
             project_name: None,
             cli_name: None,
-            is_waiting_for_input: false,
+            needs_attention: false,
             ai_summary: None,
             git_branch: None,
             git_dirty_count: None,
@@ -124,9 +124,9 @@ impl TerminalHeader {
         self
     }
 
-    /// Set whether waiting for input.
-    pub fn set_waiting_for_input(&mut self, waiting: bool) {
-        self.is_waiting_for_input = waiting;
+    /// Set whether the session needs attention.
+    pub fn set_needs_attention(&mut self, attention: bool) {
+        self.needs_attention = attention;
     }
 
     /// Get the status indicator info.
@@ -170,20 +170,10 @@ impl StatusIndicator {
                 color: Color::from_hex("#f59e0b"),
                 animated: true,
             },
-            SessionStatus::WaitingForInput => Self {
-                text: "Waiting",
+            SessionStatus::NeedsAttention => Self {
+                text: "Attention",
                 color: Color::from_hex("#f43f5e"),
                 animated: true,
-            },
-            SessionStatus::NeedsPermission => Self {
-                text: "Permission",
-                color: Color::from_hex("#f97316"),
-                animated: true,
-            },
-            SessionStatus::Done => Self {
-                text: "Done",
-                color: Color::from_hex("#10b981"),
-                animated: false,
             },
             SessionStatus::Error => Self {
                 text: "Error",
@@ -332,8 +322,8 @@ pub struct TerminalHeaderRenderHints {
     pub project_name: Option<String>,
     /// CLI engine name.
     pub cli_name: Option<String>,
-    /// Whether waiting for user input.
-    pub is_waiting_for_input: bool,
+    /// Whether the session needs user attention.
+    pub needs_attention: bool,
     /// AI-generated summary.
     pub ai_summary: Option<String>,
     /// Git branch name.
@@ -360,7 +350,7 @@ impl TerminalHeader {
             height: Self::DEFAULT_HEIGHT,
             project_name: self.project_name.clone(),
             cli_name: self.cli_name.clone(),
-            is_waiting_for_input: self.is_waiting_for_input,
+            needs_attention: self.needs_attention,
             ai_summary: self.ai_summary.clone(),
             git_branch: self.git_branch.clone(),
             git_dirty_count: self.git_dirty_count,
@@ -419,17 +409,10 @@ mod tests {
     }
 
     #[test]
-    fn test_status_indicator_waiting() {
-        let indicator = StatusIndicator::for_status(SessionStatus::WaitingForInput);
-        assert_eq!(indicator.text, "Waiting");
+    fn test_status_indicator_needs_attention() {
+        let indicator = StatusIndicator::for_status(SessionStatus::NeedsAttention);
+        assert_eq!(indicator.text, "Attention");
         assert!(indicator.animated);
-    }
-
-    #[test]
-    fn test_status_indicator_done() {
-        let indicator = StatusIndicator::for_status(SessionStatus::Done);
-        assert_eq!(indicator.text, "Done");
-        assert!(!indicator.animated);
     }
 
     #[test]
@@ -600,13 +583,13 @@ mod tests {
     }
 
     #[test]
-    fn test_terminal_header_waiting_for_input() {
-        let mut header = TerminalHeader::new("S1", SessionStatus::WaitingForInput);
-        assert!(!header.is_waiting_for_input);
-        header.set_waiting_for_input(true);
-        assert!(header.is_waiting_for_input);
+    fn test_terminal_header_needs_attention() {
+        let mut header = TerminalHeader::new("S1", SessionStatus::NeedsAttention);
+        assert!(!header.needs_attention);
+        header.set_needs_attention(true);
+        assert!(header.needs_attention);
         let hints = header.render_hints();
-        assert!(hints.is_waiting_for_input);
+        assert!(hints.needs_attention);
     }
 
     #[test]

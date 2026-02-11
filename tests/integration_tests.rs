@@ -234,9 +234,9 @@ fn test_input_pattern_detection() {
     // Process output with input pattern
     integration.process_output(id, b"Continue? [y/n] ").unwrap();
 
-    // Status should change to WaitingForInput
+    // Status should change to NeedsAttention
     let status = integration.get_session_status(id).unwrap();
-    assert_eq!(status, Some(SessionStatus::WaitingForInput));
+    assert_eq!(status, Some(SessionStatus::NeedsAttention));
 }
 
 /// Test custom input patterns.
@@ -262,7 +262,7 @@ fn test_custom_input_patterns() {
     integration.process_output(id, b"custom-prompt>").unwrap();
 
     let status = integration.get_session_status(id).unwrap();
-    assert_eq!(status, Some(SessionStatus::WaitingForInput));
+    assert_eq!(status, Some(SessionStatus::NeedsAttention));
 }
 
 /// Test multiple pattern types.
@@ -290,8 +290,8 @@ fn test_multiple_pattern_types() {
         let status = integration.get_session_status(id).unwrap();
         assert_eq!(
             status,
-            Some(SessionStatus::WaitingForInput),
-            "Pattern '{}' should trigger WaitingForInput",
+            Some(SessionStatus::NeedsAttention),
+            "Pattern '{}' should trigger NeedsAttention",
             name
         );
     }
@@ -412,13 +412,13 @@ fn test_detector_integration() {
     // Process output with pattern
     detector.process_output(SessionId(1), b"Continue? [y/n]");
 
-    // Should detect WaitingForInput
+    // Should detect NeedsAttention
     assert_eq!(
         detector.get_status(SessionId(1)),
-        Some(SessionStatus::WaitingForInput)
+        Some(SessionStatus::NeedsAttention)
     );
 
-    // Should have published InputRequired event
+    // Should have published AttentionRequired event
     // Note: May need to skip StatusChanged event first
     let _events_received = true;
 
@@ -445,7 +445,7 @@ fn test_detector_multiple_sessions() {
 
     assert_eq!(
         detector.get_status(SessionId(1)),
-        Some(SessionStatus::WaitingForInput)
+        Some(SessionStatus::NeedsAttention)
     );
 
     // Stop one session
@@ -619,7 +619,7 @@ fn test_complete_workflow() {
         .unwrap();
 
     let status = integration.get_session_status(claude_id).unwrap();
-    assert_eq!(status, Some(SessionStatus::WaitingForInput));
+    assert_eq!(status, Some(SessionStatus::NeedsAttention));
 
     // Step 6: Save state (has 2 sessions)
     integration.save_state().unwrap();

@@ -39,17 +39,13 @@ impl std::fmt::Display for TaskId {
 /// by process monitoring and output pattern detection.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
 pub enum SessionStatus {
-    /// No active process, shell is idle.
+    /// No active process, shell is idle (or process terminated).
     #[default]
     Idle,
     /// Process is actively running (CPU activity detected).
     Working,
-    /// Process is waiting for user input.
-    WaitingForInput,
-    /// Session is blocked on a tool permission prompt (Claude Code).
-    NeedsPermission,
-    /// Task completed successfully.
-    Done,
+    /// Session needs user attention (input required or permission prompt).
+    NeedsAttention,
     /// Error detected in output.
     Error,
 }
@@ -1249,9 +1245,9 @@ mod tests {
 
     #[test]
     fn test_session_status_serialization() {
-        let status = SessionStatus::WaitingForInput;
+        let status = SessionStatus::NeedsAttention;
         let json = serde_json::to_string(&status).unwrap();
-        assert_eq!(json, "\"WaitingForInput\"");
+        assert_eq!(json, "\"NeedsAttention\"");
 
         let parsed: SessionStatus = serde_json::from_str(&json).unwrap();
         assert_eq!(status, parsed);
@@ -1262,9 +1258,7 @@ mod tests {
         let variants = [
             SessionStatus::Idle,
             SessionStatus::Working,
-            SessionStatus::WaitingForInput,
-            SessionStatus::NeedsPermission,
-            SessionStatus::Done,
+            SessionStatus::NeedsAttention,
             SessionStatus::Error,
         ];
         for variant in variants {

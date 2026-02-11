@@ -107,7 +107,8 @@ impl GeminiSessionReader {
     ///
     /// `working_dir` is the session's working directory, used to locate the
     /// project-specific session file.
-    pub fn get_status(&mut self, working_dir: &Path) -> GeminiSessionStatus {
+    /// `_pid` is accepted for API consistency but not used.
+    pub fn get_status(&mut self, working_dir: &Path, _pid: Option<u32>) -> GeminiSessionStatus {
         let Some(session_path) = self.find_session_file(working_dir) else {
             trace!(?working_dir, "No Gemini session file found");
             return GeminiSessionStatus::Unknown;
@@ -255,7 +256,7 @@ impl GeminiSessionReader {
     /// 2. Find last message:
     ///    - Last message is `user` + recent → Working (Gemini is processing)
     ///    - Last message is `gemini` with pending tool calls → check tool type
-    ///    - Last message is `gemini`, all tools resolved → WaitingForInput
+    ///    - Last message is `gemini`, all tools resolved → NeedsAttention
     /// 3. Otherwise → Unknown
     fn determine_status(session: &GeminiSession) -> GeminiSessionStatus {
         // Check if session is stale (lastUpdated older than 30s)
@@ -284,8 +285,8 @@ impl GeminiSessionReader {
                             || tool_name == "shell"
                             || tool_name == "execute_command"
                         {
-                            return GeminiSessionStatus::NeedsPermission {
-                                tool_name: Some(tool_name.to_string()),
+                            return GeminiSessionStatus::NeedsAttention {
+                                detail: Some(tool_name.to_string()),
                             };
                         }
                         // Other tools are auto-approved
@@ -294,7 +295,7 @@ impl GeminiSessionReader {
                 }
 
                 // All tool calls resolved (or no tool calls) — waiting for input
-                GeminiSessionStatus::WaitingForInput
+                GeminiSessionStatus::NeedsAttention { detail: None }
             }
             _ => GeminiSessionStatus::Unknown,
         }
@@ -389,7 +390,7 @@ mod tests {
         );
         assert_eq!(
             GeminiSessionReader::determine_status(&session),
-            GeminiSessionStatus::WaitingForInput
+            GeminiSessionStatus::NeedsAttention { detail: None }
         );
     }
 
@@ -405,7 +406,7 @@ mod tests {
         );
         assert_eq!(
             GeminiSessionReader::determine_status(&session),
-            GeminiSessionStatus::WaitingForInput
+            GeminiSessionStatus::NeedsAttention { detail: None }
         );
     }
 
@@ -421,8 +422,8 @@ mod tests {
         );
         assert_eq!(
             GeminiSessionReader::determine_status(&session),
-            GeminiSessionStatus::NeedsPermission {
-                tool_name: Some("run_shell_command".to_string()),
+            GeminiSessionStatus::NeedsAttention {
+                detail: Some("run_shell_command".to_string()),
             }
         );
     }
@@ -599,8 +600,8 @@ mod tests {
             session_cache: HashMap::new(),
         };
 
-        let status = reader.get_status(Path::new("/Users/test/project"));
-        assert_eq!(status, GeminiSessionStatus::WaitingForInput);
+        let status = reader.get_status(Path::new("/Users/test/project"), None);
+        assert_eq!(status, GeminiSessionStatus::NeedsAttention { detail: None });
     }
 
     #[test]

@@ -54,12 +54,10 @@ use codirigent_core::SessionStatus;
 pub enum CliSessionStatus {
     /// CLI is actively working (streaming, tool executing).
     Working,
-    /// CLI is waiting for user input (end of turn).
-    WaitingForInput,
-    /// A tool needs permission approval.
-    NeedsPermission {
-        /// The tool name that needs approval.
-        tool_name: Option<String>,
+    /// CLI needs user attention (end of turn, permission prompt, etc.).
+    NeedsAttention {
+        /// Optional detail (tool name or pattern).
+        detail: Option<String>,
     },
     /// Could not determine status from logs (fall through to other detectors).
     Unknown,
@@ -70,8 +68,7 @@ impl CliSessionStatus {
     pub fn to_session_status(self) -> Option<(SessionStatus, Option<String>)> {
         match self {
             Self::Working => Some((SessionStatus::Working, None)),
-            Self::WaitingForInput => Some((SessionStatus::WaitingForInput, None)),
-            Self::NeedsPermission { tool_name } => Some((SessionStatus::NeedsPermission, tool_name)),
+            Self::NeedsAttention { detail } => Some((SessionStatus::NeedsAttention, detail)),
             Self::Unknown => None,
         }
     }

@@ -117,8 +117,8 @@ mod tests {
         state.set_status(SessionStatus::Working);
         assert_eq!(state.status(), SessionStatus::Working);
 
-        state.set_status(SessionStatus::WaitingForInput);
-        assert_eq!(state.status(), SessionStatus::WaitingForInput);
+        state.set_status(SessionStatus::NeedsAttention);
+        assert_eq!(state.status(), SessionStatus::NeedsAttention);
     }
 
     #[test]

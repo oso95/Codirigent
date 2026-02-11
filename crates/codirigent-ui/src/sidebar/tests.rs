@@ -154,7 +154,7 @@ fn test_group_counts() {
     sidebar.update_sessions(vec![
         create_test_session(1, "U", SessionStatus::Idle),
         create_grouped_session(2, "B1", SessionStatus::Working, "Backend", "#FF0000"),
-        create_grouped_session(3, "B2", SessionStatus::Done, "Backend", "#FF0000"),
+        create_grouped_session(3, "B2", SessionStatus::Idle, "Backend", "#FF0000"),
     ]);
     assert_eq!(sidebar.group_session_count("Backend"), 2);
     assert_eq!(sidebar.ungrouped_session_count(), 1);
@@ -182,7 +182,7 @@ fn test_color_from_hex() {
 fn test_status_colors() {
     let colors = StatusColors::default();
     assert_ne!(colors.idle.r, colors.working.r);
-    let _ = colors.color_for(SessionStatus::WaitingForInput);
+    let _ = colors.color_for(SessionStatus::NeedsAttention);
 }
 
 #[test]
@@ -422,19 +422,11 @@ fn test_status_badge_for_working() {
 }
 
 #[test]
-fn test_status_badge_for_waiting() {
+fn test_status_badge_for_needs_attention() {
     let colors = StatusColors::default();
-    let badge = StatusBadge::for_status(SessionStatus::WaitingForInput, &colors);
-    assert_eq!(badge.text, "Waiting");
+    let badge = StatusBadge::for_status(SessionStatus::NeedsAttention, &colors);
+    assert_eq!(badge.text, "Attention");
     assert!(badge.animated);
-}
-
-#[test]
-fn test_status_badge_for_done() {
-    let colors = StatusColors::default();
-    let badge = StatusBadge::for_status(SessionStatus::Done, &colors);
-    assert_eq!(badge.text, "Done");
-    assert!(!badge.animated);
 }
 
 #[test]
@@ -445,13 +437,6 @@ fn test_status_badge_for_error() {
     assert!(!badge.animated);
 }
 
-#[test]
-fn test_status_badge_for_needs_permission() {
-    let colors = StatusColors::default();
-    let badge = StatusBadge::for_status(SessionStatus::NeedsPermission, &colors);
-    assert_eq!(badge.text, "Permission");
-    assert!(badge.animated);
-}
 
 fn create_session_with_context(
     id: u64,

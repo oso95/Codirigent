@@ -771,8 +771,8 @@ impl TaskManager {
     /// Map session status transition to task status change.
     ///
     /// Implements the status mapping rules:
-    /// - Session Idle/WaitingForInput → Working (task Assigned) → Task Working
-    /// - Session Working → Idle/WaitingForInput/Done (task Working) → Task Review
+    /// - Session Idle/NeedsAttention → Working (task Assigned) → Task Working
+    /// - Session Working → Idle/NeedsAttention (task Working) → Task Review
     /// - Session Error (task Working/Verifying) → Task Blocked
     ///
     /// # Returns
@@ -786,13 +786,19 @@ impl TaskManager {
     ) -> Option<TaskStatus> {
         match (old_session, new_session, current_task) {
             // Session started working on an assigned task
-            (SessionStatus::Idle | SessionStatus::WaitingForInput, SessionStatus::Working, TaskStatus::Assigned) => {
+            (SessionStatus::Idle | SessionStatus::NeedsAttention, SessionStatus::Working, TaskStatus::Assigned) => {
                 tracing::info!("Session started working, transitioning task Assigned → Working");
                 Some(TaskStatus::Working)
             }
 
-            // Session finished working (returned to idle/waiting)
-            (SessionStatus::Working, SessionStatus::Idle | SessionStatus::WaitingForInput | SessionStatus::Done, TaskStatus::Working) => {
+            // Attention prompts don't change task status (must come before finished-working)
+            (_, SessionStatus::NeedsAttention, _) => {
+                tracing::debug!("Session needs attention, task status unchanged");
+                None
+            }
+
+            // Session finished working (returned to idle)
+            (SessionStatus::Working, SessionStatus::Idle, TaskStatus::Working) => {
                 tracing::info!("Session finished working, transitioning task Working → Review");
                 Some(TaskStatus::Review)
             }
@@ -801,12 +807,6 @@ impl TaskManager {
             (_, SessionStatus::Error, TaskStatus::Working | TaskStatus::Verifying) => {
                 tracing::warn!("Session encountered error, transitioning task to Blocked");
                 Some(TaskStatus::Blocked)
-            }
-
-            // Permission prompts don't change task status
-            (_, SessionStatus::NeedsPermission, _) => {
-                tracing::debug!("Session needs permission, task status unchanged");
-                None
             }
 
             // All other transitions don't affect task status
@@ -1588,7 +1588,7 @@ mod tests {
     }
 
     #[test]
-    fn test_session_waiting_transitions_working_to_review() {
+    fn test_session_idle_transitions_working_to_review() {
         let (mut manager, _temp) = create_task_manager();
 
         // Create and assign task
@@ -1608,11 +1608,11 @@ mod tests {
         let task_mut = manager.queue.get_task_mut(&TaskId("task-001".to_string())).unwrap();
         task_mut.status = TaskStatus::Working;
 
-        // Simulate session finishing work
+        // Simulate session finishing work (returned to idle)
         let result = manager.on_session_status_changed(
             SessionId(1),
             SessionStatus::Working,
-            SessionStatus::WaitingForInput,
+            SessionStatus::Idle,
         );
 
         assert!(result.is_some());
@@ -1689,11 +1689,11 @@ mod tests {
             .assign_task(&TaskId("task-001".to_string()), SessionId(1))
             .unwrap();
 
-        // Simulate session needing permission
+        // Simulate session needing attention
         let result = manager.on_session_status_changed(
             SessionId(1),
             SessionStatus::Working,
-            SessionStatus::NeedsPermission,
+            SessionStatus::NeedsAttention,
         );
 
         // Should not change task status
@@ -1754,11 +1754,11 @@ mod tests {
             Some(TaskStatus::Blocked)
         );
 
-        // Permission prompt → No change
+        // Attention prompt → No change
         assert_eq!(
             manager.map_session_to_task_status(
                 SessionStatus::Working,
-                SessionStatus::NeedsPermission,
+                SessionStatus::NeedsAttention,
                 TaskStatus::Working
             ),
             None

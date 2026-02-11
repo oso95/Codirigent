@@ -304,12 +304,8 @@ pub struct CodirigentTheme {
     pub session_idle: Hsla,
     /// Color for working/active sessions.
     pub session_working: Hsla,
-    /// Color for sessions waiting for input.
-    pub session_waiting: Hsla,
-    /// Color for sessions needing tool permission.
-    pub session_needs_permission: Hsla,
-    /// Color for completed sessions.
-    pub session_done: Hsla,
+    /// Color for sessions needing attention (input or permission).
+    pub session_needs_attention: Hsla,
     /// Color for sessions with errors.
     pub session_error: Hsla,
 
@@ -418,9 +414,7 @@ impl CodirigentTheme {
             // === Session Status Colors ===
             session_idle: hex("#52525b"),    // Zinc-600 for idle
             session_working: hex("#f59e0b"), // Amber-500 for working
-            session_waiting: hex("#f43f5e"), // Rose-500 for waiting input
-            session_needs_permission: hex("#f97316"), // Orange-500 for permission
-            session_done: hex("#10b981"),    // Emerald-500 for done
+            session_needs_attention: hex("#f43f5e"), // Rose-500 for needs attention
             session_error: hex("#ef4444"),   // Red-500 for error
 
             // === Priority Colors ===
@@ -514,9 +508,7 @@ impl CodirigentTheme {
             // === Session Status Colors ===
             session_idle: hex("#71717a"),    // Zinc-500
             session_working: hex("#d97706"), // Amber-600
-            session_waiting: hex("#e11d48"), // Rose-600
-            session_needs_permission: hex("#ea580c"), // Orange-600
-            session_done: hex("#059669"),    // Emerald-600
+            session_needs_attention: hex("#e11d48"), // Rose-600
             session_error: hex("#dc2626"),   // Red-600
 
             // === Priority Colors ===
@@ -575,9 +567,7 @@ impl CodirigentTheme {
         match status {
             SessionStatus::Idle => self.session_idle,
             SessionStatus::Working => self.session_working,
-            SessionStatus::WaitingForInput => self.session_waiting,
-            SessionStatus::NeedsPermission => self.session_needs_permission,
-            SessionStatus::Done => self.session_done,
+            SessionStatus::NeedsAttention => self.session_needs_attention,
             SessionStatus::Error => self.session_error,
         }
     }
@@ -597,9 +587,7 @@ impl CodirigentTheme {
         match status {
             SessionStatus::Idle => "Idle",
             SessionStatus::Working => "Working",
-            SessionStatus::WaitingForInput => "Waiting",
-            SessionStatus::NeedsPermission => "Permission",
-            SessionStatus::Done => "Done",
+            SessionStatus::NeedsAttention => "Attention",
             SessionStatus::Error => "Error",
         }
     }
@@ -706,9 +694,7 @@ mod tests {
         let statuses = [
             SessionStatus::Idle,
             SessionStatus::Working,
-            SessionStatus::WaitingForInput,
-            SessionStatus::NeedsPermission,
-            SessionStatus::Done,
+            SessionStatus::NeedsAttention,
             SessionStatus::Error,
         ];
 
@@ -729,10 +715,10 @@ mod tests {
 
         // Status colors should be distinct from each other
         let working = theme.status_color(SessionStatus::Working);
-        let waiting = theme.status_color(SessionStatus::WaitingForInput);
+        let attention = theme.status_color(SessionStatus::NeedsAttention);
         let idle = theme.status_color(SessionStatus::Idle);
 
-        assert_ne!(working, waiting, "Working and Waiting should be different");
+        assert_ne!(working, attention, "Working and NeedsAttention should be different");
         assert_ne!(idle, working, "Idle and Working should be different");
     }
 
@@ -744,10 +730,9 @@ mod tests {
             "Working"
         );
         assert_eq!(
-            CodirigentTheme::status_name(SessionStatus::WaitingForInput),
-            "Waiting"
+            CodirigentTheme::status_name(SessionStatus::NeedsAttention),
+            "Attention"
         );
-        assert_eq!(CodirigentTheme::status_name(SessionStatus::Done), "Done");
         assert_eq!(CodirigentTheme::status_name(SessionStatus::Error), "Error");
     }
 

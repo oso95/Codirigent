@@ -308,17 +308,17 @@ impl InputDetector {
                         new: new_status,
                     });
 
-                // Send InputRequired event if waiting for input
-                if new_status == SessionStatus::WaitingForInput {
-                    self.event_bus.publish(CodirigentEvent::InputRequired {
+                // Send AttentionRequired event if needs attention
+                if new_status == SessionStatus::NeedsAttention {
+                    self.event_bus.publish(CodirigentEvent::AttentionRequired {
                         session_id,
-                        pattern: pattern_matched,
+                        detail: pattern_matched,
                     });
                 }
 
-                // Clear pattern match when status changes away from WaitingForInput
-                if old == SessionStatus::WaitingForInput
-                    && new_status != SessionStatus::WaitingForInput
+                // Clear pattern match when status changes away from NeedsAttention
+                if old == SessionStatus::NeedsAttention
+                    && new_status != SessionStatus::NeedsAttention
                 {
                     session.pattern_matched = None;
                     self.event_bus
@@ -337,7 +337,7 @@ impl InputDetector {
     fn determine_status(&self, session: &MonitoredSession) -> SessionStatus {
         // 1. Pattern match takes highest priority
         if session.pattern_matched.is_some() {
-            return SessionStatus::WaitingForInput;
+            return SessionStatus::NeedsAttention;
         }
 
         // 2. OSC 133 shell state — reliable, if available
@@ -358,7 +358,7 @@ impl InputDetector {
         let idle_time = session.last_output_time.elapsed();
 
         match process_state {
-            ProcessState::Terminated => SessionStatus::Done,
+            ProcessState::Terminated => SessionStatus::Idle,
             ProcessState::Running | ProcessState::Sleeping => {
                 if idle_time > self.config.idle_threshold {
                     SessionStatus::Idle
@@ -674,7 +674,7 @@ mod tests {
         detector.process_output(SessionId(1), b"Continue? [y/n] ");
 
         let status = detector.get_status(SessionId(1));
-        assert_eq!(status, Some(SessionStatus::WaitingForInput));
+        assert_eq!(status, Some(SessionStatus::NeedsAttention));
     }
 
     #[test]
@@ -687,7 +687,7 @@ mod tests {
         // Process output without pattern
         detector.process_output(SessionId(1), b"Hello world");
 
-        // Status should not be WaitingForInput (pattern-based)
+        // Status should not be NeedsAttention (pattern-based)
         let status = detector.get_status(SessionId(1));
         // The actual status depends on process state, but not pattern-triggered
         assert!(status.is_some());
@@ -904,7 +904,7 @@ mod tests {
         detector.process_output(SessionId(1), b"Password:");
 
         let status = detector.get_status(SessionId(1));
-        assert_eq!(status, Some(SessionStatus::WaitingForInput));
+        assert_eq!(status, Some(SessionStatus::NeedsAttention));
     }
 
     #[test]
@@ -917,7 +917,7 @@ mod tests {
         detector.process_output(SessionId(1), b"Press Enter to continue");
 
         let status = detector.get_status(SessionId(1));
-        assert_eq!(status, Some(SessionStatus::WaitingForInput));
+        assert_eq!(status, Some(SessionStatus::NeedsAttention));
     }
 
     #[test]
@@ -930,7 +930,7 @@ mod tests {
         detector.process_output(SessionId(1), b"What is your name? ");
 
         let status = detector.get_status(SessionId(1));
-        assert_eq!(status, Some(SessionStatus::WaitingForInput));
+        assert_eq!(status, Some(SessionStatus::NeedsAttention));
     }
 
     // Integration-style tests
@@ -949,7 +949,7 @@ mod tests {
         detector.process_output(SessionId(1), b"Continue? [y/n] ");
         assert_eq!(
             detector.get_status(SessionId(1)),
-            Some(SessionStatus::WaitingForInput)
+            Some(SessionStatus::NeedsAttention)
         );
 
         // Clear buffer (simulating user input)
@@ -1058,7 +1058,7 @@ mod tests {
         detector.process_output(SessionId(1), b"Continue? [y/n] ");
         assert_eq!(
             detector.get_status(SessionId(1)),
-            Some(SessionStatus::WaitingForInput)
+            Some(SessionStatus::NeedsAttention)
         );
     }
 

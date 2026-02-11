@@ -203,9 +203,7 @@ fn test_session_with_all_status_types() {
     let statuses = [
         SessionStatus::Idle,
         SessionStatus::Working,
-        SessionStatus::WaitingForInput,
-        SessionStatus::NeedsPermission,
-        SessionStatus::Done,
+        SessionStatus::NeedsAttention,
         SessionStatus::Error,
     ];
 

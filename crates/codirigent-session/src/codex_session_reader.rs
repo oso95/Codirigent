@@ -90,7 +90,8 @@ impl CodexSessionReader {
     ///
     /// `working_dir` is the session's working directory, used to locate the
     /// project-specific rollout file under `~/.codex/sessions/`.
-    pub fn get_status(&mut self, working_dir: &Path) -> CodexSessionStatus {
+    /// `_pid` is accepted for API consistency but not used (Codex uses different file naming).
+    pub fn get_status(&mut self, working_dir: &Path, _pid: Option<u32>) -> CodexSessionStatus {
         let Some(rollout_path) = self.find_rollout_file(working_dir) else {
             trace!(?working_dir, "No Codex rollout file found");
             return CodexSessionStatus::Unknown;
@@ -289,7 +290,7 @@ impl CodexSessionReader {
     /// 1. Find last `response_item` with `function_call` that has no matching
     ///    `function_call_output` → pending tool
     /// 2. If pending tool exists, check approval mode
-    /// 3. If no pending tools and last event indicates turn complete → WaitingForInput
+    /// 3. If no pending tools and last event indicates turn complete → NeedsAttention
     /// 4. Otherwise → Unknown
     fn determine_status(&self, tail: &str, approval_mode: &ApprovalMode) -> CodexSessionStatus {
         let mut pending_calls: HashMap<String, String> = HashMap::new(); // call_id → tool name
@@ -353,20 +354,20 @@ impl CodexSessionReader {
                     if Self::is_file_edit_tool(tool_name) {
                         CodexSessionStatus::Working
                     } else {
-                        CodexSessionStatus::NeedsPermission {
-                            tool_name: Some(tool_name.clone()),
+                        CodexSessionStatus::NeedsAttention {
+                            detail: Some(tool_name.clone()),
                         }
                     }
                 }
-                ApprovalMode::Suggest => CodexSessionStatus::NeedsPermission {
-                    tool_name: Some(tool_name.clone()),
+                ApprovalMode::Suggest => CodexSessionStatus::NeedsAttention {
+                    detail: Some(tool_name.clone()),
                 },
             };
         }
 
         // No pending tools — check if turn is complete
         if has_turn_complete || last_entry_type == "event_msg" {
-            return CodexSessionStatus::WaitingForInput;
+            return CodexSessionStatus::NeedsAttention { detail: None };
         }
 
         CodexSessionStatus::Unknown
@@ -412,7 +413,7 @@ mod tests {
         };
         assert_eq!(
             reader.determine_status(tail, &ApprovalMode::Suggest),
-            CodexSessionStatus::WaitingForInput
+            CodexSessionStatus::NeedsAttention { detail: None }
         );
     }
 
@@ -426,8 +427,8 @@ mod tests {
         };
         assert_eq!(
             reader.determine_status(tail, &ApprovalMode::Suggest),
-            CodexSessionStatus::NeedsPermission {
-                tool_name: Some("shell".to_string()),
+            CodexSessionStatus::NeedsAttention {
+                detail: Some("shell".to_string()),
             }
         );
     }
@@ -470,8 +471,8 @@ mod tests {
         };
         assert_eq!(
             reader.determine_status(tail, &ApprovalMode::AutoEdit),
-            CodexSessionStatus::NeedsPermission {
-                tool_name: Some("shell".to_string()),
+            CodexSessionStatus::NeedsAttention {
+                detail: Some("shell".to_string()),
             }
         );
     }
@@ -663,8 +664,8 @@ mod tests {
         };
         assert_eq!(
             reader.determine_status(tail, &ApprovalMode::Suggest),
-            CodexSessionStatus::NeedsPermission {
-                tool_name: Some("shell".to_string()),
+            CodexSessionStatus::NeedsAttention {
+                detail: Some("shell".to_string()),
             }
         );
     }

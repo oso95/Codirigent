@@ -106,26 +106,18 @@ pub enum CodirigentEvent {
     },
 
     // === Input Detection Events ===
-    /// Input is required from the user (detected pattern).
-    InputRequired {
+    /// Session needs user attention (input required or permission prompt).
+    AttentionRequired {
         /// The session ID.
         session_id: SessionId,
-        /// The pattern that triggered the detection.
-        pattern: Option<String>,
+        /// Optional detail (tool name from permission prompt, or pattern from input detection).
+        detail: Option<String>,
     },
 
-    /// User provided input (pattern resolved).
+    /// User provided input (attention resolved).
     InputProvided {
         /// The session ID.
         session_id: SessionId,
-    },
-
-    /// A Claude Code session needs tool permission approval.
-    PermissionRequired {
-        /// The session ID.
-        session_id: SessionId,
-        /// The tool name that needs permission, if known.
-        tool_name: Option<String>,
     },
 
     // === Layout Events ===
@@ -644,31 +636,31 @@ mod tests {
     }
 
     #[test]
-    fn test_input_required_event() {
-        let event = CodirigentEvent::InputRequired {
+    fn test_attention_required_event() {
+        let event = CodirigentEvent::AttentionRequired {
             session_id: SessionId(1),
-            pattern: Some("y/n".to_string()),
+            detail: Some("y/n".to_string()),
         };
-        if let CodirigentEvent::InputRequired {
+        if let CodirigentEvent::AttentionRequired {
             session_id,
-            pattern,
+            detail,
         } = event
         {
             assert_eq!(session_id, SessionId(1));
-            assert_eq!(pattern, Some("y/n".to_string()));
+            assert_eq!(detail, Some("y/n".to_string()));
         } else {
             panic!("Wrong event type");
         }
     }
 
     #[test]
-    fn test_input_required_event_no_pattern() {
-        let event = CodirigentEvent::InputRequired {
+    fn test_attention_required_event_no_detail() {
+        let event = CodirigentEvent::AttentionRequired {
             session_id: SessionId(1),
-            pattern: None,
+            detail: None,
         };
-        if let CodirigentEvent::InputRequired { pattern, .. } = event {
-            assert!(pattern.is_none());
+        if let CodirigentEvent::AttentionRequired { detail, .. } = event {
+            assert!(detail.is_none());
         } else {
             panic!("Wrong event type");
         }
@@ -1189,16 +1181,12 @@ mod tests {
                 group: None,
                 color: None,
             },
-            CodirigentEvent::InputRequired {
+            CodirigentEvent::AttentionRequired {
                 session_id: SessionId(1),
-                pattern: None,
+                detail: None,
             },
             CodirigentEvent::InputProvided {
                 session_id: SessionId(1),
-            },
-            CodirigentEvent::PermissionRequired {
-                session_id: SessionId(1),
-                tool_name: Some("Bash".to_string()),
             },
             CodirigentEvent::LayoutChanged {
                 mode: LayoutMode::Single,
