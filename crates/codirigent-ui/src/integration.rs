@@ -37,7 +37,9 @@ use codirigent_core::{
     FileStorageService, ProcessMonitor, Session, SessionId, SessionManager, SessionStatus,
     StorageService, TaskManager, TaskManagerConfig,
 };
-use codirigent_detector::{notify_input_required, DetectorConfig, InputDetector};
+use codirigent_detector::{
+    notify_input_required, send_notification, DetectorConfig, InputDetector,
+};
 use codirigent_session::DefaultSessionManager;
 use std::path::PathBuf;
 use std::sync::{Arc, Mutex, MutexGuard};
@@ -281,11 +283,11 @@ impl CodirigentIntegration {
                     }
                 }
             }
-            CodirigentEvent::InputRequired {
+            CodirigentEvent::AttentionRequired {
                 session_id,
-                pattern,
+                detail,
             } => {
-                info!(%session_id, ?pattern, "Input required");
+                info!(%session_id, ?detail, "Attention required");
                 if notifications_enabled {
                     let session_name = session_manager
                         .lock()
@@ -293,31 +295,19 @@ impl CodirigentIntegration {
                         .and_then(|mgr| mgr.get_session(*session_id))
                         .map(|s| s.name.clone())
                         .unwrap_or_else(|| format!("Session {}", session_id.0));
-                    notify_input_required(*session_id, &session_name);
+                    if let Some(tool) = detail {
+                        let body = format!(
+                            "Session '{}' needs permission for {}",
+                            session_name, tool
+                        );
+                        send_notification("Codirigent", &body);
+                    } else {
+                        notify_input_required(*session_id, &session_name);
+                    }
                 }
             }
             CodirigentEvent::InputProvided { session_id } => {
                 debug!(%session_id, "Input provided");
-            }
-            CodirigentEvent::PermissionRequired {
-                session_id,
-                tool_name,
-            } => {
-                info!(%session_id, ?tool_name, "Permission required");
-                if notifications_enabled {
-                    let session_name = session_manager
-                        .lock()
-                        .ok()
-                        .and_then(|mgr| mgr.get_session(*session_id))
-                        .map(|s| s.name.clone())
-                        .unwrap_or_else(|| format!("Session {}", session_id.0));
-                    let tool = tool_name.as_deref().unwrap_or("a tool");
-                    let body = format!(
-                        "Session '{}' needs permission for {}",
-                        session_name, tool
-                    );
-                    codirigent_detector::send_notification("Codirigent - Permission Required", &body);
-                }
             }
             CodirigentEvent::SessionRenamed {
                 id,
@@ -753,7 +743,7 @@ impl CodirigentIntegration {
                             }
                             Ok(CodirigentEvent::SessionStatusChanged {
                                 id,
-                                new: SessionStatus::WaitingForInput,
+                                new: SessionStatus::NeedsAttention,
                                 ..
                             }) if id == session_id => {
                                 // Needs input during compaction - treat as failure
@@ -986,7 +976,7 @@ mod tests {
         assert!(result.is_ok());
 
         let status = integration.get_session_status(id).unwrap();
-        assert_eq!(status, Some(SessionStatus::WaitingForInput));
+        assert_eq!(status, Some(SessionStatus::NeedsAttention));
     }
 
     #[test]
@@ -1232,9 +1222,9 @@ mod tests {
         let session_manager = Arc::new(Mutex::new(DefaultSessionManager::new(event_bus.clone())));
         let storage = Arc::new(FileStorageService::new(temp.path()).unwrap());
 
-        let event = CodirigentEvent::InputRequired {
+        let event = CodirigentEvent::AttentionRequired {
             session_id: SessionId(1),
-            pattern: Some("[y/n]".to_string()),
+            detail: Some("[y/n]".to_string()),
         };
         CodirigentIntegration::handle_event(&event, &session_manager, &storage, &Arc::new(Mutex::new(TaskManager::new(TaskManagerConfig::default(), storage.clone(), event_bus.clone()))), false, false);
         // Should not panic

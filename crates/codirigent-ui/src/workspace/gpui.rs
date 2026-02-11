@@ -791,26 +791,28 @@ impl WorkspaceView {
                     let working_dir = session.working_directory.clone();
                     let cli_type = self.clipboard_service.get_session_cli_type(session_id);
 
+                    // Get child PID for PID-based JSONL matching
+                    let child_pid = {
+                        let manager = self.session_manager.lock().unwrap();
+                        manager.get_child_pid(session_id)
+                    };
+
                     let cli_status = match cli_type {
                         codirigent_core::CliType::ClaudeCode => self
                             .claude_reader
                             .as_mut()
-                            .and_then(|r| r.get_status(&working_dir).to_session_status()),
+                            .and_then(|r| r.get_status(&working_dir, child_pid).to_session_status()),
                         codirigent_core::CliType::CodexCli => self
                             .codex_reader
                             .as_mut()
-                            .and_then(|r| r.get_status(&working_dir).to_session_status()),
+                            .and_then(|r| r.get_status(&working_dir, child_pid).to_session_status()),
                         codirigent_core::CliType::GeminiCli => self
                             .gemini_reader
                             .as_mut()
-                            .and_then(|r| r.get_status(&working_dir).to_session_status()),
+                            .and_then(|r| r.get_status(&working_dir, child_pid).to_session_status()),
                         codirigent_core::CliType::GenericShell => {
                             // Use process tree to detect CLI type before reading JSONL.
                             // Prevents stale JSONL from previous sessions causing false promotion.
-                            let child_pid = {
-                                let manager = self.session_manager.lock().unwrap();
-                                manager.get_child_pid(session_id)
-                            };
                             if let Some(pid) = child_pid {
                                 let detected = self.cli_detector.detect_cli_type(pid);
                                 if detected != codirigent_core::CliType::GenericShell {
@@ -820,15 +822,15 @@ impl WorkspaceView {
                                         codirigent_core::CliType::ClaudeCode => self
                                             .claude_reader
                                             .as_mut()
-                                            .and_then(|r| r.get_status(&working_dir).to_session_status()),
+                                            .and_then(|r| r.get_status(&working_dir, child_pid).to_session_status()),
                                         codirigent_core::CliType::CodexCli => self
                                             .codex_reader
                                             .as_mut()
-                                            .and_then(|r| r.get_status(&working_dir).to_session_status()),
+                                            .and_then(|r| r.get_status(&working_dir, child_pid).to_session_status()),
                                         codirigent_core::CliType::GeminiCli => self
                                             .gemini_reader
                                             .as_mut()
-                                            .and_then(|r| r.get_status(&working_dir).to_session_status()),
+                                            .and_then(|r| r.get_status(&working_dir, child_pid).to_session_status()),
                                         _ => None,
                                     }
                                 } else {
@@ -848,19 +850,12 @@ impl WorkspaceView {
                         self.cached_cli_status
                             .insert(session_id, (new_status, tool_name.clone()));
 
-                        if new_status == SessionStatus::NeedsPermission {
-                            // Only fire event on transition, not every poll
-                            if session.status != SessionStatus::NeedsPermission {
-                                self.event_bus.publish(CodirigentEvent::PermissionRequired {
+                        if new_status == SessionStatus::NeedsAttention {
+                            // Only fire event + notification on transition, not every poll
+                            if session.status != SessionStatus::NeedsAttention {
+                                self.event_bus.publish(CodirigentEvent::AttentionRequired {
                                     session_id,
-                                    tool_name,
-                                });
-                            }
-                        } else if new_status == SessionStatus::WaitingForInput {
-                            if session.status != SessionStatus::WaitingForInput {
-                                self.event_bus.publish(CodirigentEvent::InputRequired {
-                                    session_id,
-                                    pattern: None,
+                                    detail: tool_name.clone(),
                                 });
                             }
                         }
@@ -892,8 +887,8 @@ impl WorkspaceView {
                     }
                 }
 
-                // NeedsPermission is NOT treated as idle — session is blocked
-                if matches!(status, SessionStatus::Idle | SessionStatus::WaitingForInput) {
+                // NeedsAttention is NOT treated as idle — session is blocked
+                if matches!(status, SessionStatus::Idle) {
                     let is_compacting = self.compaction.lock()
                         .map(|svc| svc.is_compacting(session_id))
                         .unwrap_or(false);

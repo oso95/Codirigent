@@ -43,7 +43,7 @@
 //!
 //! // Check the detected status
 //! use codirigent_core::SessionStatus;
-//! assert_eq!(detector.get_status(SessionId(1)), Some(SessionStatus::WaitingForInput));
+//! assert_eq!(detector.get_status(SessionId(1)), Some(SessionStatus::NeedsAttention));
 //! ```
 //!
 //! # Platform Support
@@ -99,11 +99,152 @@ pub use platform::{NativeMonitor, PlatformMonitor, ProcessInfo, ProcessState};
 #[cfg(any(target_os = "linux", target_os = "macos", target_os = "windows"))]
 pub use platform::create_native_monitor;
 
+use std::path::PathBuf;
+
+/// Find which file from `candidates` the given PID currently has open.
+///
+/// Uses platform-specific APIs:
+/// - **Linux**: reads `/proc/<pid>/fd/` symlinks
+/// - **macOS**: uses `lsof -p <PID> -Fn`
+/// - **Windows**: uses the Restart Manager API
+///
+/// Returns the original (non-canonicalized) candidate path on match,
+/// or `None` if no match is found or on any error.
+pub fn find_file_opened_by_pid(candidates: &[PathBuf], pid: u32) -> Option<PathBuf> {
+    find_file_opened_by_pid_impl(candidates, pid)
+}
+
+/// Build a lookup from canonical path → original candidate path.
+/// Entries that fail to canonicalize are skipped.
+fn canonical_candidate_map(candidates: &[PathBuf]) -> Vec<(PathBuf, PathBuf)> {
+    candidates
+        .iter()
+        .filter_map(|c| std::fs::canonicalize(c).ok().map(|canon| (canon, c.clone())))
+        .collect()
+}
+
+#[cfg(target_os = "linux")]
+fn find_file_opened_by_pid_impl(candidates: &[PathBuf], pid: u32) -> Option<PathBuf> {
+    let canon_map = canonical_candidate_map(candidates);
+    let fd_dir = format!("/proc/{}/fd", pid);
+    let entries = std::fs::read_dir(&fd_dir).ok()?;
+    for entry in entries.flatten() {
+        if let Ok(target) = std::fs::read_link(entry.path()) {
+            // /proc/pid/fd symlinks already resolve to canonical paths
+            if let Some((_, original)) = canon_map.iter().find(|(canon, _)| *canon == target) {
+                return Some(original.clone());
+            }
+        }
+    }
+    None
+}
+
+#[cfg(target_os = "macos")]
+fn find_file_opened_by_pid_impl(candidates: &[PathBuf], pid: u32) -> Option<PathBuf> {
+    let canon_map = canonical_candidate_map(candidates);
+    let output = std::process::Command::new("lsof")
+        .args(["-p", &pid.to_string(), "-Fn"])
+        .output()
+        .ok()?;
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    for line in stdout.lines() {
+        if let Some(path_str) = line.strip_prefix('n') {
+            let path = PathBuf::from(path_str);
+            // lsof returns canonical paths (e.g., /private/var/... not /var/...)
+            if let Some((_, original)) = canon_map.iter().find(|(canon, _)| *canon == path) {
+                return Some(original.clone());
+            }
+        }
+    }
+    None
+}
+
+#[cfg(target_os = "windows")]
+fn find_file_opened_by_pid_impl(candidates: &[PathBuf], pid: u32) -> Option<PathBuf> {
+    use std::os::windows::ffi::OsStrExt;
+    use windows::Win32::System::RestartManager::*;
+    use windows::core::PCWSTR;
+
+    for candidate in candidates {
+        let wide_path: Vec<u16> = candidate
+            .as_os_str()
+            .encode_wide()
+            .chain(std::iter::once(0))
+            .collect();
+        let mut session: u32 = 0;
+        let mut session_key = [0u16; CCH_RM_SESSION_KEY as usize + 1];
+
+        unsafe {
+            if RmStartSession(&mut session, 0, session_key.as_mut_ptr()).is_err() {
+                continue;
+            }
+            let file_ptr = PCWSTR(wide_path.as_ptr());
+            let files = [file_ptr];
+            if RmRegisterResources(session, Some(&files), None, None).is_ok() {
+                let mut needed: u32 = 0;
+                let mut info_count: u32 = 16;
+                let mut infos = vec![RM_PROCESS_INFO::default(); 16];
+                let mut reason: u32 = 0;
+                let _ = RmGetList(
+                    session,
+                    &mut needed,
+                    &mut info_count,
+                    Some(infos.as_mut_ptr()),
+                    &mut reason,
+                );
+                for i in 0..info_count as usize {
+                    if infos[i].Process.dwProcessId == pid {
+                        let _ = RmEndSession(session);
+                        return Some(candidate.clone());
+                    }
+                }
+            }
+            let _ = RmEndSession(session);
+        }
+    }
+    None
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
     use codirigent_core::{DefaultEventBus, ProcessMonitor, SessionId, SessionStatus};
     use std::sync::Arc;
+
+    #[test]
+    #[cfg(any(target_os = "linux", target_os = "macos", target_os = "windows"))]
+    fn test_find_file_opened_by_pid_with_current_process() {
+        let tmp = tempfile::TempDir::new().unwrap();
+        let file_path = tmp.path().join("test.jsonl");
+
+        // Open a file and keep the handle alive
+        let _file = std::fs::File::create(&file_path).unwrap();
+
+        let candidates = vec![file_path.clone()];
+        let pid = std::process::id();
+
+        let result = find_file_opened_by_pid(&candidates, pid);
+        assert_eq!(result, Some(file_path));
+    }
+
+    #[test]
+    #[cfg(any(target_os = "linux", target_os = "macos", target_os = "windows"))]
+    fn test_find_file_opened_by_pid_no_match() {
+        let tmp = tempfile::TempDir::new().unwrap();
+        // This file doesn't exist and isn't opened by anyone
+        let fake_path = tmp.path().join("not_opened.jsonl");
+        let candidates = vec![fake_path];
+        let pid = std::process::id();
+
+        let result = find_file_opened_by_pid(&candidates, pid);
+        assert_eq!(result, None);
+    }
+
+    #[test]
+    fn test_find_file_opened_by_pid_empty_candidates() {
+        let result = find_file_opened_by_pid(&[], std::process::id());
+        assert_eq!(result, None);
+    }
 
     #[test]
     fn test_process_state_reexport() {
@@ -202,10 +343,10 @@ mod tests {
         // Process output with pattern
         detector.process_output(SessionId(1), b"Continue? [y/n]");
 
-        // Should detect WaitingForInput
+        // Should detect NeedsAttention
         assert_eq!(
             detector.get_status(SessionId(1)),
-            Some(SessionStatus::WaitingForInput)
+            Some(SessionStatus::NeedsAttention)
         );
 
         // Stop monitoring
@@ -228,10 +369,10 @@ mod tests {
         // Process output with custom pattern
         detector.process_output(SessionId(1), b"custom-prompt>");
 
-        // Should detect WaitingForInput
+        // Should detect NeedsAttention
         assert_eq!(
             detector.get_status(SessionId(1)),
-            Some(SessionStatus::WaitingForInput)
+            Some(SessionStatus::NeedsAttention)
         );
     }
 
@@ -248,7 +389,7 @@ mod tests {
 
         assert_eq!(
             detector.get_status(SessionId(1)),
-            Some(SessionStatus::WaitingForInput)
+            Some(SessionStatus::NeedsAttention)
         );
     }
 
@@ -270,7 +411,7 @@ mod tests {
 
         assert_eq!(
             detector.get_status(SessionId(1)),
-            Some(SessionStatus::WaitingForInput)
+            Some(SessionStatus::NeedsAttention)
         );
 
         // Stop one session
