@@ -995,6 +995,7 @@ name = "codirigent"
 version = "0.1.0"
 dependencies = [
  "anyhow",
+ "chrono",
  "codirigent-core",
  "codirigent-detector",
  "codirigent-filetree",

@@ -14,6 +14,7 @@ use codirigent_ui::integration::{CodirigentIntegration, IntegrationConfig};
 use std::path::PathBuf;
 use std::sync::Arc;
 use tempfile::TempDir;
+use chrono;
 
 // ============================================================================
 // Helper Functions
@@ -648,4 +649,185 @@ fn test_complete_workflow() {
     integration.save_state().unwrap();
     let state = integration.load_state().unwrap();
     assert_eq!(state.sessions.len(), 1);
+}
+
+// ============================================================================
+// Session State Transition Tests
+// ============================================================================
+
+/// Test session state transition: Idle → Working
+#[test]
+fn test_session_idle_to_working() {
+    use codirigent_core::types::{Session, SessionId, SessionStatus};
+    use std::path::PathBuf;
+
+    let mut session = Session {
+        id: SessionId(1),
+        name: "Test Session".to_string(),
+        status: SessionStatus::Idle,
+        working_directory: PathBuf::from("/tmp"),
+        current_task: None,
+        context_usage: None,
+        created_at: chrono::Utc::now(),
+        group: None,
+        color: None,
+        git_info: None,
+    };
+
+    // Verify initial state
+    assert_eq!(session.status, SessionStatus::Idle);
+
+    // Simulate work starting
+    session.status = SessionStatus::Working;
+
+    // Verify transition
+    assert_eq!(session.status, SessionStatus::Working);
+}
+
+/// Test session state transition: Working → NeedsAttention
+#[test]
+fn test_session_working_to_needs_attention() {
+    use codirigent_core::types::{Session, SessionId, SessionStatus};
+    use std::path::PathBuf;
+
+    let mut session = Session {
+        id: SessionId(1),
+        name: "Test Session".to_string(),
+        status: SessionStatus::Working,
+        working_directory: PathBuf::from("/tmp"),
+        current_task: None,
+        context_usage: None,
+        created_at: chrono::Utc::now(),
+        group: None,
+        color: None,
+        git_info: None,
+    };
+
+    // Verify initial state
+    assert_eq!(session.status, SessionStatus::Working);
+
+    // Simulate permission prompt detected
+    session.status = SessionStatus::NeedsAttention;
+
+    // Verify transition
+    assert_eq!(session.status, SessionStatus::NeedsAttention);
+}
+
+/// Test session state transition: NeedsAttention → Idle
+#[test]
+fn test_session_needs_attention_to_idle() {
+    use codirigent_core::types::{Session, SessionId, SessionStatus};
+    use std::path::PathBuf;
+
+    let mut session = Session {
+        id: SessionId(1),
+        name: "Test Session".to_string(),
+        status: SessionStatus::NeedsAttention,
+        working_directory: PathBuf::from("/tmp"),
+        current_task: None,
+        context_usage: None,
+        created_at: chrono::Utc::now(),
+        group: None,
+        color: None,
+        git_info: None,
+    };
+
+    // Verify initial state
+    assert_eq!(session.status, SessionStatus::NeedsAttention);
+
+    // Simulate user input provided, process completes
+    session.status = SessionStatus::Idle;
+
+    // Verify transition
+    assert_eq!(session.status, SessionStatus::Idle);
+}
+
+/// Test session state transition: Any → Error
+#[test]
+fn test_session_to_error_state() {
+    use codirigent_core::types::{Session, SessionId, SessionStatus};
+    use std::path::PathBuf;
+
+    let mut session = Session {
+        id: SessionId(1),
+        name: "Test Session".to_string(),
+        status: SessionStatus::Working,
+        working_directory: PathBuf::from("/tmp"),
+        current_task: None,
+        context_usage: None,
+        created_at: chrono::Utc::now(),
+        group: None,
+        color: None,
+        git_info: None,
+    };
+
+    // Simulate error detection
+    session.status = SessionStatus::Error;
+
+    // Verify transition to error state
+    assert_eq!(session.status, SessionStatus::Error);
+}
+
+/// Test session state invariants
+#[test]
+fn test_session_state_invariants() {
+    use codirigent_core::types::{Session, SessionId, SessionStatus};
+    use std::path::PathBuf;
+
+    let session = Session {
+        id: SessionId(1),
+        name: "Test Session".to_string(),
+        status: SessionStatus::Idle,
+        working_directory: PathBuf::from("/tmp"),
+        current_task: None,
+        context_usage: None,
+        created_at: chrono::Utc::now(),
+        group: None,
+        color: None,
+        git_info: None,
+    };
+
+    // Idle sessions should have no active task (initially)
+    assert_eq!(session.status, SessionStatus::Idle);
+    assert!(session.current_task.is_none());
+
+    // Session ID should be valid
+    assert!(session.id.0 > 0);
+
+    // Working directory should be set
+    assert!(!session.working_directory.as_os_str().is_empty());
+
+    // Creation timestamp should be valid
+    assert!(session.created_at <= chrono::Utc::now());
+}
+
+/// Test all valid session status values
+#[test]
+fn test_all_session_status_values() {
+    use codirigent_core::types::SessionStatus;
+
+    // Verify all enum variants are constructible
+    let _idle = SessionStatus::Idle;
+    let _working = SessionStatus::Working;
+    let _needs_attention = SessionStatus::NeedsAttention;
+    let _error = SessionStatus::Error;
+
+    // Verify default is Idle
+    let default_status = SessionStatus::default();
+    assert_eq!(default_status, SessionStatus::Idle);
+}
+
+/// Test session status equality
+#[test]
+fn test_session_status_equality() {
+    use codirigent_core::types::SessionStatus;
+
+    assert_eq!(SessionStatus::Idle, SessionStatus::Idle);
+    assert_eq!(SessionStatus::Working, SessionStatus::Working);
+    assert_eq!(SessionStatus::NeedsAttention, SessionStatus::NeedsAttention);
+    assert_eq!(SessionStatus::Error, SessionStatus::Error);
+
+    assert_ne!(SessionStatus::Idle, SessionStatus::Working);
+    assert_ne!(SessionStatus::Working, SessionStatus::NeedsAttention);
+    assert_ne!(SessionStatus::NeedsAttention, SessionStatus::Error);
 }

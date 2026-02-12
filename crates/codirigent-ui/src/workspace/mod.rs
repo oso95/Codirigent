@@ -69,7 +69,25 @@ mod impl_settings;
 mod impl_ui_operations;
 
 #[cfg(feature = "gpui-full")]
-mod render;
+pub(crate) mod render;
+
+#[cfg(feature = "gpui-full")]
+mod icon_utils;
+
+#[cfg(feature = "gpui-full")]
+mod task_board_render;
+
+#[cfg(feature = "gpui-full")]
+mod icon_rail_render;
+
+#[cfg(feature = "gpui-full")]
+mod top_bar_render;
+
+#[cfg(feature = "gpui-full")]
+mod modal_render;
+
+#[cfg(feature = "gpui-full")]
+mod grid_render;
 
 #[cfg(feature = "gpui-full")]
 mod settings_panels;
