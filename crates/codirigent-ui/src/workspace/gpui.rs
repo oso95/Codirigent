@@ -170,7 +170,7 @@ pub struct WorkspaceView {
     /// Whether the settings overlay is visible.
     pub(super) settings_open: bool,
     /// Cached monospace fonts detected from the system (populated lazily).
-    cached_monospace_fonts: Option<Vec<String>>,
+    pub(super) cached_monospace_fonts: Option<Vec<String>>,
     /// Config service for loading/saving settings to disk.
     pub(super) config_service: Option<DefaultConfigService>,
     /// Storage service for persisting sessions across restarts.
@@ -721,131 +721,6 @@ impl WorkspaceView {
     }
 
     /// Open the settings page overlay.
-    pub(super) fn open_settings(&mut self) {
-        if self.settings_page.is_none() {
-            // Try to load from disk, fall back to defaults
-            let mut user_settings = self
-                .config_service
-                .as_ref()
-                .and_then(|cs| cs.load_user_settings().ok())
-                .unwrap_or_default();
-
-            let project_config = self
-                .config_service
-                .as_ref()
-                .and_then(|cs| {
-                    std::env::current_dir()
-                        .ok()
-                        .and_then(|cwd| cs.load_project_config(&cwd).ok())
-                })
-                .unwrap_or_default();
-
-            // Filter keybindings: only keep actions that exist in defaults
-            let default_keys = codirigent_core::config::UserSettings::default_keybindings();
-            user_settings
-                .keybindings
-                .retain(|k, _| default_keys.contains_key(k));
-            // Add any new default keybindings that aren't in the saved settings
-            for (k, v) in &default_keys {
-                user_settings
-                    .keybindings
-                    .entry(k.clone())
-                    .or_insert_with(|| v.clone());
-            }
-
-            // Sync theme detection from current workspace state
-            let bg: gpui::Hsla = self.workspace.theme().background.into();
-            user_settings.appearance.theme = if bg.l > 0.5 {
-                "light".to_string()
-            } else {
-                "dark".to_string()
-            };
-
-            // Sync current UI font size and terminal font size from theme
-            let theme = self.workspace.theme();
-            user_settings.appearance.font_size = theme.font_size_base as u32;
-            user_settings.appearance.grid_gap = theme.grid_gap as u32;
-            user_settings.terminal.font_size = theme.terminal_font_size as u32;
-
-            let mut detected = detect_installed_editors();
-            let current = &user_settings.general.editor_command;
-            if !detected.iter().any(|e| e == current) {
-                detected.insert(0, current.clone());
-            }
-            if detected.is_empty() {
-                detected.push("code".to_string());
-            }
-
-            let mut detected_shells = codirigent_session::detect_available_shells();
-            let current_shell = &user_settings.general.default_shell;
-            if !current_shell.is_empty() && !detected_shells.iter().any(|s| s == current_shell) {
-                detected_shells.insert(0, current_shell.clone());
-            }
-            // Prepend "Auto-detect" option represented by empty string
-            detected_shells.insert(0, String::new());
-
-            // Use cached monospace fonts, ensure the user's current font is in the list
-            let mut detected_fonts = self.cached_monospace_fonts.clone().unwrap_or_default();
-            let current_font = &user_settings.terminal.font_family;
-            if !current_font.is_empty() && !detected_fonts.iter().any(|f| f == current_font) {
-                detected_fonts.insert(0, current_font.clone());
-            }
-
-            self.settings_page = Some(SettingsPage::new(
-                user_settings,
-                project_config,
-                detected,
-                detected_shells,
-                detected_fonts,
-            ));
-        }
-        self.settings_open = true;
-    }
-
-    /// Close the settings page overlay, saving any pending changes to disk.
-    pub(super) fn close_settings(&mut self) {
-        // Save pending changes before closing
-        self.flush_settings();
-        // Close any open dropdown
-        if let Some(ref mut page) = self.settings_page {
-            page.open_dropdown = None;
-        }
-        self.settings_open = false;
-    }
-
-    /// Flush pending settings changes to disk.
-    pub(super) fn flush_settings(&mut self) {
-        if let (Some(page), Some(cs)) = (self.settings_page.as_mut(), self.config_service.as_ref())
-        {
-            if page.user_save_pending {
-                if let Err(e) = cs.save_user_settings(&page.user_settings) {
-                    warn!("Failed to save user settings: {}", e);
-                } else {
-                    page.mark_user_saved();
-                }
-            }
-            if page.project_save_pending {
-                if let Ok(cwd) = std::env::current_dir() {
-                    if let Err(e) = cs.save_project_config(&cwd, &page.project_config) {
-                        warn!("Failed to save project config: {}", e);
-                    } else {
-                        page.mark_project_saved();
-                    }
-                }
-            }
-        }
-    }
-
-    /// Handle the OpenSettings action (Ctrl+,).
-    fn handle_open_settings(
-        &mut self,
-        _action: &OpenSettings,
-        _window: &mut Window,
-        cx: &mut Context<Self>,
-    ) {
-        self.open_settings();
-        cx.notify();
-    }
 
     /// Handle task board events.
 
