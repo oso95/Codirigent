@@ -464,7 +464,7 @@ fn create_session_with_task(id: u64, name: &str, status: SessionStatus, task: &s
         name: name.to_string(),
         status,
         working_directory: PathBuf::from("/tmp"),
-        current_task: Some(TaskId(task.to_string())),
+        current_task: Some(TaskId::from(task)),
         context_usage: None,
         created_at: chrono::Utc::now(),
         group: None,

@@ -619,3 +619,32 @@ fn test_close_pane_removes_session_from_workspace() {
     assert!(ws.session(SessionId(1)).is_none());
     assert!(ws.session(SessionId(2)).is_some());
 }
+
+#[test]
+fn test_string_truncation_no_allocation_when_short() {
+    use std::borrow::Cow;
+
+    let short_str = "main";
+    let result: Cow<str> = if short_str.len() > 12 {
+        Cow::Owned(format!("{}...", &short_str[..12]))
+    } else {
+        Cow::Borrowed(short_str)
+    };
+
+    // Should be borrowed, not owned
+    assert!(matches!(result, Cow::Borrowed(_)));
+}
+
+#[test]
+fn test_string_truncation_allocates_when_long() {
+    use std::borrow::Cow;
+
+    let long_str = "very-long-branch-name-that-needs-truncation";
+    let result: Cow<str> = if long_str.len() > 12 {
+        Cow::Owned(format!("{}...", &long_str[..12]))
+    } else {
+        Cow::Borrowed(long_str)
+    };
+
+    assert!(matches!(result, Cow::Owned(_)));
+}

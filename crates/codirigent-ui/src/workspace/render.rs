@@ -32,6 +32,7 @@ use gpui::{
     ObjectFit, ParentElement, ScrollWheelEvent, SharedString, StatefulInteractiveElement, Styled,
     StyledImage, Window, WindowControlArea,
 };
+use std::borrow::Cow;
 use std::cell::Cell;
 use std::rc::Rc;
 use std::sync::Arc;
@@ -588,11 +589,11 @@ impl WorkspaceView {
                 l: 0.6,
                 a: 0.8,
             };
-            let branch_label = if branch.chars().count() > 16 {
+            let branch_label: Cow<str> = if branch.chars().count() > 16 {
                 let truncated: String = branch.chars().take(13).collect();
-                format!("{}...", truncated)
+                Cow::Owned(format!("{}...", truncated))
             } else {
-                branch.clone()
+                Cow::Borrowed(branch.as_str())
             };
             let mut git_badge = div()
                 .px(px(4.0))
@@ -614,7 +615,7 @@ impl WorkspaceView {
                         .text_color(git_muted)
                         .child(icons::git_branch()),
                 )
-                .child(div().text_xs().text_color(git_muted).child(branch_label));
+                .child(div().text_xs().text_color(git_muted).child(branch_label.as_ref()));
 
             if let Some(count) = hints.git_dirty_count {
                 if count > 0 {
@@ -644,11 +645,11 @@ impl WorkspaceView {
                 l: group_color.l,
                 a: 0.15,
             };
-            let group_label = if group.chars().count() > 12 {
+            let group_label: Cow<str> = if group.chars().count() > 12 {
                 let truncated: String = group.chars().take(10).collect();
-                format!("{}...", truncated)
+                Cow::Owned(format!("{}...", truncated))
             } else {
-                group.clone()
+                Cow::Borrowed(group.as_str())
             };
             header = header.child(
                 div()
@@ -661,7 +662,7 @@ impl WorkspaceView {
                     .items_center()
                     .gap_1()
                     .child(div().w(px(6.0)).h(px(6.0)).rounded_full().bg(group_color))
-                    .child(div().text_xs().text_color(group_color).child(group_label)),
+                    .child(div().text_xs().text_color(group_color).child(group_label.as_ref())),
             );
         }
 
@@ -826,11 +827,11 @@ impl WorkspaceView {
                 l: 0.6,
                 a: 0.8,
             };
-            let branch_label = if branch.chars().count() > 16 {
+            let branch_label: Cow<str> = if branch.chars().count() > 16 {
                 let truncated: String = branch.chars().take(13).collect();
-                format!("{}...", truncated)
+                Cow::Owned(format!("{}...", truncated))
             } else {
-                branch.clone()
+                Cow::Borrowed(branch.as_str())
             };
             let mut git_badge = div()
                 .px(px(4.0))
@@ -852,7 +853,7 @@ impl WorkspaceView {
                         .text_color(git_muted)
                         .child(icons::git_branch()),
                 )
-                .child(div().text_xs().text_color(git_muted).child(branch_label));
+                .child(div().text_xs().text_color(git_muted).child(branch_label.as_ref()));
 
             if let Some(count) = hints.git_dirty_count {
                 if count > 0 {
@@ -882,11 +883,11 @@ impl WorkspaceView {
                 l: group_color.l,
                 a: 0.15,
             };
-            let group_label = if group.chars().count() > 12 {
+            let group_label: Cow<str> = if group.chars().count() > 12 {
                 let truncated: String = group.chars().take(10).collect();
-                format!("{}...", truncated)
+                Cow::Owned(format!("{}...", truncated))
             } else {
-                group.clone()
+                Cow::Borrowed(group.as_str())
             };
             header = header.child(
                 div()
@@ -899,7 +900,7 @@ impl WorkspaceView {
                     .items_center()
                     .gap_1()
                     .child(div().w(px(6.0)).h(px(6.0)).rounded_full().bg(group_color))
-                    .child(div().text_xs().text_color(group_color).child(group_label)),
+                    .child(div().text_xs().text_color(group_color).child(group_label.as_ref())),
             );
         }
 
