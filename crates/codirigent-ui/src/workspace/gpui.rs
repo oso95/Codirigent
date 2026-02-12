@@ -50,7 +50,7 @@ use codirigent_core::ClipboardContent;
 use codirigent_core::{
     AssignmentAction, CodirigentEvent, DefaultEventBus, EventBus, FileStorageService, GridPosition,
     ProcessMonitor, Session, SessionId, SessionManager, SessionStatus, SlotId, SplitDirection,
-    Task, TaskId, TaskManager, TaskManagerConfig,
+    Task, TaskId, TaskManager, TaskManagerConfig, TaskStatus,
 };
 use codirigent_detector::InputDetector;
 use codirigent_filetree::FileTree;
@@ -881,8 +881,43 @@ impl WorkspaceView {
                     any_dirty = true;
                     // Sync task board with the canonical (JSONL-corrected) status
                     if let Some(old) = old_status {
-                        if let Ok(mut task_mgr) = self.task_manager.lock() {
-                            task_mgr.on_session_status_changed(session_id, old, status);
+                        // Check if task transitioned to Review
+                        let task_transitioned_to_review = if let Ok(mut task_mgr) = self.task_manager.lock() {
+                            let tid = task_mgr.on_session_status_changed(session_id, old, status);
+                            if let Some(ref task_id) = tid {
+                                task_mgr.get_task(task_id)
+                                    .map_or(false, |t| t.status == TaskStatus::Review)
+                            } else {
+                                false
+                            }
+                        } else {
+                            false
+                        };
+
+                        // When task auto-transitions to Review:
+                        // 1. Clear current_task so auto-assign can work later
+                        // 2. Send /clear to reset context for next task
+                        if task_transitioned_to_review {
+                            // Clear current_task
+                            if let Ok(mgr) = self.session_manager.lock() {
+                                mgr.with_session_state_mut(session_id, |state| {
+                                    state.session.current_task = None;
+                                });
+                            }
+                            if let Some(session) = self.workspace.session_mut(session_id) {
+                                session.current_task = None;
+                            }
+                            // Start context clear — reuse compaction infrastructure
+                            let cli_type = self.clipboard_service.get_session_cli_type(session_id);
+                            let clear_cmd = Self::clear_command(cli_type);
+                            if let Ok(mut svc) = self.compaction.lock() {
+                                if svc.begin_compaction(session_id) {
+                                    if let Ok(mgr) = self.session_manager.lock() {
+                                        let _ = mgr.send_input(session_id, clear_cmd.as_bytes());
+                                    }
+                                    self.compaction_start_times.insert(session_id, Instant::now());
+                                }
+                            }
                         }
                     }
                 }
@@ -3175,6 +3210,16 @@ impl WorkspaceView {
                 warn!("format_task_input called with GenericShell — this should not happen");
                 format!("{}\r", prompt)
             }
+        }
+    }
+
+    /// Return the CLI-specific command to clear/reset context between tasks.
+    fn clear_command(cli_type: codirigent_core::CliType) -> String {
+        match cli_type {
+            codirigent_core::CliType::ClaudeCode => "/clear\n".to_string(),
+            codirigent_core::CliType::CodexCli => "/new\n".to_string(),
+            codirigent_core::CliType::GeminiCli => "/clear\n".to_string(),
+            codirigent_core::CliType::GenericShell => String::new(),
         }
     }
 

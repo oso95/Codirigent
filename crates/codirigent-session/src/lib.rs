@@ -68,6 +68,7 @@ impl CliSessionStatus {
     pub fn to_session_status(self) -> Option<(SessionStatus, Option<String>)> {
         match self {
             Self::Working => Some((SessionStatus::Working, None)),
+            Self::NeedsAttention { detail: None } => Some((SessionStatus::Idle, None)),
             Self::NeedsAttention { detail } => Some((SessionStatus::NeedsAttention, detail)),
             Self::Unknown => None,
         }
@@ -108,3 +109,41 @@ pub use ralph_controller::{DefaultRalphLoopController, LoopStats};
 pub use session::SessionState;
 pub use skill_manager::DefaultSkillManager;
 pub use worktree::WorktreeManager;
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn end_of_turn_maps_to_idle() {
+        let status = CliSessionStatus::NeedsAttention { detail: None };
+        let result = status.to_session_status();
+        assert_eq!(result, Some((SessionStatus::Idle, None)));
+    }
+
+    #[test]
+    fn permission_blocked_maps_to_needs_attention() {
+        let status = CliSessionStatus::NeedsAttention {
+            detail: Some("bash".to_string()),
+        };
+        let result = status.to_session_status();
+        assert_eq!(
+            result,
+            Some((SessionStatus::NeedsAttention, Some("bash".to_string())))
+        );
+    }
+
+    #[test]
+    fn working_maps_to_working() {
+        let status = CliSessionStatus::Working;
+        let result = status.to_session_status();
+        assert_eq!(result, Some((SessionStatus::Working, None)));
+    }
+
+    #[test]
+    fn unknown_maps_to_none() {
+        let status = CliSessionStatus::Unknown;
+        let result = status.to_session_status();
+        assert_eq!(result, None);
+    }
+}
