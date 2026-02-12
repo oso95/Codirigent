@@ -40,7 +40,6 @@ use crate::theme::{CodirigentTheme, Rgba};
 use alacritty_terminal::grid::Scroll;
 use alacritty_terminal::term::cell::Flags as CellFlags;
 use alacritty_terminal::vte::ansi::{Color as TermColor, NamedColor};
-#[allow(unused_imports)]
 use codirigent_core::SessionId;
 
 /// Line height multiplier applied to font metrics (ascent + |descent|).

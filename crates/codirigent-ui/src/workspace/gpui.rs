@@ -836,13 +836,17 @@ impl WorkspaceView {
     }
 
     /// Handle keyboard input for the focused session.
-    #[allow(unused_variables)]
     fn handle_key_down(
         &mut self,
         event: &KeyDownEvent,
         window: &mut Window,
         cx: &mut Context<Self>,
     ) {
+        // Suppress unused-variable warning on macOS where the cfg-gated
+        // Ctrl-shortcut block (which uses `window`) is compiled out.
+        #[cfg(target_os = "macos")]
+        let _ = &window;
+
         // Escape closes settings page if open
         if self.settings.open && event.keystroke.key == "escape" {
             self.close_settings();

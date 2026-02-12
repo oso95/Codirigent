@@ -191,7 +191,7 @@ pub fn try_create_linux_clipboard() -> anyhow::Result<LinuxSmartClipboard> {
 mod tests {
     use super::*;
     use crate::smart_clipboard::SmartClipboardProvider;
-    #[allow(unused_imports)]
+    #[cfg(not(any(target_os = "windows", target_os = "linux", target_os = "macos")))]
     use codirigent_core::ClipboardContent;
     use serial_test::serial;
 
