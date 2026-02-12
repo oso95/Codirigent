@@ -47,6 +47,29 @@ pub fn is_timestamp_recent(timestamp: &str, threshold_secs: i64) -> Option<bool>
     Some(elapsed.num_seconds().abs() <= threshold_secs)
 }
 
+/// Find the most recently modified file in a directory matching a given extension.
+///
+/// Scans `dir` for files ending in `.{extension}`, returns the one with the
+/// most recent modification time. Returns `None` if no matching files exist.
+pub fn find_most_recent_file(dir: &Path, extension: &str) -> Option<std::path::PathBuf> {
+    let entries = fs::read_dir(dir).ok()?;
+
+    entries
+        .flatten()
+        .filter(|entry| {
+            entry
+                .path()
+                .extension()
+                .is_some_and(|ext| ext == extension)
+        })
+        .filter_map(|entry| {
+            let mtime = entry.metadata().ok()?.modified().ok()?;
+            Some((entry.path(), mtime))
+        })
+        .max_by_key(|(_, mtime)| *mtime)
+        .map(|(path, _)| path)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -111,5 +134,38 @@ mod tests {
     #[test]
     fn test_is_timestamp_recent_invalid() {
         assert_eq!(is_timestamp_recent("not-a-date", 60), None);
+    }
+
+    #[test]
+    fn test_find_most_recent_file_by_extension() {
+        let dir = TempDir::new().unwrap();
+
+        // Create files with different mtimes
+        let old = dir.path().join("old.jsonl");
+        fs::write(&old, "old content").unwrap();
+
+        // Sleep briefly to ensure different mtime
+        std::thread::sleep(std::time::Duration::from_millis(50));
+
+        let new = dir.path().join("new.jsonl");
+        fs::write(&new, "new content").unwrap();
+
+        let result = find_most_recent_file(dir.path(), "jsonl");
+        assert_eq!(result, Some(new));
+    }
+
+    #[test]
+    fn test_find_most_recent_file_empty_dir() {
+        let dir = TempDir::new().unwrap();
+        let result = find_most_recent_file(dir.path(), "jsonl");
+        assert!(result.is_none());
+    }
+
+    #[test]
+    fn test_find_most_recent_file_no_matching_extension() {
+        let dir = TempDir::new().unwrap();
+        fs::write(dir.path().join("file.txt"), "content").unwrap();
+        let result = find_most_recent_file(dir.path(), "jsonl");
+        assert!(result.is_none());
     }
 }
