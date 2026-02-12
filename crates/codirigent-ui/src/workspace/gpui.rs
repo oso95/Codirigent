@@ -24,6 +24,10 @@ use super::editor_detection::{
     detect_installed_editors, detect_monospace_fonts, extra_editor_dirs, is_terminal_editor,
 };
 use super::cli_helpers::{clear_command, detect_cli_from_output, format_task_input};
+use super::types::{
+    FileTreeContextMenu, SessionActionKind, SessionActionModal, TaskCreationModal,
+    GROUP_COLOR_PALETTE,
+};
 // Imports from main branch (terminal integration)
 use crate::input::{key_to_bytes, TerminalKeystroke, TerminalModifiers};
 use crate::terminal::Terminal;
@@ -73,56 +77,6 @@ use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 use tracing::{debug, info, warn};
-
-/// Predefined group color palette for visual distinction.
-const GROUP_COLOR_PALETTE: &[&str] = &[
-    "#f43f5e", // Rose
-    "#8b5cf6", // Violet
-    "#06b6d4", // Cyan
-    "#f59e0b", // Amber
-    "#10b981", // Emerald
-    "#ec4899", // Pink
-    "#3b82f6", // Blue
-    "#84cc16", // Lime
-    "#ef4444", // Red
-    "#14b8a6", // Teal
-];
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(super) enum SessionActionKind {
-    Rename,
-    AssignGroup,
-}
-
-#[derive(Debug, Clone)]
-pub(super) struct SessionActionModal {
-    pub(super) session_id: SessionId,
-    pub(super) kind: SessionActionKind,
-    pub(super) input: String,
-    pub(super) error: Option<String>,
-}
-
-#[derive(Debug, Clone)]
-pub(super) struct TaskCreationModal {
-    pub(super) title: String,
-    pub(super) description: String,
-    pub(super) priority: codirigent_core::TaskPriority,
-    pub(super) focused_field: usize, // 0=title, 1=description, 2=plan_file
-    pub(super) error: Option<String>,
-    pub(super) project_dir: Option<PathBuf>,
-    pub(super) plan_file: String,
-    /// When editing an existing task, holds the task ID. None for new tasks.
-    pub(super) editing_task_id: Option<TaskId>,
-}
-
-/// Context menu state for file tree right-click.
-#[derive(Debug, Clone)]
-pub(super) struct FileTreeContextMenu {
-    /// Path of the right-clicked file/directory.
-    pub(super) path: PathBuf,
-    /// Screen position where the menu should appear.
-    pub(super) position: gpui::Point<gpui::Pixels>,
-}
 
 /// GPUI View wrapper for Workspace.
 ///

@@ -5,6 +5,7 @@
 //! separated from the main WorkspaceView to keep file sizes manageable.
 
 use super::gpui::WorkspaceView;
+use super::types::SessionActionKind;
 // Import from main branch (terminal rendering)
 use crate::terminal_view::CursorShape;
 // Imports from feature branch (UI components)
@@ -3028,16 +3029,16 @@ impl WorkspaceView {
         };
 
         let title = match modal.kind {
-            super::gpui::SessionActionKind::Rename => "Rename Session",
-            super::gpui::SessionActionKind::AssignGroup => "Assign Group",
+            SessionActionKind::Rename => "Rename Session",
+            SessionActionKind::AssignGroup => "Assign Group",
         };
         let title_icon = match modal.kind {
-            super::gpui::SessionActionKind::Rename => icons::pencil(),
-            super::gpui::SessionActionKind::AssignGroup => icons::users(),
+            SessionActionKind::Rename => icons::pencil(),
+            SessionActionKind::AssignGroup => icons::users(),
         };
         let label = match modal.kind {
-            super::gpui::SessionActionKind::Rename => "Session Name:",
-            super::gpui::SessionActionKind::AssignGroup => "Group Name:",
+            SessionActionKind::Rename => "Session Name:",
+            SessionActionKind::AssignGroup => "Group Name:",
         };
 
         // Always show cursor since modal input is always focused
