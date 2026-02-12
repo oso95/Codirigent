@@ -181,3 +181,8 @@ Uses `portable-pty` for cross-platform pseudo-terminal support with:
 - Shell command execution
 - Interactive terminal sessions
 - Output capture and redirection
+
+### Performance Guidelines
+
+- See [Clone Optimization](docs/development/clone-optimization.md) for best practices
+- Run benchmarks before major refactors: `cargo bench`
