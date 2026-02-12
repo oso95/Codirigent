@@ -939,7 +939,7 @@ impl WorkspaceView {
     }
 
     /// Render empty cell inline with pre-computed colors (returns Stateful<Div>).
-    fn render_empty_cell_inline_with_colors(
+    pub(super) fn render_empty_cell_inline_with_colors(
         &mut self,
         position: codirigent_core::GridPosition,
         panel_bg: gpui::Hsla,

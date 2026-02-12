@@ -11,8 +11,9 @@ use crate::workspace::gpui::WorkspaceView;
 use crate::workspace::render::SessionMenuAction;
 use codirigent_core::{SessionId, TaskPriority as CorePriority, TaskStatus as CoreStatus};
 use gpui::{
-    div, px, ClickEvent, Context, FontWeight, InteractiveElement, IntoElement, MouseButton,
-    MouseDownEvent, ParentElement, SharedString, StatefulInteractiveElement, Styled,
+    div, prelude::FluentBuilder, px, ClickEvent, Context, FontWeight, InteractiveElement,
+    IntoElement, MouseButton, MouseDownEvent, ParentElement, SharedString,
+    StatefulInteractiveElement, Styled,
 };
 use tracing::info;
 

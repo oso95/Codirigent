@@ -13,13 +13,15 @@ use crate::terminal_header::TerminalHeaderRenderHints;
 use crate::terminal_view::CursorShape;
 use crate::theme::CodirigentTheme;
 use crate::workspace::gpui::WorkspaceView;
-use codirigent_core::{LayoutNode, Session, SessionId, SplitDirection};
+use codirigent_core::{LayoutNode, Session, SessionId, SlotId, SplitDirection};
 use gpui::{
     div, prelude::FluentBuilder, px, relative, ClickEvent, Context, FontWeight, Image,
     ImageFormat, InteractiveElement, IntoElement, MouseButton, MouseDownEvent, MouseMoveEvent,
     MouseUpEvent, ObjectFit, ParentElement, ScrollWheelEvent, SharedString,
     StatefulInteractiveElement, Styled, StyledImage,
 };
+use std::rc::Rc;
+use tracing::info;
 use std::sync::Arc;
 
 impl WorkspaceView {

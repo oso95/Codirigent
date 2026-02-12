@@ -169,6 +169,4 @@ impl WorkspaceView {
                     ),
             )
     }
-
-    /// Render the expandable drawer panel (288px).
 }

@@ -10,10 +10,11 @@ use crate::toolbar::CustomLayoutMode;
 use crate::workspace::gpui::{SessionActionKind, SessionActionModal, WorkspaceView};
 use crate::workspace::render::SessionMenuAction;
 use codirigent_core::{LayoutNode, SessionId, SlotId, SplitDirection};
+use std::sync::Arc;
 use gpui::{
-    div, prelude::FluentBuilder, px, relative, ClickEvent, Context, FontWeight,
-    InteractiveElement, IntoElement, MouseButton, MouseDownEvent, ParentElement, SharedString,
-    StatefulInteractiveElement, Styled,
+    div, prelude::FluentBuilder, px, relative, ClickEvent, Context, FontWeight, Image,
+    ImageFormat, InteractiveElement, IntoElement, MouseButton, MouseDownEvent, ObjectFit,
+    ParentElement, SharedString, StatefulInteractiveElement, Styled, StyledImage,
 };
 use std::cell::Cell;
 use std::rc::Rc;
@@ -695,7 +696,7 @@ impl WorkspaceView {
     }
 
     /// Render a small logo for the title bar using the embedded PNG.
-    fn render_logo_small(&self) -> impl IntoElement {
+    pub(super) fn render_logo_small(&self) -> impl IntoElement {
         // The PNG (120x120 / 240x240 @2x) has ~25% built-in padding around
         // the 3x3 grid.  We render it slightly oversized so the visible grid
         // fills roughly 20px, which looks balanced in the 32px title bar.

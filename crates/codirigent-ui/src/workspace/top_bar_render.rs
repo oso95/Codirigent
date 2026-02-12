@@ -3,12 +3,13 @@
 //! This module handles rendering of the top bar with session tabs,
 //! layout controls, and window controls.
 
+use crate::icons;
 use crate::title_bar::TitleBar;
 use crate::toolbar::CustomLayoutMode;
 use crate::workspace::gpui::WorkspaceView;
 use gpui::{
-    div, px, Context, InteractiveElement, IntoElement, ParentElement, SharedString,
-    StatefulInteractiveElement, Styled, Window, WindowControlArea,
+    div, px, ClickEvent, Context, FontWeight, InteractiveElement, IntoElement, ParentElement,
+    SharedString, StatefulInteractiveElement, Styled, Window, WindowControlArea,
 };
 
 impl WorkspaceView {
@@ -168,9 +169,4 @@ impl WorkspaceView {
 
         bar
     }
-
-    /// Render a terminal header for a session.
-    ///
-    /// Returns a GPUI element representing the terminal header with session name,
-    /// status indicator, task badge, and context usage.
 }
