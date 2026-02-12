@@ -1554,7 +1554,7 @@ mod tests {
         // Add multiple pending assignments
         for i in 1..=5 {
             manager.pending.push(PendingAssignment {
-                task_id: TaskId(format!("task-{:03}", i)),
+                task_id: TaskId::from(format!("task-{:03}", i)),
                 session_id: SessionId(i),
                 prompt: format!("Prompt {}", i),
                 proposed_at: chrono::Utc::now(),
@@ -1579,8 +1579,8 @@ mod tests {
             .iter()
             .map(|p| p.task_id.0.clone())
             .collect();
-        assert!(ids.contains(&"task-002".to_string()));
-        assert!(ids.contains(&"task-004".to_string()));
-        assert!(ids.contains(&"task-005".to_string()));
+        assert!(ids.iter().any(|id| id.as_ref() == "task-002"));
+        assert!(ids.iter().any(|id| id.as_ref() == "task-004"));
+        assert!(ids.iter().any(|id| id.as_ref() == "task-005"));
     }
 }

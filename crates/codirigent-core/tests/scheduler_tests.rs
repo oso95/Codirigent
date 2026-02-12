@@ -22,28 +22,28 @@ fn test_priority_ordering() {
 
     // Create tasks with different priorities
     let mut low = Task::new(
-        TaskId("low".to_string()),
+        TaskId::from("low"),
         "Low priority task".to_string(),
         "This is low priority".to_string(),
     );
     low.priority = TaskPriority::Low;
 
     let mut high = Task::new(
-        TaskId("high".to_string()),
+        TaskId::from("high"),
         "High priority task".to_string(),
         "This is high priority".to_string(),
     );
     high.priority = TaskPriority::High;
 
     let mut medium = Task::new(
-        TaskId("medium".to_string()),
+        TaskId::from("medium"),
         "Medium priority task".to_string(),
         "This is medium priority".to_string(),
     );
     medium.priority = TaskPriority::Medium;
 
     let mut critical = Task::new(
-        TaskId("critical".to_string()),
+        TaskId::from("critical"),
         "Critical priority task".to_string(),
         "This is critical priority".to_string(),
     );
@@ -57,26 +57,26 @@ fn test_priority_ordering() {
 
     // Should get critical first
     let next = queue.next_task(&[]).unwrap();
-    assert_eq!(next.id, TaskId("critical".to_string()));
+    assert_eq!(next.id, TaskId::from("critical"));
 
     // Mark as completed
-    queue.complete_task(&TaskId("critical".to_string()), true).unwrap();
+    queue.complete_task(&TaskId::from("critical"), true).unwrap();
 
     // Should get high next
     let next = queue.next_task(&[]).unwrap();
-    assert_eq!(next.id, TaskId("high".to_string()));
+    assert_eq!(next.id, TaskId::from("high"));
 
-    queue.complete_task(&TaskId("high".to_string()), true).unwrap();
+    queue.complete_task(&TaskId::from("high"), true).unwrap();
 
     // Should get medium next
     let next = queue.next_task(&[]).unwrap();
-    assert_eq!(next.id, TaskId("medium".to_string()));
+    assert_eq!(next.id, TaskId::from("medium"));
 
-    queue.complete_task(&TaskId("medium".to_string()), true).unwrap();
+    queue.complete_task(&TaskId::from("medium"), true).unwrap();
 
     // Should get low last
     let next = queue.next_task(&[]).unwrap();
-    assert_eq!(next.id, TaskId("low".to_string()));
+    assert_eq!(next.id, TaskId::from("low"));
 }
 
 /// Test FIFO (first-in, first-out) ordering.
@@ -94,17 +94,17 @@ fn test_fifo_ordering() {
 
     // Add tasks in specific order
     let task1 = Task::new(
-        TaskId("1".to_string()),
+        TaskId::from("1"),
         "First task".to_string(),
         "Added first".to_string(),
     );
     let task2 = Task::new(
-        TaskId("2".to_string()),
+        TaskId::from("2"),
         "Second task".to_string(),
         "Added second".to_string(),
     );
     let task3 = Task::new(
-        TaskId("3".to_string()),
+        TaskId::from("3"),
         "Third task".to_string(),
         "Added third".to_string(),
     );
@@ -115,17 +115,17 @@ fn test_fifo_ordering() {
 
     // Should get in FIFO order
     let next = queue.next_task(&[]).unwrap();
-    assert_eq!(next.id, TaskId("1".to_string()));
+    assert_eq!(next.id, TaskId::from("1"));
 
-    queue.complete_task(&TaskId("1".to_string()), true).unwrap();
-
-    let next = queue.next_task(&[]).unwrap();
-    assert_eq!(next.id, TaskId("2".to_string()));
-
-    queue.complete_task(&TaskId("2".to_string()), true).unwrap();
+    queue.complete_task(&TaskId::from("1"), true).unwrap();
 
     let next = queue.next_task(&[]).unwrap();
-    assert_eq!(next.id, TaskId("3".to_string()));
+    assert_eq!(next.id, TaskId::from("2"));
+
+    queue.complete_task(&TaskId::from("2"), true).unwrap();
+
+    let next = queue.next_task(&[]).unwrap();
+    assert_eq!(next.id, TaskId::from("3"));
 }
 
 /// Test dependency resolution.
@@ -139,24 +139,24 @@ fn test_dependency_blocking() {
     let mut queue = TaskQueue::new(config, event_bus);
 
     let task1 = Task::new(
-        TaskId("task1".to_string()),
+        TaskId::from("task1"),
         "Foundation task".to_string(),
         "Must complete first".to_string(),
     );
 
     let mut task2 = Task::new(
-        TaskId("task2".to_string()),
+        TaskId::from("task2"),
         "Dependent task".to_string(),
         "Depends on task1".to_string(),
     );
-    task2.dependencies = vec![TaskId("task1".to_string())];
+    task2.dependencies = vec![TaskId::from("task1")];
 
     let mut task3 = Task::new(
-        TaskId("task3".to_string()),
+        TaskId::from("task3"),
         "Double dependent".to_string(),
         "Depends on task2".to_string(),
     );
-    task3.dependencies = vec![TaskId("task2".to_string())];
+    task3.dependencies = vec![TaskId::from("task2")];
 
     // Enqueue in reverse order to test dependency resolution
     queue.enqueue(task3).unwrap();
@@ -166,22 +166,22 @@ fn test_dependency_blocking() {
     // Should get task1 first (no dependencies)
     let mut completed: Vec<TaskId> = Vec::new();
     let next = queue.next_task(&completed).unwrap();
-    assert_eq!(next.id, TaskId("task1".to_string()));
+    assert_eq!(next.id, TaskId::from("task1"));
 
     // Mark task1 as completed
-    queue.complete_task(&TaskId("task1".to_string()), true).unwrap();
-    completed.push(TaskId("task1".to_string()));
+    queue.complete_task(&TaskId::from("task1"), true).unwrap();
+    completed.push(TaskId::from("task1"));
 
     // Now task2 should be available (dependency met)
     let next = queue.next_task(&completed).unwrap();
-    assert_eq!(next.id, TaskId("task2".to_string()));
+    assert_eq!(next.id, TaskId::from("task2"));
 
-    queue.complete_task(&TaskId("task2".to_string()), true).unwrap();
-    completed.push(TaskId("task2".to_string()));
+    queue.complete_task(&TaskId::from("task2"), true).unwrap();
+    completed.push(TaskId::from("task2"));
 
     // Finally task3 should be available (dependency met)
     let next = queue.next_task(&completed).unwrap();
-    assert_eq!(next.id, TaskId("task3".to_string()));
+    assert_eq!(next.id, TaskId::from("task3"));
 }
 
 /// Test that completed tasks are no longer returned.
@@ -195,7 +195,7 @@ fn test_completed_tasks_not_returned() {
     let mut queue = TaskQueue::new(config, event_bus);
 
     let task = Task::new(
-        TaskId("task1".to_string()),
+        TaskId::from("task1"),
         "Single task".to_string(),
         "Will be completed".to_string(),
     );
@@ -204,9 +204,9 @@ fn test_completed_tasks_not_returned() {
 
     // Get and complete the task
     let next = queue.next_task(&[]).unwrap();
-    assert_eq!(next.id, TaskId("task1".to_string()));
+    assert_eq!(next.id, TaskId::from("task1"));
 
-    queue.complete_task(&TaskId("task1".to_string()), true).unwrap();
+    queue.complete_task(&TaskId::from("task1"), true).unwrap();
 
     // Should have no more tasks
     let next = queue.next_task(&[]);
@@ -238,25 +238,25 @@ fn test_multiple_dependencies() {
     let mut queue = TaskQueue::new(config, event_bus);
 
     let task_a = Task::new(
-        TaskId("A".to_string()),
+        TaskId::from("A"),
         "Task A".to_string(),
         "First dependency".to_string(),
     );
 
     let task_b = Task::new(
-        TaskId("B".to_string()),
+        TaskId::from("B"),
         "Task B".to_string(),
         "Second dependency".to_string(),
     );
 
     let mut task_c = Task::new(
-        TaskId("C".to_string()),
+        TaskId::from("C"),
         "Task C".to_string(),
         "Depends on both A and B".to_string(),
     );
     task_c.dependencies = vec![
-        TaskId("A".to_string()),
-        TaskId("B".to_string()),
+        TaskId::from("A"),
+        TaskId::from("B"),
     ];
 
     queue.enqueue(task_a).unwrap();
@@ -268,22 +268,22 @@ fn test_multiple_dependencies() {
 
     // Complete task A
     let next = queue.next_task(&completed).unwrap();
-    assert!(next.id == TaskId("A".to_string()) || next.id == TaskId("B".to_string()));
+    assert!(next.id == TaskId::from("A") || next.id == TaskId::from("B"));
     let task_id = next.id.clone();
     queue.complete_task(&task_id, true).unwrap();
     completed.push(task_id);
 
     // Task C should still be blocked (only 1 of 2 dependencies met)
     let next = queue.next_task(&completed).unwrap();
-    assert!(next.id == TaskId("A".to_string()) || next.id == TaskId("B".to_string()));
-    assert_ne!(next.id, TaskId("C".to_string()), "Task C should still be blocked");
+    assert!(next.id == TaskId::from("A") || next.id == TaskId::from("B"));
+    assert_ne!(next.id, TaskId::from("C"), "Task C should still be blocked");
     let task_id = next.id.clone();
     queue.complete_task(&task_id, true).unwrap();
     completed.push(task_id);
 
     // Now task C should be available (both dependencies met)
     let next = queue.next_task(&completed).unwrap();
-    assert_eq!(next.id, TaskId("C".to_string()));
+    assert_eq!(next.id, TaskId::from("C"));
 }
 
 /// Test scheduler mode default.

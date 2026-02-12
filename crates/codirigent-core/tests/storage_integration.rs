@@ -16,7 +16,7 @@ use tempfile::TempDir;
 /// Helper to create a test task.
 fn create_task(id: &str, title: &str) -> Task {
     Task {
-        id: TaskId(id.to_string()),
+        id: TaskId::from(id),
         title: title.to_string(),
         description: format!("Description for {}", title),
         priority: TaskPriority::Medium,
@@ -83,7 +83,7 @@ fn test_task_lifecycle() {
     storage.save_task(&task).unwrap();
 
     // Verify creation
-    let loaded = storage.load_task(&TaskId("task-001".to_string())).unwrap();
+    let loaded = storage.load_task(&TaskId::from("task-001")).unwrap();
     assert!(loaded.is_some());
     assert_eq!(loaded.unwrap().title, "Initial Task");
 
@@ -95,7 +95,7 @@ fn test_task_lifecycle() {
 
     // Verify update
     let loaded = storage
-        .load_task(&TaskId("task-001".to_string()))
+        .load_task(&TaskId::from("task-001"))
         .unwrap()
         .unwrap();
     assert_eq!(loaded.title, "Updated Task");
@@ -105,14 +105,14 @@ fn test_task_lifecycle() {
     // List tasks
     let ids = storage.list_task_ids().unwrap();
     assert_eq!(ids.len(), 1);
-    assert_eq!(ids[0].0, "task-001");
+    assert_eq!(ids[0].0.as_ref(), "task-001");
 
     // Delete task
     storage
-        .delete_task(&TaskId("task-001".to_string()))
+        .delete_task(&TaskId::from("task-001"))
         .unwrap();
     assert!(storage
-        .load_task(&TaskId("task-001".to_string()))
+        .load_task(&TaskId::from("task-001"))
         .unwrap()
         .is_none());
     assert!(storage.list_task_ids().unwrap().is_empty());
@@ -133,21 +133,21 @@ fn test_multiple_tasks() {
     let ids = storage.list_task_ids().unwrap();
     assert_eq!(ids.len(), 10);
     for (i, id) in ids.iter().enumerate() {
-        assert_eq!(id.0, format!("task-{:03}", i + 1));
+        assert_eq!(id.0.as_ref(), format!("task-{:03}", i + 1));
     }
 
     // Delete some tasks
     storage
-        .delete_task(&TaskId("task-003".to_string()))
+        .delete_task(&TaskId::from("task-003"))
         .unwrap();
     storage
-        .delete_task(&TaskId("task-007".to_string()))
+        .delete_task(&TaskId::from("task-007"))
         .unwrap();
 
     let ids = storage.list_task_ids().unwrap();
     assert_eq!(ids.len(), 8);
-    assert!(!ids.iter().any(|id| id.0 == "task-003"));
-    assert!(!ids.iter().any(|id| id.0 == "task-007"));
+    assert!(!ids.iter().any(|id| id.0.as_ref() == "task-003"));
+    assert!(!ids.iter().any(|id| id.0.as_ref() == "task-007"));
 }
 
 #[test]
@@ -279,23 +279,23 @@ fn test_task_with_dependencies() {
     // Create child task with dependencies
     let mut child = create_task("child-001", "Child Task");
     child.dependencies = vec![
-        TaskId("parent-001".to_string()),
-        TaskId("parent-002".to_string()),
+        TaskId::from("parent-001"),
+        TaskId::from("parent-002"),
     ];
     storage.save_task(&child).unwrap();
 
     // Load and verify
     let loaded = storage
-        .load_task(&TaskId("child-001".to_string()))
+        .load_task(&TaskId::from("child-001"))
         .unwrap()
         .unwrap();
     assert_eq!(loaded.dependencies.len(), 2);
     assert!(loaded
         .dependencies
-        .contains(&TaskId("parent-001".to_string())));
+        .contains(&TaskId::from("parent-001")));
     assert!(loaded
         .dependencies
-        .contains(&TaskId("parent-002".to_string())));
+        .contains(&TaskId::from("parent-002")));
 }
 
 #[test]

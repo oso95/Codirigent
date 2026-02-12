@@ -400,7 +400,7 @@ mod tests {
     // Helper function to create a test task
     fn create_test_task(id: &str, title: &str) -> Task {
         Task {
-            id: TaskId(id.to_string()),
+            id: TaskId::from(id),
             title: title.to_string(),
             description: format!("Description for {}", title),
             priority: TaskPriority::Medium,
@@ -547,7 +547,7 @@ mod tests {
         ];
 
         for (input, expected) in test_cases {
-            let id = TaskId(input.to_string());
+            let id = TaskId::from(input);
             let path = storage.task_path(&id);
             let stem = path.file_stem().unwrap().to_str().unwrap();
             assert_eq!(
@@ -831,9 +831,9 @@ mod tests {
         let ids = storage.list_task_ids().unwrap();
         assert_eq!(ids.len(), 3);
         // Should be sorted
-        assert_eq!(ids[0].0, "task-001");
-        assert_eq!(ids[1].0, "task-002");
-        assert_eq!(ids[2].0, "task-003");
+        assert_eq!(ids[0].0.as_ref(), "task-001");
+        assert_eq!(ids[1].0.as_ref(), "task-002");
+        assert_eq!(ids[2].0.as_ref(), "task-003");
     }
 
     #[test]
@@ -852,9 +852,9 @@ mod tests {
 
         let ids = storage.list_task_ids().unwrap();
         assert_eq!(ids.len(), 3);
-        assert_eq!(ids[0].0, "aaa");
-        assert_eq!(ids[1].0, "mmm");
-        assert_eq!(ids[2].0, "zzz");
+        assert_eq!(ids[0].0.as_ref(), "aaa");
+        assert_eq!(ids[1].0.as_ref(), "mmm");
+        assert_eq!(ids[2].0.as_ref(), "zzz");
     }
 
     #[test]
@@ -873,7 +873,7 @@ mod tests {
 
         let ids = storage.list_task_ids().unwrap();
         assert_eq!(ids.len(), 1);
-        assert_eq!(ids[0].0, "task-001");
+        assert_eq!(ids[0].0.as_ref(), "task-001");
     }
 
     #[test]
@@ -1004,7 +1004,7 @@ mod tests {
 
             for i in 1..=3 {
                 let task = storage
-                    .load_task(&TaskId(format!("task-{:03}", i)))
+                    .load_task(&TaskId::from(format!("task-{:03}", i)))
                     .unwrap();
                 assert!(task.is_some());
             }
