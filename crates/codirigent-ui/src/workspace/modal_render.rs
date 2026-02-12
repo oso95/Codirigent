@@ -7,8 +7,9 @@ use crate::components::text_input::{text_input, TextInputStyle};
 use crate::icons;
 use crate::layout::LayoutProfile;
 use crate::toolbar::CustomLayoutMode;
-use crate::workspace::gpui::{SessionActionKind, SessionActionModal, WorkspaceView};
-use crate::workspace::render::SessionMenuAction;
+use super::gpui::WorkspaceView;
+use super::types::{SessionActionKind, SessionActionModal};
+use super::render::SessionMenuAction;
 use codirigent_core::{LayoutNode, SessionId, SlotId, SplitDirection};
 use std::sync::Arc;
 use gpui::{
@@ -793,16 +794,16 @@ impl WorkspaceView {
         };
 
         let title = match modal.kind {
-            super::gpui::SessionActionKind::Rename => "Rename Session",
-            super::gpui::SessionActionKind::AssignGroup => "Assign Group",
+            super::types::SessionActionKind::Rename => "Rename Session",
+            super::types::SessionActionKind::AssignGroup => "Assign Group",
         };
         let title_icon = match modal.kind {
-            super::gpui::SessionActionKind::Rename => icons::pencil(),
-            super::gpui::SessionActionKind::AssignGroup => icons::users(),
+            super::types::SessionActionKind::Rename => icons::pencil(),
+            super::types::SessionActionKind::AssignGroup => icons::users(),
         };
         let label = match modal.kind {
-            super::gpui::SessionActionKind::Rename => "Session Name:",
-            super::gpui::SessionActionKind::AssignGroup => "Group Name:",
+            super::types::SessionActionKind::Rename => "Session Name:",
+            super::types::SessionActionKind::AssignGroup => "Group Name:",
         };
 
         // Always show cursor since modal input is always focused
