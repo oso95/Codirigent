@@ -9,10 +9,10 @@
 //! - Whether it has a pending tool use awaiting permission
 //! - Whether it has finished its turn and is idle
 
+use crate::session_reader_common::{is_timestamp_recent, read_file_tail};
 use crate::CliSessionStatus;
 use serde::Deserialize;
 use std::fs;
-use std::io::{Read, Seek, SeekFrom};
 use std::path::{Path, PathBuf};
 use std::time::SystemTime;
 use tracing::{debug, trace};
@@ -139,7 +139,7 @@ impl ClaudeSessionReader {
         let Some(jsonl_path) = Self::find_jsonl_for_pid(session_dir, pid) else {
             return Vec::new();
         };
-        let Some(tail) = Self::read_file_tail(&jsonl_path, 524_288) else {
+        let Some(tail) = read_file_tail(&jsonl_path, 524_288) else {
             return Vec::new();
         };
 
@@ -225,39 +225,6 @@ impl ClaudeSessionReader {
         }
 
         best.map(|(p, _)| p)
-    }
-
-    /// Read the last `max_bytes` of a file as a UTF-8 string.
-    fn read_file_tail(path: &Path, max_bytes: u64) -> Option<String> {
-        let mut file = fs::File::open(path).ok()?;
-        let file_len = file.metadata().ok()?.len();
-        let seeked = file_len > max_bytes;
-
-        if seeked {
-            file.seek(SeekFrom::End(-(max_bytes as i64))).ok()?;
-        }
-
-        let mut buf = String::new();
-        file.read_to_string(&mut buf).ok()?;
-
-        // If we seeked into the middle, discard the first partial line
-        if seeked {
-            if let Some(pos) = buf.find('\n') {
-                buf = buf[pos + 1..].to_string();
-            }
-        }
-
-        Some(buf)
-    }
-
-    /// Check whether a timestamp string is within `threshold_secs` of now.
-    ///
-    /// Returns `None` if the timestamp cannot be parsed.
-    fn is_timestamp_recent(timestamp: &str, threshold_secs: i64) -> Option<bool> {
-        use chrono::{DateTime, Utc};
-        let parsed = timestamp.parse::<DateTime<Utc>>().ok()?;
-        let elapsed = Utc::now().signed_duration_since(parsed);
-        Some(elapsed.num_seconds() < threshold_secs)
     }
 
     /// Core status determination algorithm.
@@ -353,7 +320,7 @@ impl ClaudeSessionReader {
                         // tool call that needs permission approval.
                         // Give a brief grace period for auto-approved tools.
                         if let Some(ts) = assistant.timestamp.as_deref() {
-                            if Self::is_timestamp_recent(ts, 3) == Some(true) {
+                            if is_timestamp_recent(ts, 3) == Some(true) {
                                 debug!(?tool_name, "JSONL: pending tool_use (stop=tool_use) < 3s → Working (grace period)");
                                 return ClaudeSessionStatus::Working;
                             }
@@ -393,7 +360,7 @@ impl ClaudeSessionReader {
             // Tool results were sent back; Claude should be generating.
             // Use the timestamp of the last entry to gauge recency.
             if let Some(ts) = entries.last().and_then(|e| e.timestamp.as_deref()) {
-                return match Self::is_timestamp_recent(ts, 15) {
+                return match is_timestamp_recent(ts, 15) {
                     Some(true) => ClaudeSessionStatus::Working,
                     Some(false) => ClaudeSessionStatus::NeedsAttention { detail: None },
                     None => ClaudeSessionStatus::Unknown,
@@ -407,7 +374,7 @@ impl ClaudeSessionReader {
         // Claude may still be streaming or may have finished without "end_turn".
         // Use the assistant entry's timestamp to decide.
         if let Some(ts) = assistant.timestamp.as_deref() {
-            return match Self::is_timestamp_recent(ts, 10) {
+            return match is_timestamp_recent(ts, 10) {
                 Some(true) => ClaudeSessionStatus::Working,
                 Some(false) => ClaudeSessionStatus::NeedsAttention { detail: None },
                 None => ClaudeSessionStatus::Unknown,
@@ -668,7 +635,7 @@ mod tests {
         }
 
         // Read tail should get the last lines
-        let tail = ClaudeSessionReader::read_file_tail(&path, 50).unwrap();
+        let tail = read_file_tail(&path, 50).unwrap();
         assert!(tail.contains("line 99"));
         // Should not contain very early lines
         assert!(!tail.contains("line 0\n"));
@@ -750,18 +717,18 @@ mod tests {
     fn test_is_timestamp_recent() {
         let now = chrono::Utc::now().to_rfc3339();
         assert_eq!(
-            ClaudeSessionReader::is_timestamp_recent(&now, 10),
+            is_timestamp_recent(&now, 10),
             Some(true)
         );
 
         let old = (chrono::Utc::now() - chrono::Duration::seconds(60)).to_rfc3339();
         assert_eq!(
-            ClaudeSessionReader::is_timestamp_recent(&old, 10),
+            is_timestamp_recent(&old, 10),
             Some(false)
         );
 
         assert_eq!(
-            ClaudeSessionReader::is_timestamp_recent("not-a-timestamp", 10),
+            is_timestamp_recent("not-a-timestamp", 10),
             None
         );
     }
