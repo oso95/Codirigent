@@ -45,6 +45,9 @@ mod icon_rail_render;
 mod top_bar_render;
 
 #[cfg(feature = "gpui-full")]
+mod modal_render;
+
+#[cfg(feature = "gpui-full")]
 mod settings_panels;
 
 #[cfg(feature = "gpui-full")]
