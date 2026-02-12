@@ -11,11 +11,11 @@
 //! - `response_item` — messages and function calls
 //! - `event_msg` — events like turn completion
 
+use crate::session_reader_common::read_file_tail;
 use crate::CliSessionStatus;
 use serde::Deserialize;
 use std::collections::HashMap;
 use std::fs;
-use std::io::{Read, Seek, SeekFrom};
 use std::path::{Path, PathBuf};
 use std::time::SystemTime;
 use tracing::{debug, trace};
@@ -101,7 +101,7 @@ impl CodexSessionReader {
         let approval_mode = self.read_approval_mode(&rollout_path);
 
         // Read tail of file for recent entries
-        let Some(tail) = Self::read_file_tail(&rollout_path, 131_072) else {
+        let Some(tail) = read_file_tail(&rollout_path, 131_072) else {
             return CodexSessionStatus::Unknown;
         };
 
@@ -260,29 +260,6 @@ impl CodexSessionReader {
         let mut line = String::new();
         std::io::BufRead::read_line(&mut reader, &mut line).ok()?;
         Some(line)
-    }
-
-    /// Read the last `max_bytes` of a file as a UTF-8 string.
-    fn read_file_tail(path: &Path, max_bytes: u64) -> Option<String> {
-        let mut file = fs::File::open(path).ok()?;
-        let file_len = file.metadata().ok()?.len();
-        let seeked = file_len > max_bytes;
-
-        if seeked {
-            file.seek(SeekFrom::End(-(max_bytes as i64))).ok()?;
-        }
-
-        let mut buf = String::new();
-        file.read_to_string(&mut buf).ok()?;
-
-        // If we seeked into the middle, discard the first partial line
-        if seeked {
-            if let Some(pos) = buf.find('\n') {
-                buf = buf[pos + 1..].to_string();
-            }
-        }
-
-        Some(buf)
     }
 
     /// Core status determination algorithm.
@@ -659,7 +636,7 @@ mod tests {
             writeln!(file, "line {i}").unwrap();
         }
 
-        let tail = CodexSessionReader::read_file_tail(&path, 50).unwrap();
+        let tail = read_file_tail(&path, 50).unwrap();
         assert!(tail.contains("line 99"));
         assert!(!tail.contains("line 0\n"));
     }
