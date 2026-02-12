@@ -35,6 +35,9 @@ mod render;
 #[cfg(feature = "gpui-full")]
 mod settings_panels;
 
+#[cfg(feature = "gpui-full")]
+mod ui_primitives;
+
 #[cfg(test)]
 mod tests;
 

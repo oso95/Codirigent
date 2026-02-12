@@ -10,7 +10,49 @@ use std::io::{Read, Write};
 use std::path::Path;
 use std::thread;
 use tokio::sync::mpsc;
-use tracing::{debug, info, warn};
+use tracing::{debug, info};
+
+/// PowerShell initialization command for UTF-8 encoding and shell integration.
+///
+/// This command sets up UTF-8 encoding and implements OSC 133 shell integration markers:
+/// - D: Marks the finish of the previous command
+/// - A: Marks the start of the prompt
+/// - B: Marks the start of command input
+///
+/// Also implements OSC 7 for current working directory tracking.
+#[cfg(windows)]
+const POWERSHELL_INIT_COMMAND: &str = concat!(
+    "[Console]::OutputEncoding=[System.Text.Encoding]::UTF8; ",
+    "$OutputEncoding=[System.Text.Encoding]::UTF8; ",
+    "function prompt { ",
+    // All assignments first (before the return expression)
+    "$gle = $global:LASTEXITCODE; ",
+    "if ($null -eq $gle) { $gle = 0 }; ",
+    "$p = $executionContext.SessionState.Path.CurrentLocation.ProviderPath; ",
+    "$h = [System.Net.Dns]::GetHostName(); ",
+    "$u = $p.Replace('\\','/'); ",
+    // Single return expression: 133;D + 133;A + OSC7 + prompt + 133;B
+    "\"$([char]27)]133;D;$gle$([char]7)\" + ",
+    "\"$([char]27)]133;A$([char]7)\" + ",
+    "\"$([char]27)]7;file://$h/$u$([char]27)\\\" + ",
+    "\"PS $($executionContext.SessionState.Path.CurrentLocation)> \" + ",
+    "\"$([char]27)]133;B$([char]7)\" ",
+    "}",
+);
+
+/// Create PowerShell shell arguments with the initialization command.
+///
+/// Returns the standard arguments for launching PowerShell with shell integration.
+#[cfg(windows)]
+fn powershell_shell_args(init_cmd: &str) -> Vec<String> {
+    vec![
+        "-NoLogo".to_string(),
+        "-NoProfile".to_string(),
+        "-NoExit".to_string(),
+        "-Command".to_string(),
+        init_cmd.to_string(),
+    ]
+}
 
 /// PTY dimensions.
 ///
@@ -367,39 +409,11 @@ fn detect_shell_command() -> ShellCommand {
     {
         use std::process::Command;
 
-        // PowerShell init command: UTF-8 encoding + OSC 7 (CWD) + OSC 133 (shell integration).
-        // OSC 133 markers: D (finish previous cmd), A (prompt start), B (command input start).
-        // We skip 133;C (command executed) — inferred when output appears after B.
-        let ps_init = concat!(
-            "[Console]::OutputEncoding=[System.Text.Encoding]::UTF8; ",
-            "$OutputEncoding=[System.Text.Encoding]::UTF8; ",
-            "function prompt { ",
-            // All assignments first (before the return expression)
-            "$gle = $global:LASTEXITCODE; ",
-            "if ($null -eq $gle) { $gle = 0 }; ",
-            "$p = $executionContext.SessionState.Path.CurrentLocation.ProviderPath; ",
-            "$h = [System.Net.Dns]::GetHostName(); ",
-            "$u = $p.Replace('\\','/'); ",
-            // Single return expression: 133;D + 133;A + OSC7 + prompt + 133;B
-            "\"$([char]27)]133;D;$gle$([char]7)\" + ",
-            "\"$([char]27)]133;A$([char]7)\" + ",
-            "\"$([char]27)]7;file://$h/$u$([char]27)\\\" + ",
-            "\"PS $($executionContext.SessionState.Path.CurrentLocation)> \" + ",
-            "\"$([char]27)]133;B$([char]7)\" ",
-            "}",
-        );
-
         // Try PowerShell 7 first
         if Command::new("pwsh.exe").arg("--version").output().is_ok() {
             return ShellCommand {
                 program: "pwsh.exe".to_string(),
-                args: vec![
-                    "-NoLogo".to_string(),
-                    "-NoProfile".to_string(),
-                    "-NoExit".to_string(),
-                    "-Command".to_string(),
-                    ps_init.to_string(),
-                ],
+                args: powershell_shell_args(POWERSHELL_INIT_COMMAND),
             };
         }
         // Try Windows PowerShell
@@ -411,13 +425,7 @@ fn detect_shell_command() -> ShellCommand {
         {
             return ShellCommand {
                 program: "powershell.exe".to_string(),
-                args: vec![
-                    "-NoLogo".to_string(),
-                    "-NoProfile".to_string(),
-                    "-NoExit".to_string(),
-                    "-Command".to_string(),
-                    ps_init.to_string(),
-                ],
+                args: powershell_shell_args(POWERSHELL_INIT_COMMAND),
             };
         }
         // Fall back to cmd.exe
@@ -557,44 +565,14 @@ pub fn resolve_shell(shell_name: &str) -> ShellCommand {
 
     #[cfg(windows)]
     {
-        // PowerShell init command (reuse the same pattern as detect_shell_command)
-        let ps_init = concat!(
-            "[Console]::OutputEncoding=[System.Text.Encoding]::UTF8; ",
-            "$OutputEncoding=[System.Text.Encoding]::UTF8; ",
-            "function prompt { ",
-            "$gle = $global:LASTEXITCODE; ",
-            "if ($null -eq $gle) { $gle = 0 }; ",
-            "$p = $executionContext.SessionState.Path.CurrentLocation.ProviderPath; ",
-            "$h = [System.Net.Dns]::GetHostName(); ",
-            "$u = $p.Replace('\\','/'); ",
-            "\"$([char]27)]133;D;$gle$([char]7)\" + ",
-            "\"$([char]27)]133;A$([char]7)\" + ",
-            "\"$([char]27)]7;file://$h/$u$([char]27)\\\" + ",
-            "\"PS $($executionContext.SessionState.Path.CurrentLocation)> \" + ",
-            "\"$([char]27)]133;B$([char]7)\" ",
-            "}",
-        );
-
         match shell_name {
             "pwsh" => ShellCommand {
                 program: "pwsh.exe".to_string(),
-                args: vec![
-                    "-NoLogo".to_string(),
-                    "-NoProfile".to_string(),
-                    "-NoExit".to_string(),
-                    "-Command".to_string(),
-                    ps_init.to_string(),
-                ],
+                args: powershell_shell_args(POWERSHELL_INIT_COMMAND),
             },
             "powershell" => ShellCommand {
                 program: "powershell.exe".to_string(),
-                args: vec![
-                    "-NoLogo".to_string(),
-                    "-NoProfile".to_string(),
-                    "-NoExit".to_string(),
-                    "-Command".to_string(),
-                    ps_init.to_string(),
-                ],
+                args: powershell_shell_args(POWERSHELL_INIT_COMMAND),
             },
             "cmd" => {
                 let program = std::env::var("COMSPEC").unwrap_or_else(|_| "cmd.exe".to_string());

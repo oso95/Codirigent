@@ -79,6 +79,71 @@ impl WorkspaceView {
             .with_created_at(created_at.unwrap_or_else(|| "now".to_string()))
     }
 
+    /// Build a priority selection button for the task creation modal.
+    ///
+    /// Creates a rounded button with a colored dot indicator and label.
+    /// The button highlights when the given priority matches the modal's current priority.
+    ///
+    /// # Parameters
+    /// - `id`: Element ID for the button
+    /// - `priority`: The priority this button represents
+    /// - `label`: Display label (e.g., "High", "Medium", "Low")
+    /// - `color`: Base color for this priority level
+    /// - `current_priority`: The currently selected priority from the modal
+    /// - `fg`: Foreground color for active state
+    /// - `muted`: Muted color for inactive state
+    /// - `border_color`: Default border color
+    /// - `input_bg`: Default background color
+    /// - `cx`: GPUI context
+    fn build_priority_button(
+        &self,
+        id: impl Into<SharedString>,
+        priority: codirigent_core::TaskPriority,
+        label: impl Into<SharedString>,
+        color: gpui::Hsla,
+        current_priority: codirigent_core::TaskPriority,
+        fg: gpui::Hsla,
+        muted: gpui::Hsla,
+        border_color: gpui::Hsla,
+        input_bg: gpui::Hsla,
+        cx: &mut Context<Self>,
+    ) -> impl IntoElement {
+        let is_selected = current_priority == priority;
+        div()
+            .id(id.into())
+            .px_3()
+            .py(px(4.0))
+            .rounded_md()
+            .border_1()
+            .border_color(if is_selected { color } else { border_color })
+            .bg(if is_selected {
+                color.opacity(0.15)
+            } else {
+                input_bg
+            })
+            .cursor_pointer()
+            .hover(|style| style.bg(color.opacity(0.1)))
+            .on_click(cx.listener(move |this, _: &ClickEvent, _window, cx| {
+                if let Some(modal) = &mut this.task_creation_modal {
+                    modal.priority = priority;
+                }
+                cx.notify();
+            }))
+            .child(
+                div()
+                    .flex()
+                    .items_center()
+                    .gap(px(4.0))
+                    .child(div().w(px(6.0)).h(px(6.0)).rounded_full().bg(color))
+                    .child(
+                        div()
+                            .text_size(px(12.0))
+                            .text_color(if is_selected { fg } else { muted })
+                            .child(label.into()),
+                    ),
+            )
+    }
+
     /// Render a Lucide icon inside a fixed square to keep visual alignment stable with text.
     fn centered_lucide_icon(&self, icon: String, color: gpui::Hsla, size: f32) -> impl IntoElement {
         self.centered_lucide_icon_with_offset(icon, color, size, 1.0)
@@ -3346,81 +3411,42 @@ impl WorkspaceView {
                                         )
                                         .child(
                                             div().flex().items_center().gap_2()
-                                                .child({
-                                                    let is_high = modal.priority == codirigent_core::TaskPriority::High;
-                                                    let high_color = gpui::Hsla::from(gpui::Rgba { r: 1.0, g: 0.42, b: 0.42, a: 1.0 });
-                                                    div()
-                                                        .id("priority-high")
-                                                        .px_3()
-                                                        .py(px(4.0))
-                                                        .rounded_md()
-                                                        .border_1()
-                                                        .border_color(if is_high { high_color } else { border_color })
-                                                        .bg(if is_high { high_color.opacity(0.15) } else { input_bg })
-                                                        .cursor_pointer()
-                                                        .hover(|style| style.bg(high_color.opacity(0.1)))
-                                                        .on_click(cx.listener(|this, _: &ClickEvent, _window, cx| {
-                                                            if let Some(modal) = &mut this.task_creation_modal {
-                                                                modal.priority = codirigent_core::TaskPriority::High;
-                                                            }
-                                                            cx.notify();
-                                                        }))
-                                                        .child(
-                                                            div().flex().items_center().gap(px(4.0))
-                                                                .child(div().w(px(6.0)).h(px(6.0)).rounded_full().bg(high_color))
-                                                                .child(div().text_size(px(12.0)).text_color(if is_high { fg } else { muted }).child("High")),
-                                                        )
-                                                })
-                                                .child({
-                                                    let is_medium = modal.priority == codirigent_core::TaskPriority::Medium;
-                                                    let medium_color = gpui::Hsla::from(gpui::Rgba { r: 0.96, g: 0.62, b: 0.04, a: 1.0 });
-                                                    div()
-                                                        .id("priority-medium")
-                                                        .px_3()
-                                                        .py(px(4.0))
-                                                        .rounded_md()
-                                                        .border_1()
-                                                        .border_color(if is_medium { medium_color } else { border_color })
-                                                        .bg(if is_medium { medium_color.opacity(0.15) } else { input_bg })
-                                                        .cursor_pointer()
-                                                        .hover(|style| style.bg(medium_color.opacity(0.1)))
-                                                        .on_click(cx.listener(|this, _: &ClickEvent, _window, cx| {
-                                                            if let Some(modal) = &mut this.task_creation_modal {
-                                                                modal.priority = codirigent_core::TaskPriority::Medium;
-                                                            }
-                                                            cx.notify();
-                                                        }))
-                                                        .child(
-                                                            div().flex().items_center().gap(px(4.0))
-                                                                .child(div().w(px(6.0)).h(px(6.0)).rounded_full().bg(medium_color))
-                                                                .child(div().text_size(px(12.0)).text_color(if is_medium { fg } else { muted }).child("Medium")),
-                                                        )
-                                                })
-                                                .child({
-                                                    let is_low = modal.priority == codirigent_core::TaskPriority::Low;
-                                                    let low_color = gpui::Hsla::from(gpui::Rgba { r: 0.36, g: 0.55, b: 0.94, a: 1.0 });
-                                                    div()
-                                                        .id("priority-low")
-                                                        .px_3()
-                                                        .py(px(4.0))
-                                                        .rounded_md()
-                                                        .border_1()
-                                                        .border_color(if is_low { low_color } else { border_color })
-                                                        .bg(if is_low { low_color.opacity(0.15) } else { input_bg })
-                                                        .cursor_pointer()
-                                                        .hover(|style| style.bg(low_color.opacity(0.1)))
-                                                        .on_click(cx.listener(|this, _: &ClickEvent, _window, cx| {
-                                                            if let Some(modal) = &mut this.task_creation_modal {
-                                                                modal.priority = codirigent_core::TaskPriority::Low;
-                                                            }
-                                                            cx.notify();
-                                                        }))
-                                                        .child(
-                                                            div().flex().items_center().gap(px(4.0))
-                                                                .child(div().w(px(6.0)).h(px(6.0)).rounded_full().bg(low_color))
-                                                                .child(div().text_size(px(12.0)).text_color(if is_low { fg } else { muted }).child("Low")),
-                                                        )
-                                                }),
+                                                .child(self.build_priority_button(
+                                                    "priority-high",
+                                                    codirigent_core::TaskPriority::High,
+                                                    "High",
+                                                    gpui::Hsla::from(gpui::Rgba { r: 1.0, g: 0.42, b: 0.42, a: 1.0 }),
+                                                    modal.priority,
+                                                    fg,
+                                                    muted,
+                                                    border_color,
+                                                    input_bg,
+                                                    cx,
+                                                ))
+                                                .child(self.build_priority_button(
+                                                    "priority-medium",
+                                                    codirigent_core::TaskPriority::Medium,
+                                                    "Medium",
+                                                    gpui::Hsla::from(gpui::Rgba { r: 0.96, g: 0.62, b: 0.04, a: 1.0 }),
+                                                    modal.priority,
+                                                    fg,
+                                                    muted,
+                                                    border_color,
+                                                    input_bg,
+                                                    cx,
+                                                ))
+                                                .child(self.build_priority_button(
+                                                    "priority-low",
+                                                    codirigent_core::TaskPriority::Low,
+                                                    "Low",
+                                                    gpui::Hsla::from(gpui::Rgba { r: 0.36, g: 0.55, b: 0.94, a: 1.0 }),
+                                                    modal.priority,
+                                                    fg,
+                                                    muted,
+                                                    border_color,
+                                                    input_bg,
+                                                    cx,
+                                                )),
                                         ),
                                 )
                                 // Project dir label (read-only)

@@ -492,11 +492,8 @@ impl super::gpui::WorkspaceView {
                                 .saturating_sub(1)
                                 .max(10);
                             page.user_save_pending = true;
-                            let s = page.user_settings.appearance.font_size as f32;
-                            let t = this.workspace.theme_mut();
-                            t.font_size_base = s;
-                            t.font_size_small = (s - 2.0).max(8.0);
-                            t.font_size_large = s + 2.0;
+                            let size = page.user_settings.appearance.font_size as f32;
+                            this.apply_ui_font_size(size);
                         }
                         cx.notify();
                     },
@@ -505,11 +502,8 @@ impl super::gpui::WorkspaceView {
                             page.user_settings.appearance.font_size =
                                 (page.user_settings.appearance.font_size + 1).min(24);
                             page.user_save_pending = true;
-                            let s = page.user_settings.appearance.font_size as f32;
-                            let t = this.workspace.theme_mut();
-                            t.font_size_base = s;
-                            t.font_size_small = (s - 2.0).max(8.0);
-                            t.font_size_large = s + 2.0;
+                            let size = page.user_settings.appearance.font_size as f32;
+                            this.apply_ui_font_size(size);
                         }
                         cx.notify();
                     },
@@ -598,17 +592,8 @@ impl super::gpui::WorkspaceView {
                                 .saturating_sub(1)
                                 .max(8);
                             page.user_save_pending = true;
-                            let new_size = page.user_settings.terminal.font_size as f32;
-                            this.workspace.theme_mut().terminal_font_size = new_size;
-                            let (w, h) = crate::terminal_view::compute_cell_dimensions(
-                                window.text_system(),
-                                crate::terminal_view::default_terminal_font_family(),
-                                new_size,
-                            );
-                            for tv in this.terminals_mut().values_mut() {
-                                tv.set_font_size(new_size);
-                                tv.set_cell_dimensions(w, h);
-                            }
+                            let size = page.user_settings.terminal.font_size as f32;
+                            this.apply_terminal_font_size(window, size);
                         }
                         cx.notify();
                     },
@@ -617,17 +602,8 @@ impl super::gpui::WorkspaceView {
                             page.user_settings.terminal.font_size =
                                 (page.user_settings.terminal.font_size + 1).min(24);
                             page.user_save_pending = true;
-                            let new_size = page.user_settings.terminal.font_size as f32;
-                            this.workspace.theme_mut().terminal_font_size = new_size;
-                            let (w, h) = crate::terminal_view::compute_cell_dimensions(
-                                window.text_system(),
-                                crate::terminal_view::default_terminal_font_family(),
-                                new_size,
-                            );
-                            for tv in this.terminals_mut().values_mut() {
-                                tv.set_font_size(new_size);
-                                tv.set_cell_dimensions(w, h);
-                            }
+                            let size = page.user_settings.terminal.font_size as f32;
+                            this.apply_terminal_font_size(window, size);
                         }
                         cx.notify();
                     },

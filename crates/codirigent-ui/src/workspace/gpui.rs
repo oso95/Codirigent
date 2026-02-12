@@ -3341,6 +3341,83 @@ impl WorkspaceView {
         &self.workspace
     }
 
+    /// Execute a closure with a locked task manager reference.
+    ///
+    /// This helper method reduces boilerplate for the common pattern of locking
+    /// the task manager, executing a closure, and handling lock failure.
+    ///
+    /// # Returns
+    /// - `Some(R)` if the lock was acquired and the closure executed successfully
+    /// - `None` if the lock could not be acquired
+    ///
+    /// # Example
+    /// ```ignore
+    /// self.with_task_manager(|manager| {
+    ///     manager.create_task(task)
+    /// })
+    /// ```
+    pub(super) fn with_task_manager<R>(&self, f: impl FnOnce(&mut TaskManager) -> R) -> Option<R> {
+        self.task_manager.lock().ok().map(|mut manager| f(&mut manager))
+    }
+
+    /// Execute a closure with a locked session manager reference.
+    ///
+    /// This helper method reduces boilerplate for the common pattern of locking
+    /// the session manager and unwrapping (since session manager lock should never fail).
+    ///
+    /// # Returns
+    /// The result of executing the closure with the locked session manager.
+    ///
+    /// # Panics
+    /// Panics if the session manager lock is poisoned (should never happen in normal operation).
+    ///
+    /// # Example
+    /// ```ignore
+    /// self.with_session_manager(|manager| {
+    ///     manager.get_session(&session_id)
+    /// })
+    /// ```
+    pub(super) fn with_session_manager<R>(&self, f: impl FnOnce(&mut DefaultSessionManager) -> R) -> R {
+        let mut manager = self.session_manager.lock().unwrap();
+        f(&mut manager)
+    }
+
+    /// Apply UI font size update to theme.
+    ///
+    /// Updates the theme's base, small, and large font sizes based on the given size.
+    /// This helper eliminates duplication in the settings panel increment/decrement closures.
+    ///
+    /// # Parameters
+    /// - `size`: The new base font size (10-24)
+    pub(super) fn apply_ui_font_size(&mut self, size: f32) {
+        let theme = self.workspace.theme_mut();
+        theme.font_size_base = size;
+        theme.font_size_small = (size - 2.0).max(8.0);
+        theme.font_size_large = size + 2.0;
+    }
+
+    /// Apply terminal font size update to theme and all terminal views.
+    ///
+    /// Updates the theme's terminal font size and propagates the change to all
+    /// active terminal views, including cell dimension recalculation.
+    /// This helper eliminates duplication in the settings panel increment/decrement closures.
+    ///
+    /// # Parameters
+    /// - `window`: GPUI window for accessing text system
+    /// - `size`: The new terminal font size (8-24)
+    pub(super) fn apply_terminal_font_size(&mut self, window: &mut Window, size: f32) {
+        self.workspace.theme_mut().terminal_font_size = size;
+        let (w, h) = crate::terminal_view::compute_cell_dimensions(
+            window.text_system(),
+            crate::terminal_view::default_terminal_font_family(),
+            size,
+        );
+        for tv in self.terminals_mut().values_mut() {
+            tv.set_font_size(size);
+            tv.set_cell_dimensions(w, h);
+        }
+    }
+
     /// Get grid layout accounting for task board height.
     pub(super) fn grid_layout_with_task_board(&self) -> crate::layout::GridLayout {
         self.workspace.grid_layout()
