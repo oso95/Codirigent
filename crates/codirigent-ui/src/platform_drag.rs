@@ -19,9 +19,13 @@
 pub fn begin_title_bar_drag(hwnd: isize) {
     use std::ffi::c_int;
 
+    #[allow(clippy::upper_case_acronyms)]
     type HWND = isize;
+    #[allow(clippy::upper_case_acronyms)]
     type WPARAM = usize;
+    #[allow(clippy::upper_case_acronyms)]
     type LPARAM = isize;
+    #[allow(clippy::upper_case_acronyms)]
     type BOOL = c_int;
 
     const WM_NCLBUTTONDOWN: u32 = 0x00A1;

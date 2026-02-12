@@ -116,6 +116,7 @@ pub fn find_file_opened_by_pid(candidates: &[PathBuf], pid: u32) -> Option<PathB
 
 /// Build a lookup from canonical path → original candidate path.
 /// Entries that fail to canonicalize are skipped.
+#[allow(dead_code)]
 fn canonical_candidate_map(candidates: &[PathBuf]) -> Vec<(PathBuf, PathBuf)> {
     candidates
         .iter()
@@ -196,8 +197,8 @@ fn find_file_opened_by_pid_impl(candidates: &[PathBuf], pid: u32) -> Option<Path
                     Some(infos.as_mut_ptr()),
                     &mut reason,
                 );
-                for i in 0..info_count as usize {
-                    if infos[i].Process.dwProcessId == pid {
+                for info in infos.iter().take(info_count as usize) {
+                    if info.Process.dwProcessId == pid {
                         let _ = RmEndSession(session);
                         return Some(candidate.clone());
                     }

@@ -371,10 +371,7 @@ impl WorkspaceView {
 
     /// Save current session state to disk.
     pub(super) fn save_state_to_disk(&self) {
-        let sessions = {
-            let manager = self.session_manager.lock().unwrap();
-            manager.list_sessions()
-        };
+        let sessions = self.with_session_manager(|m| m.list_sessions());
         let state = codirigent_core::AppState {
             sessions,
             layout: codirigent_core::LayoutMode::Grid {
@@ -740,7 +737,10 @@ impl WorkspaceView {
     /// })
     /// ```
     pub(super) fn with_session_manager<R>(&self, f: impl FnOnce(&mut DefaultSessionManager) -> R) -> R {
-        let mut manager = self.session_manager.lock().unwrap();
+        let mut manager = self.session_manager.lock().unwrap_or_else(|poisoned| {
+            warn!("Session manager mutex was poisoned, recovering");
+            poisoned.into_inner()
+        });
         f(&mut manager)
     }
 
@@ -830,14 +830,14 @@ impl WorkspaceView {
                 let cols = terminal_view.terminal().cols();
                 let last = self.cache.pty_sizes.get(&info.session_id);
                 if last != Some(&(rows, cols)) {
-                    let manager = self.session_manager.lock().unwrap();
-                    if let Err(e) = manager.resize(info.session_id, rows, cols) {
-                        warn!(
-                            "Failed to resize PTY for session {}: {}",
-                            info.session_id, e
-                        );
-                    }
-                    drop(manager);
+                    self.with_session_manager(|manager| {
+                        if let Err(e) = manager.resize(info.session_id, rows, cols) {
+                            warn!(
+                                "Failed to resize PTY for session {}: {}",
+                                info.session_id, e
+                            );
+                        }
+                    });
                     self.cache.pty_sizes.insert(info.session_id, (rows, cols));
                 }
             }
@@ -913,7 +913,10 @@ impl WorkspaceView {
                     return;
                 }
                 "1" | "2" | "3" | "4" | "5" | "6" | "7" | "8" | "9" => {
-                    let num: usize = key.parse::<usize>().unwrap();
+                    let num: usize = match key.parse::<usize>() {
+                        Ok(n) => n,
+                        Err(_) => return, // unreachable given match arm, but safe
+                    };
                     self.focus_session_number(num, cx);
                     return;
                 }
@@ -953,10 +956,11 @@ impl WorkspaceView {
             }
 
             // Send to PTY
-            let manager = self.session_manager.lock().unwrap();
-            if let Err(e) = manager.send_input(session_id, &bytes) {
-                warn!("Failed to send input to session {}: {}", session_id, e);
-            }
+            self.with_session_manager(|manager| {
+                if let Err(e) = manager.send_input(session_id, &bytes) {
+                    warn!("Failed to send input to session {}: {}", session_id, e);
+                }
+            });
         }
     }
 
