@@ -2041,6 +2041,11 @@ impl WorkspaceView {
             div().w(px(14.0)).h(px(14.0)).flex_shrink_0()
         };
 
+        // Multiple closures need owned path copies since:
+        // 1. Rust closures consume captured variables (move)
+        // 2. GPUI event handlers require 'static lifetime
+        // 3. Each handler needs independent ownership
+        // Alternative: Use Arc<PathBuf> everywhere (overkill for this use case)
         let path_for_click = path.clone();
         let path_for_dbl = path.clone();
         let path_for_ctx = path.clone();
