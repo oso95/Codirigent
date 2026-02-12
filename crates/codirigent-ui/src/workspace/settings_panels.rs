@@ -11,8 +11,7 @@ use crate::settings::controls::{setting_row, setting_toggle, settings_section_he
 use crate::settings::SettingsCategory;
 use crate::terminal_view::CursorShape;
 
-/// Height of the dropdown trigger button in pixels.
-const DROPDOWN_TRIGGER_HEIGHT: f32 = 28.0;
+use super::types::DROPDOWN_TRIGGER_HEIGHT;
 
 impl super::gpui::WorkspaceView {
     /// Render the full settings overlay (sidebar + content area).

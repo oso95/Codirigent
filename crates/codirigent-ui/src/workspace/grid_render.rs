@@ -13,6 +13,7 @@ use crate::terminal_header::TerminalHeaderRenderHints;
 use crate::terminal_view::CursorShape;
 use crate::theme::CodirigentTheme;
 use crate::workspace::gpui::WorkspaceView;
+use crate::workspace::types::HEADER_HEIGHT;
 use codirigent_core::{LayoutNode, Session, SessionId, SlotId, SplitDirection};
 use gpui::{
     div, prelude::FluentBuilder, px, relative, ClickEvent, Context, FontWeight, Image,
@@ -441,7 +442,7 @@ impl WorkspaceView {
         cell_height: Option<f32>,
         cx: &mut Context<Self>,
     ) -> gpui::Stateful<gpui::Div> {
-        const HEADER_HEIGHT: f32 = 32.0;
+        // Uses HEADER_HEIGHT from types.rs
         let fg: gpui::Hsla = theme.foreground.into();
 
         let header_border = if hints.is_focused {
@@ -674,8 +675,8 @@ impl WorkspaceView {
                             let cell_pos: Option<(usize, usize)> = tv.pixel_to_cell(rel_x, rel_y);
                             if let Some((row, col)) = cell_pos {
                                 tv.start_selection(row, col);
-                                this.is_selecting = true;
-                                this.selecting_session_id = Some(session_id);
+                                this.selection.is_selecting = true;
+                                this.selection.selecting_session_id = Some(session_id);
                                 cx.notify();
                             }
                         }
@@ -684,10 +685,10 @@ impl WorkspaceView {
                 // Mouse move: update selection during drag
                 .on_mouse_move(
                     cx.listener(move |this, event: &MouseMoveEvent, _window, cx| {
-                        if !this.is_selecting {
+                        if !this.selection.is_selecting {
                             return;
                         }
-                        if this.selecting_session_id != Some(session_id) {
+                        if this.selection.selecting_session_id != Some(session_id) {
                             return;
                         }
 
@@ -717,12 +718,12 @@ impl WorkspaceView {
                 .on_mouse_up(
                     MouseButton::Left,
                     cx.listener(move |this, _event: &MouseUpEvent, _window, cx| {
-                        if this.is_selecting && this.selecting_session_id == Some(session_id) {
+                        if this.selection.is_selecting && this.selection.selecting_session_id == Some(session_id) {
                             if let Some(tv) = this.terminals_mut().get_mut(&session_id) {
                                 tv.end_selection();
                             }
-                            this.is_selecting = false;
-                            this.selecting_session_id = None;
+                            this.selection.is_selecting = false;
+                            this.selection.selecting_session_id = None;
                             cx.notify();
                         }
                     }),

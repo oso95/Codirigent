@@ -21,7 +21,10 @@
 
 use super::core::Workspace;
 use super::editor_detection::detect_monospace_fonts;
-use super::types::{FileTreeContextMenu, SessionActionModal, TaskCreationModal};
+use super::types::{
+    CacheState, CliReaders, ModalState, PollingState, SelectionState, CELL_BORDER_WIDTH,
+    FONT_SIZE_BASE_DEFAULT, HEADER_HEIGHT, REM_BASE, TERMINAL_CONTENT_PADDING,
+};
 use crate::app::{Copy, Paste};
 // Imports from main branch (terminal integration)
 use crate::input::{key_to_bytes, TerminalKeystroke, TerminalModifiers};
@@ -45,10 +48,7 @@ use codirigent_core::{
 };
 use codirigent_detector::InputDetector;
 use codirigent_filetree::FileTree;
-use codirigent_session::claude_session_reader::ClaudeSessionReader;
 use codirigent_session::clipboard_service::DefaultClipboardService;
-use codirigent_session::codex_session_reader::CodexSessionReader;
-use codirigent_session::gemini_session_reader::GeminiSessionReader;
 use codirigent_session::DefaultSessionManager;
 use gpui::{
     div, px, App, AppContext, ClickEvent, Context, Entity, FocusHandle, Focusable,
@@ -92,20 +92,12 @@ pub struct WorkspaceView {
     pub(super) icon_rail: crate::icon_rail::IconRail,
     /// Expandable drawer panel (next to icon rail).
     pub(super) drawer: crate::drawer::Drawer,
-    /// Currently selected session ID (for context-follows-selection).
-    pub(super) selected_session_id: Option<SessionId>,
     /// Task board panel component state.
     pub(super) task_board: TaskBoardPanel,
     /// Empty session cells pool.
     pub(super) empty_cells: EmptySessionPool,
     /// Terminal headers by session ID.
     pub(super) terminal_headers: Vec<(SessionId, TerminalHeader)>,
-    /// Session menu state: which session's menu is open (if any).
-    pub(super) session_menu_open: Option<SessionId>,
-    /// Session action modal state (rename/group).
-    pub(super) session_action_modal: Option<SessionActionModal>,
-    /// Task creation modal state.
-    pub(super) task_creation_modal: Option<TaskCreationModal>,
     /// File tree panel for sidebar.
     pub(super) file_tree: FileTreePanel,
     /// File tree model for filesystem-backed rendering.
@@ -116,79 +108,39 @@ pub struct WorkspaceView {
     pub(super) worktree_panel: WorktreePanel,
     /// Worktree manager for git worktree operations.
     pub(super) worktree_manager: Option<Arc<Mutex<codirigent_session::WorktreeManager>>>,
-    /// Click deduplication: track last click position and time to prevent double-creation.
-    last_click_position: Option<(GridPosition, Instant)>,
     /// Current git branch name (if in a git repository).
     pub(super) _current_branch: Option<String>,
-    /// Last time terminals were resized to grid (for throttling during drag).
-    last_resize_time: Instant,
-    /// Whether a deferred resize is pending.
-    pending_resize: bool,
-    /// Whether the last poll received output (for adaptive polling).
-    pub(super) last_poll_had_output: bool,
-    /// Count of consecutive polls with no output (for adaptive polling).
-    pub(super) idle_poll_count: u32,
-    /// Last PTY-resized dimensions per session, used to skip redundant resize calls.
-    pty_sizes: HashMap<SessionId, (u16, u16)>,
-    /// Tracks which session groups are expanded in the drawer's Sessions panel.
-    pub(super) drawer_group_expanded: HashMap<String, bool>,
-    /// Last time git status was refreshed for sessions.
-    pub(super) last_git_refresh: Instant,
     /// Smart clipboard provider for paste/copy operations.
     pub(super) smart_clipboard: Box<dyn SmartClipboardProvider>,
-    /// File tree context menu state (path + screen position).
-    pub(super) file_tree_context_menu: Option<FileTreeContextMenu>,
     /// Clipboard service for image save/format operations.
     pub(super) clipboard_service: DefaultClipboardService,
-    /// Sessions that have received at least one manual task assignment.
-    /// Auto-assign is blocked until the user manually assigns a task once,
-    /// since a freshly-started CLI may need auth, config, or other user input first.
-    pub(super) manually_assigned_sessions: std::collections::HashSet<SessionId>,
     /// Clipboard preview tooltip component.
     pub(super) clipboard_preview: ClipboardPreview,
     /// When the clipboard preview was shown (for auto-dismiss after timeout).
     pub(super) clipboard_preview_shown_at: Option<std::time::Instant>,
-    /// Whether the user is actively dragging a text selection in a terminal.
-    pub(super) is_selecting: bool,
-    /// Session ID that is currently being selected in (for mouse move events).
-    pub(super) selecting_session_id: Option<SessionId>,
     /// Settings page state (persists between open/close).
     pub(super) settings_page: Option<SettingsPage>,
     /// Whether the settings overlay is visible.
     pub(super) settings_open: bool,
-    /// Cached monospace fonts detected from the system (populated lazily).
-    pub(super) cached_monospace_fonts: Option<Vec<String>>,
     /// Config service for loading/saving settings to disk.
     pub(super) config_service: Option<DefaultConfigService>,
     /// Storage service for persisting sessions across restarts.
     pub(super) storage: Arc<dyn codirigent_core::StorageService>,
-    /// Claude Code JSONL session reader for high-fidelity status detection.
-    pub(super) claude_reader: Option<ClaudeSessionReader>,
-    /// Codex CLI JSONL session reader for high-fidelity status detection.
-    pub(super) codex_reader: Option<CodexSessionReader>,
-    /// Gemini CLI JSON session reader for high-fidelity status detection.
-    pub(super) gemini_reader: Option<GeminiSessionReader>,
-    /// Process-tree CLI detector for gating JSONL auto-probe on GenericShell sessions.
-    pub(super) cli_detector: codirigent_session::DefaultCliDetector,
-    /// Last time JSONL status was checked (throttled to ~1/second).
-    pub(super) last_jsonl_check: Instant,
     /// Compaction service for auto-compacting before verification.
     pub(super) compaction: Arc<Mutex<CompactionService>>,
-    /// Tracks when compaction started per session (for timeout).
-    pub(super) compaction_start_times: HashMap<SessionId, Instant>,
-    /// Cached JSONL-derived session status, persisted between poll cycles so
-    /// the high-frequency InputDetector does not overwrite it.
-    pub(super) cached_cli_status: HashMap<SessionId, (SessionStatus, Option<String>)>,
-    /// Pending layout profile deletion: (tab_index, profile_name) awaiting confirmation.
-    pub(super) pending_profile_deletion: Option<(usize, String)>,
-    /// Sessions that need a deferred Enter keypress sent to their PTY.
-    /// After sending prompt/command text, we delay the Enter so the CLI
-    /// receives it as a separate stdin event.
-    /// Value: `(timestamp, enter_sent)` — when `enter_sent` is false we wait
-    /// 100 ms then send `\r`; once sent we flip to true and keep the entry
-    /// for a 500 ms grace period so the CLI can process the command before
-    /// auto-assign runs.
-    pub(super) pending_enters: HashMap<SessionId, (Instant, bool)>,
+
+    // --- Grouped sub-state ---
+
+    /// Modal dialog state (session action, task creation, profile deletion).
+    pub(super) modals: ModalState,
+    /// Selection and interaction state (session selection, menus, click tracking).
+    pub(super) selection: SelectionState,
+    /// Adaptive polling and timing state (output polling, resize throttle, git refresh).
+    pub(super) polling: PollingState,
+    /// CLI session readers and process-tree detector.
+    pub(super) cli_readers: CliReaders,
+    /// Cached detection results and memoized state.
+    pub(super) cache: CacheState,
 }
 
 /// Returns `true` if the editor command refers to a terminal-based editor
@@ -213,75 +165,10 @@ impl WorkspaceView {
         let mut workspace = Workspace::new();
         workspace.set_theme(theme);
 
-        // Start output polling background task with adaptive timing.
-        // Uses 4ms when output is being received (low latency for typing),
-        // increases to 16ms after idle period (saves CPU when nothing happening).
-        cx.spawn(async move |this: gpui::WeakEntity<Self>, cx| {
-            let mut poll_interval_ms: u64 = 4;
-            loop {
-                cx.background_executor()
-                    .timer(Duration::from_millis(poll_interval_ms))
-                    .await;
-                let result = this.update(cx, |this, cx| {
-                    this.poll_output(cx);
-                    // Adaptive polling: fast when active, slow when idle
-                    if this.last_poll_had_output {
-                        this.idle_poll_count = 0;
-                        poll_interval_ms = 4; // Fast polling during activity
-                    } else {
-                        this.idle_poll_count = this.idle_poll_count.saturating_add(1);
-                        if this.idle_poll_count > 12 {
-                            // ~50ms of no output, slow down
-                            poll_interval_ms = 16;
-                        }
-                    }
-                });
-                if result.is_err() {
-                    // View was dropped, stop the task
-                    break;
-                }
-            }
-        })
-        .detach();
+        Self::start_output_polling(cx);
 
-        // Initialize task manager with file storage
-        // Use platform-appropriate data directory (e.g. %APPDATA%/Codirigent on Windows)
-        // instead of current_dir, which may be read-only (e.g. C:\Program Files)
-        let data_dir = dirs::data_dir()
-            .map(|d| d.join("Codirigent"))
-            .unwrap_or_else(|| std::env::temp_dir().join("codirigent-fallback"));
-        let storage = Arc::new(FileStorageService::new(&data_dir).unwrap_or_else(|e| {
-            warn!(
-                "Failed to create file storage at {}: {}, using temp fallback",
-                data_dir.display(),
-                e
-            );
-            let temp_dir = std::env::temp_dir().join("codirigent-fallback");
-            FileStorageService::new(&temp_dir).expect("Failed to create fallback storage")
-        })) as Arc<dyn codirigent_core::StorageService>;
-
-        let task_manager = Arc::new(Mutex::new(TaskManager::new(
-            TaskManagerConfig::default(),
-            storage.clone(),
-            event_bus.clone() as Arc<dyn codirigent_core::EventBus>,
-        )));
-
-        // Initialize file tree panel with current working directory
-        let mut file_tree = FileTreePanel::new();
-        let mut file_tree_model = None;
-        let mut project_root = None;
-        if let Ok(cwd) = std::env::current_dir() {
-            file_tree.set_root(cwd.clone());
-            project_root = Some(cwd.clone());
-            match FileTree::new(cwd) {
-                Ok(tree) => {
-                    file_tree_model = Some(tree);
-                }
-                Err(e) => {
-                    warn!("Failed to initialize file tree: {}", e);
-                }
-            }
-        }
+        let (storage, task_manager) = Self::init_task_manager(event_bus.clone());
+        let (file_tree, file_tree_model, project_root) = Self::init_file_tree();
 
         // Capture theme before workspace is moved
         let theme_for_clipboard = workspace.theme().clone();
@@ -300,57 +187,36 @@ impl WorkspaceView {
             top_bar: crate::top_bar::TopBar::new(),
             icon_rail: crate::icon_rail::IconRail::new(),
             drawer: crate::drawer::Drawer::new(),
-            selected_session_id: None,
             task_board: TaskBoardPanel::new(),
             empty_cells: EmptySessionPool::new(),
             terminal_headers: Vec::new(),
-            session_menu_open: None,
-            session_action_modal: None,
-            task_creation_modal: None,
             file_tree,
             file_tree_model,
             project_root: project_root.clone(),
             worktree_panel: WorktreePanel::new(),
             worktree_manager: Self::init_worktree_manager(),
-            last_click_position: None,
             _current_branch: Self::detect_git_branch(),
-            last_resize_time: Instant::now() - Duration::from_millis(200),
-            pending_resize: false,
-            last_poll_had_output: false,
-            idle_poll_count: 0,
-            pty_sizes: HashMap::new(),
-            drawer_group_expanded: HashMap::new(),
-            last_git_refresh: Instant::now(),
             smart_clipboard: crate::platform::create_clipboard(),
-            file_tree_context_menu: None,
             clipboard_service: DefaultClipboardService::new(
                 project_root
                     .as_deref()
                     .unwrap_or_else(|| std::path::Path::new("."))
                     .join(".codirigent"),
             ),
-            manually_assigned_sessions: std::collections::HashSet::new(),
             clipboard_preview: ClipboardPreview::new(theme_for_clipboard),
             clipboard_preview_shown_at: None,
-            is_selecting: false,
-            selecting_session_id: None,
             settings_page: None,
             settings_open: false,
-            cached_monospace_fonts: None,
             config_service: DefaultConfigService::new().ok(),
             storage: storage.clone(),
-            claude_reader: ClaudeSessionReader::new(),
-            codex_reader: CodexSessionReader::new(),
-            gemini_reader: GeminiSessionReader::new(),
-            cli_detector: codirigent_session::DefaultCliDetector::new(),
-            last_jsonl_check: Instant::now(),
             compaction: Arc::new(Mutex::new(CompactionService::new(
                 CompactionConfig::default(),
             ))),
-            compaction_start_times: HashMap::new(),
-            cached_cli_status: HashMap::new(),
-            pending_profile_deletion: None,
-            pending_enters: HashMap::new(),
+            modals: ModalState::new(),
+            selection: SelectionState::new(),
+            polling: PollingState::new(),
+            cli_readers: CliReaders::new(),
+            cache: CacheState::new(),
         };
 
         // Restore sessions from previous run
@@ -368,6 +234,84 @@ impl WorkspaceView {
         }
 
         view
+    }
+
+    /// Start adaptive output polling background task.
+    ///
+    /// Uses 4ms interval when output is being received (low latency for typing),
+    /// increases to 16ms after 12 idle polls (~50ms of no output).
+    fn start_output_polling(cx: &mut Context<Self>) {
+        cx.spawn(async move |this: gpui::WeakEntity<Self>, cx| {
+            let mut poll_interval_ms: u64 = 4;
+            loop {
+                cx.background_executor()
+                    .timer(Duration::from_millis(poll_interval_ms))
+                    .await;
+                let result = this.update(cx, |this, cx| {
+                    this.poll_output(cx);
+                    if this.polling.last_poll_had_output {
+                        this.polling.idle_poll_count = 0;
+                        poll_interval_ms = 4;
+                    } else {
+                        this.polling.idle_poll_count =
+                            this.polling.idle_poll_count.saturating_add(1);
+                        if this.polling.idle_poll_count > 12 {
+                            poll_interval_ms = 16;
+                        }
+                    }
+                });
+                if result.is_err() {
+                    break;
+                }
+            }
+        })
+        .detach();
+    }
+
+    /// Initialize task manager with file storage in platform-appropriate data directory.
+    fn init_task_manager(
+        event_bus: Arc<DefaultEventBus>,
+    ) -> (Arc<dyn codirigent_core::StorageService>, Arc<Mutex<TaskManager>>) {
+        let data_dir = dirs::data_dir()
+            .map(|d| d.join("Codirigent"))
+            .unwrap_or_else(|| std::env::temp_dir().join("codirigent-fallback"));
+        let storage = Arc::new(FileStorageService::new(&data_dir).unwrap_or_else(|e| {
+            warn!(
+                "Failed to create file storage at {}: {}, using temp fallback",
+                data_dir.display(),
+                e
+            );
+            let temp_dir = std::env::temp_dir().join("codirigent-fallback");
+            FileStorageService::new(&temp_dir).expect("Failed to create fallback storage")
+        })) as Arc<dyn codirigent_core::StorageService>;
+
+        let task_manager = Arc::new(Mutex::new(TaskManager::new(
+            TaskManagerConfig::default(),
+            storage.clone(),
+            event_bus as Arc<dyn codirigent_core::EventBus>,
+        )));
+
+        (storage, task_manager)
+    }
+
+    /// Initialize file tree panel from the current working directory.
+    fn init_file_tree() -> (FileTreePanel, Option<FileTree>, Option<PathBuf>) {
+        let mut file_tree = FileTreePanel::new();
+        let mut file_tree_model = None;
+        let mut project_root = None;
+        if let Ok(cwd) = std::env::current_dir() {
+            file_tree.set_root(cwd.clone());
+            project_root = Some(cwd.clone());
+            match FileTree::new(cwd) {
+                Ok(tree) => {
+                    file_tree_model = Some(tree);
+                }
+                Err(e) => {
+                    warn!("Failed to initialize file tree: {}", e);
+                }
+            }
+        }
+        (file_tree, file_tree_model, project_root)
     }
 
     /// Initialize worktree manager if in a git repository.
@@ -410,7 +354,7 @@ impl WorkspaceView {
         let now = Instant::now();
 
         // Check if this is a duplicate click
-        if let Some((last_pos, last_time)) = self.last_click_position {
+        if let Some((last_pos, last_time)) = self.selection.last_click_position {
             if last_pos == position && now.duration_since(last_time) < Duration::from_millis(100) {
                 info!(?position, "Ignoring duplicate click within 100ms");
                 return false;
@@ -418,7 +362,7 @@ impl WorkspaceView {
         }
 
         // Update last click position
-        self.last_click_position = Some((position, now));
+        self.selection.last_click_position = Some((position, now));
         true
     }
 
@@ -686,7 +630,7 @@ impl WorkspaceView {
 
     /// Select a session (updates drawer context and grid focus).
     pub(super) fn select_session(&mut self, session_id: SessionId) {
-        self.selected_session_id = Some(session_id);
+        self.selection.selected_session_id = Some(session_id);
         self.drawer.set_selected_session(Some(session_id));
         self.workspace.focus_session(session_id);
         self.sync_file_tree_to_focused_session();
@@ -860,11 +804,7 @@ impl WorkspaceView {
     /// This should be called when the window is resized or the layout changes,
     /// to ensure terminals have the correct character dimensions for their pixel bounds.
     fn resize_terminals_to_grid(&mut self) {
-        const HEADER_HEIGHT: f32 = 32.0;
-        // Must match the padding used in render_terminal_content's canvas prepaint
-        const TERMINAL_CONTENT_PADDING: f32 = 4.0;
-        // Session cell has .border_1() which consumes 1px on each side
-        const CELL_BORDER_WIDTH: f32 = 2.0;
+        // Layout constants from types.rs: HEADER_HEIGHT, TERMINAL_CONTENT_PADDING, CELL_BORDER_WIDTH
         let cell_info = self.workspace.cell_info();
 
         for info in cell_info {
@@ -888,7 +828,7 @@ impl WorkspaceView {
                 // knows the correct terminal dimensions
                 let rows = terminal_view.terminal().rows();
                 let cols = terminal_view.terminal().cols();
-                let last = self.pty_sizes.get(&info.session_id);
+                let last = self.cache.pty_sizes.get(&info.session_id);
                 if last != Some(&(rows, cols)) {
                     let manager = self.session_manager.lock().unwrap();
                     if let Err(e) = manager.resize(info.session_id, rows, cols) {
@@ -898,7 +838,7 @@ impl WorkspaceView {
                         );
                     }
                     drop(manager);
-                    self.pty_sizes.insert(info.session_id, (rows, cols));
+                    self.cache.pty_sizes.insert(info.session_id, (rows, cols));
                 }
             }
         }
@@ -1020,6 +960,257 @@ impl WorkspaceView {
         }
     }
 
+    /// Render the main workspace content: title bar, top bar, sidebars, and grid.
+    ///
+    /// Returns early with a settings overlay if settings are open.
+    fn render_main_workspace(
+        &mut self,
+        mut container: gpui::Stateful<gpui::Div>,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+        grid_gap: f32,
+    ) -> gpui::Stateful<gpui::Div> {
+        container = container.child(self.render_title_bar(window, cx));
+
+        // Settings page overlay (replaces all content below title bar)
+        if self.settings_open && self.settings_page.is_some() {
+            let should_flush = self
+                .settings_page
+                .as_ref()
+                .map(|p| p.user_save_pending || p.project_save_pending)
+                .unwrap_or(false);
+            if should_flush {
+                self.flush_settings();
+            }
+            container = container.child(self.render_settings_overlay(cx));
+            return container;
+        }
+
+        container = container.child(self.render_top_bar(cx));
+
+        // Main content area (flex-row: icon rail + drawer + grid + right task board)
+        let mut main_content = div()
+            .id("main-content")
+            .flex_1()
+            .flex()
+            .flex_row()
+            .overflow_hidden()
+            .min_h(px(0.0));
+
+        main_content = main_content.child(self.render_icon_rail(cx));
+
+        if self.drawer.is_open() {
+            main_content = main_content.child(self.render_drawer(cx));
+        }
+
+        let grid_area = div()
+            .id("grid-area")
+            .flex_1()
+            .flex()
+            .flex_col()
+            .overflow_hidden()
+            .min_h(px(0.0))
+            .child(
+                div()
+                    .id("session-grid-container")
+                    .flex_1()
+                    .flex()
+                    .flex_col()
+                    .p(px(grid_gap))
+                    .overflow_hidden()
+                    .min_h(px(0.0))
+                    .child(self.render_grid_with_headers(cx)),
+            );
+
+        main_content = main_content.child(grid_area);
+
+        if self.top_bar.is_right_panel_open() {
+            main_content = main_content.child(self.render_right_task_board(cx));
+        }
+
+        container.child(main_content)
+    }
+
+    /// Render active modal dialogs (custom layout, session menu, action modal, task creation, context menu).
+    fn render_active_modals(
+        &mut self,
+        mut container: gpui::Stateful<gpui::Div>,
+        cx: &mut Context<Self>,
+    ) -> gpui::Stateful<gpui::Div> {
+        if let Some(modal) = self.render_custom_layout_modal(cx) {
+            container = container.child(modal);
+        }
+        if let Some(menu) = self.render_session_menu(cx) {
+            container = container.child(menu);
+        }
+        if let Some(modal) = self.render_session_action_modal(cx) {
+            container = container.child(modal);
+        }
+        if let Some(modal) = self.render_task_creation_modal(cx) {
+            container = container.child(modal);
+        }
+        if let Some(menu) = self.render_file_tree_context_menu(cx) {
+            container = container.child(menu);
+        }
+        container
+    }
+
+    /// Render floating overlays (clipboard preview tooltip, profile deletion dialog).
+    fn render_overlays(
+        &mut self,
+        mut container: gpui::Stateful<gpui::Div>,
+        cx: &mut Context<Self>,
+    ) -> gpui::Stateful<gpui::Div> {
+        // Clipboard preview tooltip
+        if self.clipboard_preview.is_visible() {
+            if let Some(preview) = self.clipboard_preview.preview() {
+                let theme = self.workspace.theme();
+                let panel_bg: gpui::Hsla = theme.panel_background.into();
+                let border_color: gpui::Hsla = theme.border.into();
+                let fg: gpui::Hsla = theme.foreground.into();
+                let muted: gpui::Hsla = theme.muted.into();
+
+                let dims_text = ClipboardPreview::format_dimensions(
+                    preview.original_width,
+                    preview.original_height,
+                );
+                let size_text = preview.human_readable_size();
+                let path_text = preview.image_path.display().to_string();
+
+                container = container.child(
+                    div()
+                        .absolute()
+                        .bottom(px(16.0))
+                        .right(px(16.0))
+                        .bg(panel_bg)
+                        .border_1()
+                        .border_color(border_color)
+                        .rounded_md()
+                        .p_2()
+                        .flex()
+                        .flex_col()
+                        .gap_1()
+                        .max_w(px(200.0))
+                        .child(div().text_xs().text_color(fg).child("Image in clipboard"))
+                        .child(
+                            div()
+                                .text_xs()
+                                .text_color(muted)
+                                .child(format!("{} · {}", dims_text, size_text)),
+                        )
+                        .child(
+                            div()
+                                .text_xs()
+                                .text_color(muted)
+                                .truncate()
+                                .child(path_text),
+                        )
+                        .child(div().text_xs().text_color(muted).child("Ctrl+V to paste")),
+                );
+            }
+        }
+
+        // Profile deletion confirmation dialog
+        if let Some((tab_idx, profile_name)) = &self.modals.pending_profile_deletion {
+            let theme = self.workspace.theme();
+            let panel_bg: gpui::Hsla = theme.panel_background.into();
+            let border_color: gpui::Hsla = theme.border.into();
+            let fg: gpui::Hsla = theme.foreground.into();
+            let muted: gpui::Hsla = theme.muted.into();
+            let idx_for_confirm = *tab_idx;
+
+            container = container.child(
+                div()
+                    .absolute()
+                    .inset_0()
+                    .bg(gpui::Hsla { h: 0.0, s: 0.0, l: 0.0, a: 0.5 })
+                    .flex()
+                    .items_center()
+                    .justify_center()
+                    .child(
+                        div()
+                            .bg(panel_bg)
+                            .border_1()
+                            .border_color(border_color)
+                            .rounded_lg()
+                            .p_4()
+                            .flex()
+                            .flex_col()
+                            .gap_3()
+                            .min_w(px(320.0))
+                            .max_w(px(400.0))
+                            .child(
+                                div()
+                                    .text_base()
+                                    .font_weight(gpui::FontWeight::SEMIBOLD)
+                                    .text_color(fg)
+                                    .child("Delete Layout Profile?"),
+                            )
+                            .child(
+                                div().text_sm().text_color(muted).child(format!(
+                                    "Are you sure you want to delete the layout profile '{}'? This action cannot be undone.",
+                                    profile_name
+                                )),
+                            )
+                            .child(
+                                div()
+                                    .flex()
+                                    .gap_2()
+                                    .justify_end()
+                                    .child(
+                                        div()
+                                            .id("delete-profile-cancel")
+                                            .px_4()
+                                            .py_2()
+                                            .rounded_md()
+                                            .bg(gpui::Hsla::transparent_black())
+                                            .border_1()
+                                            .border_color(border_color)
+                                            .text_sm()
+                                            .text_color(fg)
+                                            .cursor_pointer()
+                                            .hover(|style| {
+                                                style.bg(gpui::Hsla { h: 0.0, s: 0.0, l: 1.0, a: 0.1 })
+                                            })
+                                            .on_click(cx.listener(
+                                                move |this, _: &ClickEvent, _window, cx| {
+                                                    this.modals.pending_profile_deletion = None;
+                                                    cx.notify();
+                                                },
+                                            ))
+                                            .child("Cancel"),
+                                    )
+                                    .child(
+                                        div()
+                                            .id("delete-profile-confirm")
+                                            .px_4()
+                                            .py_2()
+                                            .rounded_md()
+                                            .bg(gpui::Hsla { h: 0.0, s: 0.8, l: 0.5, a: 1.0 })
+                                            .text_sm()
+                                            .text_color(gpui::Hsla { h: 0.0, s: 0.0, l: 1.0, a: 1.0 })
+                                            .cursor_pointer()
+                                            .hover(|style| {
+                                                style.bg(gpui::Hsla { h: 0.0, s: 0.8, l: 0.4, a: 1.0 })
+                                            })
+                                            .on_click(cx.listener(
+                                                move |this, _: &ClickEvent, _window, cx| {
+                                                    this.modals.pending_profile_deletion = None;
+                                                    this.top_bar.remove_tab(idx_for_confirm);
+                                                    this.save_layout_profiles_to_settings();
+                                                    cx.notify();
+                                                },
+                                            ))
+                                            .child("Delete"),
+                                    ),
+                            ),
+                    ),
+            );
+        }
+
+        container
+    }
+
     fn handle_modal_key_down(&mut self, event: &KeyDownEvent, cx: &mut Context<Self>) -> bool {
         if self.handle_session_action_key_down(event, cx) {
             return true;
@@ -1048,13 +1239,11 @@ impl Render for WorkspaceView {
         crate::icons::ensure_font_loaded(window);
 
         // Lazily detect monospace fonts on first render (text system is available here)
-        if self.cached_monospace_fonts.is_none() {
-            self.cached_monospace_fonts = Some(detect_monospace_fonts(window.text_system()));
+        if self.cache.monospace_fonts.is_none() {
+            self.cache.monospace_fonts = Some(detect_monospace_fonts(window.text_system()));
         }
 
-        // Scale all rem-based text sizes (text_xs, text_sm, etc.) proportionally
-        // to font_size_base. Default rem is 16px when font_size_base is 13.
-        let rem = 16.0 * (self.workspace.theme().font_size_base / 13.0);
+        let rem = REM_BASE * (self.workspace.theme().font_size_base / FONT_SIZE_BASE_DEFAULT);
         window.set_rem_size(gpui::px(rem));
 
         // Process any pending UI events first
@@ -1108,20 +1297,20 @@ impl Render for WorkspaceView {
         // Resize terminals to fit the new grid cell bounds (throttled to ~10/sec
         // to avoid resize feedback loop during window drag/resize)
         let now = Instant::now();
-        if now.duration_since(self.last_resize_time) > Duration::from_millis(100) {
+        if now.duration_since(self.polling.last_resize_time) > Duration::from_millis(100) {
             self.resize_terminals_to_grid();
-            self.last_resize_time = now;
-            self.pending_resize = false;
-        } else if !self.pending_resize {
-            self.pending_resize = true;
+            self.polling.last_resize_time = now;
+            self.polling.pending_resize = false;
+        } else if !self.polling.pending_resize {
+            self.polling.pending_resize = true;
             cx.spawn(async move |this: gpui::WeakEntity<Self>, cx| {
                 cx.background_executor()
                     .timer(Duration::from_millis(100))
                     .await;
                 let _ = this.update(cx, |this, cx| {
                     this.resize_terminals_to_grid();
-                    this.last_resize_time = Instant::now();
-                    this.pending_resize = false;
+                    this.polling.last_resize_time = Instant::now();
+                    this.polling.pending_resize = false;
                     cx.notify();
                 });
             })
@@ -1168,247 +1357,10 @@ impl Render for WorkspaceView {
             .flex()
             .flex_col();
 
-        // 0. Title bar with window controls (32px)
-        container = container.child(self.render_title_bar(window, cx));
-
-        // Settings page overlay (replaces all content below title bar)
-        if self.settings_open && self.settings_page.is_some() {
-            // Auto-save pending settings changes
-            let should_flush = self
-                .settings_page
-                .as_ref()
-                .map(|p| p.user_save_pending || p.project_save_pending)
-                .unwrap_or(false);
-            if should_flush {
-                self.flush_settings();
-            }
-            container = container.child(self.render_settings_overlay(cx));
-            return container;
-        }
-
-        // 1. TopBar at top (48px)
-        container = container.child(self.render_top_bar(cx));
-
-        // 2. Main content area (flex-row: icon rail + drawer + grid + right task board)
-        let mut main_content = div()
-            .id("main-content")
-            .flex_1()
-            .flex()
-            .flex_row()
-            .overflow_hidden()
-            .min_h(px(0.0)); // Allow flex shrinking
-
-        // Icon rail (always visible, 56px)
-        main_content = main_content.child(self.render_icon_rail(cx));
-
-        // Drawer (if open, 288px)
-        if self.drawer.is_open() {
-            main_content = main_content.child(self.render_drawer(cx));
-        }
-
-        // Grid area (session grid, fills remaining space)
-        let grid_area = div()
-            .id("grid-area")
-            .flex_1()
-            .flex()
-            .flex_col()
-            .overflow_hidden() // Prevent overflow
-            .min_h(px(0.0)) // Allow flex shrinking
-            // Session grid (fills remaining space)
-            .child(
-                div()
-                    .id("session-grid-container")
-                    .flex_1()
-                    .flex()
-                    .flex_col()
-                    .p(px(grid_gap))
-                    .overflow_hidden() // Clip content
-                    .min_h(px(0.0)) // Allow shrinking
-                    .child(self.render_grid_with_headers(cx)),
-            );
-
-        main_content = main_content.child(grid_area);
-
-        // Right task board panel (if open, 288px)
-        if self.top_bar.is_right_panel_open() {
-            main_content = main_content.child(self.render_right_task_board(cx));
-        }
-
-        container = container.child(main_content);
-
-        // 5. Custom layout modal (if open)
-        if let Some(modal) = self.render_custom_layout_modal(cx) {
-            container = container.child(modal);
-        }
-
-        // 7. Session menu modal (if open)
-        if let Some(menu) = self.render_session_menu(cx) {
-            container = container.child(menu);
-        }
-
-        // 8. Session action modal (rename/group) (if open)
-        if let Some(modal) = self.render_session_action_modal(cx) {
-            container = container.child(modal);
-        }
-
-        // 8.5. Task creation modal (if open)
-        if let Some(modal) = self.render_task_creation_modal(cx) {
-            container = container.child(modal);
-        }
-
-        // 9. File tree context menu (if open)
-        if let Some(menu) = self.render_file_tree_context_menu(cx) {
-            container = container.child(menu);
-        }
-
-        // 11. Clipboard preview tooltip (floating overlay, bottom-right)
-        if self.clipboard_preview.is_visible() {
-            if let Some(preview) = self.clipboard_preview.preview() {
-                let theme = self.workspace.theme();
-                let panel_bg: gpui::Hsla = theme.panel_background.into();
-                let border_color: gpui::Hsla = theme.border.into();
-                let fg: gpui::Hsla = theme.foreground.into();
-                let muted: gpui::Hsla = theme.muted.into();
-
-                let dims_text = ClipboardPreview::format_dimensions(
-                    preview.original_width,
-                    preview.original_height,
-                );
-                let size_text = preview.human_readable_size();
-                let path_text = preview.image_path.display().to_string();
-
-                container = container.child(
-                    div()
-                        .absolute()
-                        .bottom(px(16.0))
-                        .right(px(16.0))
-                        .bg(panel_bg)
-                        .border_1()
-                        .border_color(border_color)
-                        .rounded_md()
-                        .p_2()
-                        .flex()
-                        .flex_col()
-                        .gap_1()
-                        .max_w(px(200.0))
-                        .child(div().text_xs().text_color(fg).child("Image in clipboard"))
-                        .child(
-                            div()
-                                .text_xs()
-                                .text_color(muted)
-                                .child(format!("{} · {}", dims_text, size_text)),
-                        )
-                        .child(
-                            div()
-                                .text_xs()
-                                .text_color(muted)
-                                .truncate()
-                                .child(path_text),
-                        )
-                        .child(div().text_xs().text_color(muted).child("Ctrl+V to paste")),
-                );
-            }
-        }
-
-        // Profile deletion confirmation dialog (if pending)
-        if let Some((tab_idx, profile_name)) = &self.pending_profile_deletion {
-            let theme = self.workspace.theme();
-            let panel_bg: gpui::Hsla = theme.panel_background.into();
-            let border_color: gpui::Hsla = theme.border.into();
-            let fg: gpui::Hsla = theme.foreground.into();
-            let muted: gpui::Hsla = theme.muted.into();
-
-            let idx_for_confirm = *tab_idx;
-
-            container = container.child(
-                // Semi-transparent overlay
-                div()
-                    .absolute()
-                    .inset_0()
-                    .bg(gpui::Hsla { h: 0.0, s: 0.0, l: 0.0, a: 0.5 })
-                    .flex()
-                    .items_center()
-                    .justify_center()
-                    .child(
-                        // Dialog box
-                        div()
-                            .bg(panel_bg)
-                            .border_1()
-                            .border_color(border_color)
-                            .rounded_lg()
-                            .p_4()
-                            .flex()
-                            .flex_col()
-                            .gap_3()
-                            .min_w(px(320.0))
-                            .max_w(px(400.0))
-                            // Title
-                            .child(
-                                div()
-                                    .text_base()
-                                    .font_weight(gpui::FontWeight::SEMIBOLD)
-                                    .text_color(fg)
-                                    .child("Delete Layout Profile?")
-                            )
-                            // Message
-                            .child(
-                                div()
-                                    .text_sm()
-                                    .text_color(muted)
-                                    .child(format!("Are you sure you want to delete the layout profile '{}'? This action cannot be undone.", profile_name))
-                            )
-                            // Buttons
-                            .child(
-                                div()
-                                    .flex()
-                                    .gap_2()
-                                    .justify_end()
-                                    .child(
-                                        // Cancel button
-                                        div()
-                                            .id("delete-profile-cancel")
-                                            .px_4()
-                                            .py_2()
-                                            .rounded_md()
-                                            .bg(gpui::Hsla::transparent_black())
-                                            .border_1()
-                                            .border_color(border_color)
-                                            .text_sm()
-                                            .text_color(fg)
-                                            .cursor_pointer()
-                                            .hover(|style| style.bg(gpui::Hsla { h: 0.0, s: 0.0, l: 1.0, a: 0.1 }))
-                                            .on_click(cx.listener(move |this, _: &ClickEvent, _window, cx| {
-                                                this.pending_profile_deletion = None;
-                                                cx.notify();
-                                            }))
-                                            .child("Cancel")
-                                    )
-                                    .child(
-                                        // Delete button (red)
-                                        div()
-                                            .id("delete-profile-confirm")
-                                            .px_4()
-                                            .py_2()
-                                            .rounded_md()
-                                            .bg(gpui::Hsla { h: 0.0, s: 0.8, l: 0.5, a: 1.0 })
-                                            .text_sm()
-                                            .text_color(gpui::Hsla { h: 0.0, s: 0.0, l: 1.0, a: 1.0 })
-                                            .cursor_pointer()
-                                            .hover(|style| style.bg(gpui::Hsla { h: 0.0, s: 0.8, l: 0.4, a: 1.0 }))
-                                            .on_click(cx.listener(move |this, _: &ClickEvent, _window, cx| {
-                                                this.pending_profile_deletion = None;
-                                                this.top_bar.remove_tab(idx_for_confirm);
-                                                // Persist to disk
-                                                this.save_layout_profiles_to_settings();
-                                                cx.notify();
-                                            }))
-                                            .child("Delete")
-                                    )
-                            )
-                    )
-            );
-        }
-
+        // Build the workspace: title bar → main content → modals → overlays
+        container = self.render_main_workspace(container, window, cx, grid_gap);
+        container = self.render_active_modals(container, cx);
+        container = self.render_overlays(container, cx);
         container
     }
 }

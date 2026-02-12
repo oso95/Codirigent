@@ -277,8 +277,8 @@ impl WorkspaceView {
             if let Ok(mut svc) = self.compaction.lock() {
                 svc.end_compaction(id);
             }
-            self.compaction_start_times.remove(&id);
-            self.cached_cli_status.remove(&id);
+            self.cache.compaction_start_times.remove(&id);
+            self.cli_readers.cached_status.remove(&id);
 
             // Remove the terminal header for this session (from feature branch)
             self.terminal_headers.retain(|(sid, _)| *sid != id);
@@ -314,8 +314,8 @@ impl WorkspaceView {
         if let Ok(mut svc) = self.compaction.lock() {
             svc.end_compaction(id);
         }
-        self.compaction_start_times.remove(&id);
-        self.cached_cli_status.remove(&id);
+        self.cache.compaction_start_times.remove(&id);
+        self.cli_readers.cached_status.remove(&id);
 
         // Remove the terminal header for this session
         self.terminal_headers.retain(|(sid, _)| *sid != id);

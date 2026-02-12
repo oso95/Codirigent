@@ -23,7 +23,7 @@ impl WorkspaceView {
         // as a separate write so ink treats it as a distinct stdin event).
         // Phase 1: entries where Enter hasn't been sent yet and 100ms elapsed → send \r.
         let need_enter: Vec<SessionId> = self
-            .pending_enters
+            .polling.pending_enters
             .iter()
             .filter(|(_, (when, sent))| !sent && when.elapsed() >= Duration::from_millis(100))
             .map(|(id, _)| *id)
@@ -34,31 +34,31 @@ impl WorkspaceView {
             }
             // Flip to phase 2: keep entry for a grace period so the CLI can
             // process the command before auto-assign considers this session.
-            self.pending_enters
+            self.polling.pending_enters
                 .insert(session_id, (Instant::now(), true));
         }
         // Phase 2: remove entries where Enter was already sent and grace period elapsed.
         let expired: Vec<SessionId> = self
-            .pending_enters
+            .polling.pending_enters
             .iter()
             .filter(|(_, (when, sent))| *sent && when.elapsed() >= Duration::from_millis(500))
             .map(|(id, _)| *id)
             .collect();
         for session_id in expired {
-            self.pending_enters.remove(&session_id);
+            self.polling.pending_enters.remove(&session_id);
         }
 
         let session_ids: Vec<SessionId> = self.terminals.keys().copied().collect();
         let mut any_dirty = false;
 
         // Decide once whether to run JSONL checks this cycle (throttled to ~1/second)
-        let has_any_reader = self.claude_reader.is_some()
-            || self.codex_reader.is_some()
-            || self.gemini_reader.is_some();
+        let has_any_reader = self.cli_readers.claude.is_some()
+            || self.cli_readers.codex.is_some()
+            || self.cli_readers.gemini.is_some();
         let check_jsonl =
-            has_any_reader && self.last_jsonl_check.elapsed() >= Duration::from_secs(1);
+            has_any_reader && self.polling.last_jsonl_check.elapsed() >= Duration::from_secs(1);
         if check_jsonl {
-            self.last_jsonl_check = Instant::now();
+            self.polling.last_jsonl_check = Instant::now();
         }
 
         for session_id in session_ids {
@@ -165,17 +165,17 @@ impl WorkspaceView {
 
                     let cli_status = match cli_type {
                         codirigent_core::CliType::ClaudeCode => {
-                            self.claude_reader.as_mut().and_then(|r| {
+                            self.cli_readers.claude.as_mut().and_then(|r| {
                                 r.get_status(&working_dir, child_pid).to_session_status()
                             })
                         }
                         codirigent_core::CliType::CodexCli => {
-                            self.codex_reader.as_mut().and_then(|r| {
+                            self.cli_readers.codex.as_mut().and_then(|r| {
                                 r.get_status(&working_dir, child_pid).to_session_status()
                             })
                         }
                         codirigent_core::CliType::GeminiCli => {
-                            self.gemini_reader.as_mut().and_then(|r| {
+                            self.cli_readers.gemini.as_mut().and_then(|r| {
                                 r.get_status(&working_dir, child_pid).to_session_status()
                             })
                         }
@@ -183,25 +183,25 @@ impl WorkspaceView {
                             // Use process tree to detect CLI type before reading JSONL.
                             // Prevents stale JSONL from previous sessions causing false promotion.
                             if let Some(pid) = child_pid {
-                                let detected = self.cli_detector.detect_cli_type(pid);
+                                let detected = self.cli_readers.detector.detect_cli_type(pid);
                                 if detected != codirigent_core::CliType::GenericShell {
                                     self.clipboard_service
                                         .set_session_cli_type(session_id, detected);
                                     match detected {
                                         codirigent_core::CliType::ClaudeCode => {
-                                            self.claude_reader.as_mut().and_then(|r| {
+                                            self.cli_readers.claude.as_mut().and_then(|r| {
                                                 r.get_status(&working_dir, child_pid)
                                                     .to_session_status()
                                             })
                                         }
                                         codirigent_core::CliType::CodexCli => {
-                                            self.codex_reader.as_mut().and_then(|r| {
+                                            self.cli_readers.codex.as_mut().and_then(|r| {
                                                 r.get_status(&working_dir, child_pid)
                                                     .to_session_status()
                                             })
                                         }
                                         codirigent_core::CliType::GeminiCli => {
-                                            self.gemini_reader.as_mut().and_then(|r| {
+                                            self.cli_readers.gemini.as_mut().and_then(|r| {
                                                 r.get_status(&working_dir, child_pid)
                                                     .to_session_status()
                                             })
@@ -222,7 +222,7 @@ impl WorkspaceView {
 
                     if let Some((new_status, tool_name)) = cli_status.clone() {
                         // Cache the JSONL result so it persists between checks
-                        self.cached_cli_status
+                        self.cli_readers.cached_status
                             .insert(session_id, (new_status, tool_name.clone()));
 
                         if new_status == SessionStatus::NeedsAttention {
@@ -237,18 +237,18 @@ impl WorkspaceView {
                         status = Some(new_status);
                     } else {
                         // JSONL returned Unknown/None — clear cache so detector takes over
-                        self.cached_cli_status.remove(&session_id);
+                        self.cli_readers.cached_status.remove(&session_id);
                     }
                 }
             } else if let Some((cached_status, ref _tool_name)) =
-                self.cached_cli_status.get(&session_id).cloned()
+                self.cli_readers.cached_status.get(&session_id).cloned()
             {
                 // Non-JSONL cycle: reuse cached JSONL status instead of detector
                 status = Some(cached_status);
             }
 
             if let Some(status) = status {
-                if self.idle_poll_count % 120 == 0 {
+                if self.polling.idle_poll_count % 120 == 0 {
                     info!(?session_id, ?status, ?idle_time, "Session status poll");
                 }
                 let old_status = self.workspace.session(session_id).map(|s| s.status);
@@ -294,9 +294,9 @@ impl WorkspaceView {
                                     if let Ok(mgr) = self.session_manager.lock() {
                                         let _ = mgr.send_input(session_id, clear_cmd.as_bytes());
                                     }
-                                    self.pending_enters
+                                    self.polling.pending_enters
                                         .insert(session_id, (Instant::now(), false));
-                                    self.compaction_start_times
+                                    self.cache.compaction_start_times
                                         .insert(session_id, Instant::now());
                                     just_started_compaction = true;
                                 }
@@ -310,7 +310,7 @@ impl WorkspaceView {
                 // Skip if a deferred Enter is pending — text hasn't been submitted yet
                 if matches!(status, SessionStatus::Idle)
                     && !just_started_compaction
-                    && !self.pending_enters.contains_key(&session_id)
+                    && !self.polling.pending_enters.contains_key(&session_id)
                 {
                     let is_compacting = self
                         .compaction
@@ -323,7 +323,7 @@ impl WorkspaceView {
                         if let Ok(mut svc) = self.compaction.lock() {
                             svc.end_compaction(session_id);
                         }
-                        self.compaction_start_times.remove(&session_id);
+                        self.cache.compaction_start_times.remove(&session_id);
                         self.event_bus
                             .publish(CodirigentEvent::CompactionCompleted {
                                 session_id,
@@ -355,7 +355,7 @@ impl WorkspaceView {
             .map(|svc| svc.timeout_secs())
             .unwrap_or(120);
         let timed_out: Vec<SessionId> = self
-            .compaction_start_times
+            .cache.compaction_start_times
             .iter()
             .filter(|(_, start)| start.elapsed() > Duration::from_secs(timeout_secs))
             .map(|(id, _)| *id)
@@ -364,7 +364,7 @@ impl WorkspaceView {
             if let Ok(mut svc) = self.compaction.lock() {
                 svc.end_compaction(session_id);
             }
-            self.compaction_start_times.remove(&session_id);
+            self.cache.compaction_start_times.remove(&session_id);
             self.event_bus
                 .publish(CodirigentEvent::CompactionCompleted {
                     session_id,
@@ -394,8 +394,8 @@ impl WorkspaceView {
         }
 
         // Refresh git status every 3 seconds
-        if self.last_git_refresh.elapsed() >= Duration::from_secs(3) {
-            self.last_git_refresh = Instant::now();
+        if self.polling.last_git_refresh.elapsed() >= Duration::from_secs(3) {
+            self.polling.last_git_refresh = Instant::now();
             let session_ids: Vec<SessionId> =
                 self.workspace.sessions().iter().map(|s| s.id).collect();
             {
@@ -423,7 +423,7 @@ impl WorkspaceView {
 
         // Clipboard preview: show for 4 seconds whenever clipboard content changes and has an image.
         // Uses platform clipboard sequence number (has_changed) to detect new content.
-        if self.idle_poll_count % 60 == 0 {
+        if self.polling.idle_poll_count % 60 == 0 {
             let changed = self.smart_clipboard.has_changed();
             if changed && self.smart_clipboard.has_image() {
                 // Clipboard changed and has an image — show preview
@@ -457,7 +457,7 @@ impl WorkspaceView {
         }
 
         // Track output activity for adaptive polling
-        self.last_poll_had_output = any_dirty;
+        self.polling.last_poll_had_output = any_dirty;
 
         if any_dirty {
             cx.notify();
@@ -497,7 +497,7 @@ impl WorkspaceView {
             }
         }
 
-        self.compaction_start_times
+        self.cache.compaction_start_times
             .insert(session_id, Instant::now());
 
         let focus = self
@@ -536,7 +536,7 @@ impl WorkspaceView {
 
         // Block auto-assign until the user has manually assigned at least once.
         // A freshly-started CLI may need auth, config, or other user input first.
-        if !self.manually_assigned_sessions.contains(&session_id) {
+        if !self.cache.manually_assigned_sessions.contains(&session_id) {
             return;
         }
 
@@ -586,7 +586,7 @@ impl WorkspaceView {
                         warn!("Failed to send task prompt to session {}: {}", target_id, e);
                     }
                 }
-                self.pending_enters
+                self.polling.pending_enters
                     .insert(target_id, (Instant::now(), false));
 
                 info!(?task_id, ?target_id, "Auto-assigned task to session");

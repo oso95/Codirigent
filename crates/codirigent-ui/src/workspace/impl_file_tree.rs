@@ -223,13 +223,13 @@ impl WorkspaceView {
         position: gpui::Point<gpui::Pixels>,
         cx: &mut gpui::Context<Self>,
     ) {
-        self.file_tree_context_menu = Some(FileTreeContextMenu { path, position });
+        self.selection.file_tree_context_menu = Some(FileTreeContextMenu { path, position });
         cx.notify();
     }
 
     /// Close the file tree context menu.
     pub(super) fn close_file_tree_context_menu(&mut self, cx: &mut gpui::Context<Self>) {
-        self.file_tree_context_menu = None;
+        self.selection.file_tree_context_menu = None;
         cx.notify();
     }
 

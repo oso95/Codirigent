@@ -66,7 +66,7 @@ impl WorkspaceView {
             }
             detected_shells.insert(0, String::new());
 
-            let mut detected_fonts = self.cached_monospace_fonts.clone().unwrap_or_default();
+            let mut detected_fonts = self.cache.monospace_fonts.clone().unwrap_or_default();
             let current_font = &user_settings.terminal.font_family;
             if !current_font.is_empty() && !detected_fonts.iter().any(|f| f == current_font) {
                 detected_fonts.insert(0, current_font.clone());

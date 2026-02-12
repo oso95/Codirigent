@@ -1018,7 +1018,7 @@ impl WorkspaceView {
         &mut self,
         cx: &mut Context<Self>,
     ) -> Option<impl IntoElement> {
-        let session_id = self.session_menu_open?;
+        let session_id = self.selection.session_menu_open?;
 
         let theme = self.workspace().theme().clone();
         let panel_bg: gpui::Hsla = theme.panel_background.into();
@@ -1218,7 +1218,7 @@ impl WorkspaceView {
                 self.render_drawer_files_content(cx).into_any_element()
             }
             None => {
-                let session_label = match self.selected_session_id {
+                let session_label = match self.selection.selected_session_id {
                     Some(id) => format!("Session {}", id.0),
                     None => "No session selected".to_string(),
                 };
@@ -1317,7 +1317,7 @@ impl WorkspaceView {
         }
 
         // Render grouped sessions with headers
-        let expanded_map = self.drawer_group_expanded.clone();
+        let expanded_map = self.cache.drawer_group_expanded.clone();
         for (group_name, group_sessions) in &groups {
             let color = group_sessions.first().and_then(|s| s.color.clone());
             let expanded = expanded_map.get(group_name).copied().unwrap_or(true);
@@ -2100,7 +2100,7 @@ impl WorkspaceView {
         &mut self,
         cx: &mut Context<Self>,
     ) -> Option<impl IntoElement> {
-        let menu = self.file_tree_context_menu.clone()?;
+        let menu = self.selection.file_tree_context_menu.clone()?;
 
         let theme = self.workspace().theme().clone();
         let panel_bg: gpui::Hsla = theme.panel_background.into();
@@ -2416,11 +2416,11 @@ impl WorkspaceView {
                 MouseButton::Left,
                 cx.listener(move |this, _, _, cx| {
                     let current = this
-                        .drawer_group_expanded
+                        .cache.drawer_group_expanded
                         .get(&toggle_key)
                         .copied()
                         .unwrap_or(true);
-                    this.drawer_group_expanded
+                    this.cache.drawer_group_expanded
                         .insert(toggle_key.clone(), !current);
                     cx.notify();
                 }),

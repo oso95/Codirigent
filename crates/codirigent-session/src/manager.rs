@@ -308,7 +308,7 @@ impl SessionManager for DefaultSessionManager {
         // Spawn PTY: use specific shell if provided, otherwise auto-detect
         let mut pty = if let Some(ref shell_name) = shell {
             if !shell_name.is_empty() {
-                let shell_cmd = crate::pty::resolve_shell(shell_name);
+                let shell_cmd = crate::shell_detection::resolve_shell(shell_name);
                 let args: Vec<&str> = shell_cmd.args.iter().map(|a| a.as_str()).collect();
                 PtyHandle::spawn_command(
                     &working_dir,

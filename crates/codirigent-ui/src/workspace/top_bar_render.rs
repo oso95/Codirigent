@@ -105,7 +105,7 @@ impl WorkspaceView {
                         })
                         .on_click(cx.listener(move |this, _: &ClickEvent, _window, cx| {
                             // Set pending deletion to show confirmation dialog
-                            this.pending_profile_deletion =
+                            this.modals.pending_profile_deletion =
                                 Some((tab_idx, label_for_confirm.clone()));
                             cx.notify();
                         }))

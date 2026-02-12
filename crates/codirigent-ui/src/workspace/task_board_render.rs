@@ -112,7 +112,7 @@ impl WorkspaceView {
             .cursor_pointer()
             .hover(|style| style.bg(color.opacity(0.1)))
             .on_click(cx.listener(move |this, _: &ClickEvent, _window, cx| {
-                if let Some(modal) = &mut this.task_creation_modal {
+                if let Some(modal) = &mut this.modals.task_creation {
                     modal.priority = priority;
                 }
                 cx.notify();
@@ -136,7 +136,7 @@ impl WorkspaceView {
         &mut self,
         cx: &mut Context<Self>,
     ) -> Option<impl IntoElement> {
-        let modal = self.task_creation_modal.clone()?;
+        let modal = self.modals.task_creation.clone()?;
         let is_editing = modal.editing_task_id.is_some();
 
         let theme = self.workspace().theme();
@@ -288,7 +288,7 @@ impl WorkspaceView {
                                             modal.error.is_some(),
                                             &input_style,
                                         ).on_mouse_down(MouseButton::Left, cx.listener(|this, _event, _window, cx| {
-                                            if let Some(modal) = &mut this.task_creation_modal {
+                                            if let Some(modal) = &mut this.modals.task_creation {
                                                 modal.focused_field = 0;
                                             }
                                             cx.notify();
@@ -320,7 +320,7 @@ impl WorkspaceView {
                                                 .text_color(if desc_focused || !modal.description.is_empty() { fg } else { muted })
                                                 .cursor_pointer()
                                                 .on_mouse_down(MouseButton::Left, cx.listener(|this, _event, _window, cx| {
-                                                    if let Some(modal) = &mut this.task_creation_modal {
+                                                    if let Some(modal) = &mut this.modals.task_creation {
                                                         modal.focused_field = 1;
                                                     }
                                                     cx.notify();
@@ -408,7 +408,7 @@ impl WorkspaceView {
                                             false,
                                             &input_style,
                                         ).on_mouse_down(MouseButton::Left, cx.listener(|this, _event, _window, cx| {
-                                            if let Some(modal) = &mut this.task_creation_modal {
+                                            if let Some(modal) = &mut this.modals.task_creation {
                                                 modal.focused_field = 2;
                                             }
                                             cx.notify();

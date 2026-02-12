@@ -78,6 +78,7 @@ impl CliSessionStatus {
 pub mod broadcast_service;
 pub mod claude_session_reader;
 pub mod cli_detector;
+pub mod cli_output_detection;
 pub mod clipboard_service;
 pub mod codex_session_reader;
 pub mod gemini_session_reader;
@@ -88,12 +89,14 @@ pub mod osc7;
 pub mod pty;
 pub mod ralph_controller;
 pub mod session;
+pub mod shell_detection;
 pub mod skill_manager;
 pub mod worktree;
 
 pub use broadcast_service::DefaultBroadcastService;
 pub use claude_session_reader::{ClaudeSessionReader, ClaudeSessionStatus};
 pub use cli_detector::{CliDetector, DefaultCliDetector};
+pub use cli_output_detection::detect_cli_from_output;
 pub use clipboard_service::{ClipboardService, DefaultClipboardService};
 pub use codex_session_reader::{CodexSessionReader, CodexSessionStatus};
 pub use gemini_session_reader::{GeminiSessionReader, GeminiSessionStatus};
@@ -101,10 +104,8 @@ pub use git_status::GitStatusService;
 pub use manager::DefaultSessionManager;
 pub use osc133::{extract_osc133_events, ShellState};
 pub use osc7::extract_osc7_path;
-pub use pty::{
-    detect_available_shells, resolve_shell, spawn_output_reader, OutputReader, PtyHandle, PtySize,
-    ShellCommand,
-};
+pub use pty::{spawn_output_reader, OutputReader, PtyHandle, PtySize, ShellCommand};
+pub use shell_detection::{detect_available_shells, resolve_shell};
 pub use ralph_controller::{DefaultRalphLoopController, LoopStats};
 pub use session::SessionState;
 pub use skill_manager::DefaultSkillManager;

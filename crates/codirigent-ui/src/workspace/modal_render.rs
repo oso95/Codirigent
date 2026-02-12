@@ -773,7 +773,7 @@ impl WorkspaceView {
         &mut self,
         cx: &mut Context<Self>,
     ) -> Option<impl IntoElement> {
-        let modal = self.session_action_modal.clone()?;
+        let modal = self.modals.session_action.clone()?;
 
         let theme = self.workspace().theme();
         let panel_bg: gpui::Hsla = theme.panel_background.into();

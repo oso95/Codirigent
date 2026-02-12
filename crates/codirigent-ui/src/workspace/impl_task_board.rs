@@ -174,7 +174,7 @@ impl WorkspaceView {
                                                 warn!("Failed to send task prompt: {}", e);
                                             }
                                         }
-                                        self.pending_enters
+                                        self.polling.pending_enters
                                             .insert(session.id, (Instant::now(), false));
                                         if let Some(ws_session) =
                                             self.workspace.session_mut(session.id)
@@ -183,7 +183,7 @@ impl WorkspaceView {
                                         }
                                         // Mark session as having received a manual assignment,
                                         // which unlocks auto-assign for future tasks.
-                                        self.manually_assigned_sessions.insert(session.id);
+                                        self.cache.manually_assigned_sessions.insert(session.id);
                                         info!(
                                             "Manually assigned task {} to session {}",
                                             task_id, session.id
@@ -267,7 +267,7 @@ impl WorkspaceView {
                         );
                     }
                 }
-                self.pending_enters
+                self.polling.pending_enters
                     .insert(session_id, (Instant::now(), false));
 
                 info!(?task_id, ?session_id, "Confirmed and sent task to session");

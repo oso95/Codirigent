@@ -27,7 +27,7 @@ impl WorkspaceView {
                 .unwrap_or_default(),
         };
 
-        self.session_action_modal = Some(SessionActionModal {
+        self.modals.session_action = Some(SessionActionModal {
             session_id,
             kind,
             input,
@@ -36,7 +36,7 @@ impl WorkspaceView {
     }
 
     pub(super) fn close_session_action_modal(&mut self) {
-        self.session_action_modal = None;
+        self.modals.session_action = None;
     }
 
     /// Pick the next unused group color from the palette.
@@ -62,7 +62,7 @@ impl WorkspaceView {
                 .or_else(|| Some(s.working_directory.clone()))
         });
 
-        self.task_creation_modal = Some(TaskCreationModal {
+        self.modals.task_creation = Some(TaskCreationModal {
             title: String::new(),
             description: String::new(),
             priority: codirigent_core::TaskPriority::Medium,
@@ -91,7 +91,7 @@ impl WorkspaceView {
             .map(|n| n.to_string_lossy().to_string())
             .unwrap_or_default();
 
-        self.task_creation_modal = Some(TaskCreationModal {
+        self.modals.task_creation = Some(TaskCreationModal {
             title: filename,
             description: String::new(),
             priority: codirigent_core::TaskPriority::Medium,
@@ -115,7 +115,7 @@ impl WorkspaceView {
             return;
         };
 
-        self.task_creation_modal = Some(TaskCreationModal {
+        self.modals.task_creation = Some(TaskCreationModal {
             title: task.title.clone(),
             description: task.description.clone(),
             priority: task.priority,
@@ -128,11 +128,11 @@ impl WorkspaceView {
     }
 
     pub(super) fn close_task_creation_modal(&mut self) {
-        self.task_creation_modal = None;
+        self.modals.task_creation = None;
     }
 
     pub(super) fn apply_task_creation_modal(&mut self, cx: &mut Context<Self>) {
-        let Some(modal) = self.task_creation_modal.clone() else {
+        let Some(modal) = self.modals.task_creation.clone() else {
             return;
         };
 
@@ -141,7 +141,7 @@ impl WorkspaceView {
 
         // Validate title is not empty
         if title.is_empty() {
-            if let Some(ref mut active) = self.task_creation_modal {
+            if let Some(ref mut active) = self.modals.task_creation {
                 active.error = Some("Title is required".to_string());
             }
             cx.notify();
@@ -165,7 +165,7 @@ impl WorkspaceView {
                     plan_file,
                     modal.project_dir.clone(),
                 ) {
-                    if let Some(ref mut active) = self.task_creation_modal {
+                    if let Some(ref mut active) = self.modals.task_creation {
                         active.error = Some(format!("Failed to update task: {}", e));
                     }
                     cx.notify();
@@ -173,7 +173,7 @@ impl WorkspaceView {
                 }
                 info!(%existing_id, "Task updated successfully from modal");
             } else {
-                if let Some(ref mut active) = self.task_creation_modal {
+                if let Some(ref mut active) = self.modals.task_creation {
                     active.error = Some("Failed to access task manager".to_string());
                 }
                 cx.notify();
@@ -191,7 +191,7 @@ impl WorkspaceView {
 
             if let Ok(mut manager) = self.task_manager.lock() {
                 if let Err(e) = manager.create_task(task) {
-                    if let Some(ref mut active) = self.task_creation_modal {
+                    if let Some(ref mut active) = self.modals.task_creation {
                         active.error = Some(format!("Failed to create task: {}", e));
                     }
                     cx.notify();
@@ -199,7 +199,7 @@ impl WorkspaceView {
                 }
                 info!(%task_id, "Task created successfully from modal");
             } else {
-                if let Some(ref mut active) = self.task_creation_modal {
+                if let Some(ref mut active) = self.modals.task_creation {
                     active.error = Some("Failed to access task manager".to_string());
                 }
                 cx.notify();
@@ -212,13 +212,13 @@ impl WorkspaceView {
     }
 
     pub(super) fn apply_session_action_modal(&mut self, cx: &mut Context<Self>) {
-        let Some(modal) = self.session_action_modal.clone() else {
+        let Some(modal) = self.modals.session_action.clone() else {
             return;
         };
 
         let value = modal.input.trim().to_string();
         if value.is_empty() {
-            if let Some(ref mut active) = self.session_action_modal {
+            if let Some(ref mut active) = self.modals.session_action {
                 active.error = Some("Value is required".to_string());
             }
             cx.notify();
@@ -260,7 +260,7 @@ impl WorkspaceView {
         event: &KeyDownEvent,
         cx: &mut Context<Self>,
     ) -> bool {
-        let Some(modal) = self.session_action_modal.as_mut() else {
+        let Some(modal) = self.modals.session_action.as_mut() else {
             return false;
         };
 
@@ -321,7 +321,7 @@ impl WorkspaceView {
         event: &KeyDownEvent,
         cx: &mut Context<Self>,
     ) -> bool {
-        let Some(modal) = self.task_creation_modal.as_mut() else {
+        let Some(modal) = self.modals.task_creation.as_mut() else {
             return false;
         };
 
