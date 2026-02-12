@@ -185,8 +185,13 @@ impl CodirigentIntegration {
     /// - Input detection events
     ///
     /// Events are processed asynchronously to avoid blocking the main thread.
+    /// Start the event processing loop.
+    ///
+    /// Note: This method clones several Arc references (event_bus, session_manager, etc.)
+    /// to move into the spawned task. Arc::clone is cheap - it only increments a reference
+    /// count and shares the same underlying data. No deep copies occur.
     pub fn start_event_loop(&self) {
-        let event_bus = self.event_bus.clone();
+        let event_bus = self.event_bus.clone();  // Cheap: Arc ref count increment
         let session_manager = self.session_manager.clone();
         let storage = self.storage.clone();
         let task_manager = self.task_manager.clone();
@@ -1546,5 +1551,17 @@ mod tests {
             false,
             false,
         );
+    }
+
+    #[test]
+    fn test_arc_clone_shares_reference() {
+        use std::sync::Arc;
+
+        let original = Arc::new(42);
+        let cloned = original.clone();
+
+        // Arc::clone increments ref count, doesn't copy data
+        assert_eq!(Arc::strong_count(&original), 2);
+        assert!(Arc::ptr_eq(&original, &cloned));
     }
 }
