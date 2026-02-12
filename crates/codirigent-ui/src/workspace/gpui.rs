@@ -744,6 +744,15 @@ impl WorkspaceView {
         f(&mut manager)
     }
 
+    /// Helper to acquire detector lock with poison recovery.
+    pub(super) fn with_detector<R>(&self, f: impl FnOnce(&mut InputDetector) -> R) -> R {
+        let mut detector = self.detector.lock().unwrap_or_else(|poisoned| {
+            warn!("Detector mutex was poisoned, recovering");
+            poisoned.into_inner()
+        });
+        f(&mut detector)
+    }
+
     /// Apply UI font size update to theme.
     ///
     /// Updates the theme's base, small, and large font sizes based on the given size.
