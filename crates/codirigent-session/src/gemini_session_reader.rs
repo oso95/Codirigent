@@ -9,6 +9,7 @@
 //! The JSON schema contains `sessionId`, `lastUpdated`, and a `messages` array
 //! where each message has a `type` and optional `toolCalls`.
 
+use crate::session_reader_common::is_timestamp_recent;
 use crate::CliSessionStatus;
 use serde::Deserialize;
 use std::collections::HashMap;
@@ -261,7 +262,7 @@ impl GeminiSessionReader {
     fn determine_status(session: &GeminiSession) -> GeminiSessionStatus {
         // Check if session is stale (lastUpdated older than 30s)
         if let Some(ref last_updated) = session.last_updated {
-            if Self::is_stale_timestamp(last_updated) {
+            if is_timestamp_recent(last_updated, 30) == Some(false) {
                 return GeminiSessionStatus::Unknown;
             }
         }
@@ -299,18 +300,6 @@ impl GeminiSessionReader {
             }
             _ => GeminiSessionStatus::Unknown,
         }
-    }
-
-    /// Check if an ISO-8601 timestamp is older than 30 seconds.
-    fn is_stale_timestamp(timestamp: &str) -> bool {
-        use chrono::{DateTime, Utc};
-
-        let Ok(parsed) = timestamp.parse::<DateTime<Utc>>() else {
-            return false; // Can't parse → don't treat as stale
-        };
-
-        let elapsed = Utc::now().signed_duration_since(parsed);
-        elapsed.num_seconds() > 30
     }
 }
 
@@ -596,18 +585,18 @@ mod tests {
     }
 
     #[test]
-    fn test_is_stale_timestamp() {
-        // Recent timestamp should not be stale
+    fn test_timestamp_staleness() {
+        // Recent timestamp should not be stale (is_timestamp_recent returns Some(true))
         let recent = chrono::Utc::now().to_rfc3339();
-        assert!(!GeminiSessionReader::is_stale_timestamp(&recent));
+        assert_ne!(is_timestamp_recent(&recent, 30), Some(false));
 
-        // Old timestamp should be stale
+        // Old timestamp should be stale (is_timestamp_recent returns Some(false))
         use chrono::Duration;
         let old = (chrono::Utc::now() - Duration::seconds(60)).to_rfc3339();
-        assert!(GeminiSessionReader::is_stale_timestamp(&old));
+        assert_eq!(is_timestamp_recent(&old, 30), Some(false));
 
-        // Unparseable should not be treated as stale
-        assert!(!GeminiSessionReader::is_stale_timestamp("not-a-date"));
+        // Unparseable should not be treated as stale (is_timestamp_recent returns None)
+        assert_ne!(is_timestamp_recent("not-a-date", 30), Some(false));
     }
 
     #[test]
