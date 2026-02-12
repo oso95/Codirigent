@@ -116,7 +116,7 @@ pub fn find_file_opened_by_pid(candidates: &[PathBuf], pid: u32) -> Option<PathB
 
 /// Build a lookup from canonical path → original candidate path.
 /// Entries that fail to canonicalize are skipped.
-#[allow(dead_code)]
+#[cfg(any(target_os = "linux", target_os = "macos"))]
 fn canonical_candidate_map(candidates: &[PathBuf]) -> Vec<(PathBuf, PathBuf)> {
     candidates
         .iter()

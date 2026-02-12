@@ -270,11 +270,10 @@ mod tests {
 
         let event = rx.recv().await.unwrap();
         // Should get the second event, not the first
-        if let CodirigentEvent::SessionCreated { id } = event {
-            assert_eq!(id, SessionId(2));
-        } else {
-            panic!("Wrong event type");
-        }
+        let CodirigentEvent::SessionCreated { id } = event else {
+            panic!("Expected SessionCreated, got {event:?}");
+        };
+        assert_eq!(id, SessionId(2));
     }
 
     #[tokio::test]
