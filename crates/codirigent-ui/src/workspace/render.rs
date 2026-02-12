@@ -1311,7 +1311,7 @@ impl WorkspaceView {
         };
 
         // Build a map of slot -> (session_id, is_focused, session_name, session_status)
-        let cells = self.workspace().cell_info();
+        let _cells = self.workspace().cell_info();
         let focused_session = self.workspace().focused_session_id();
         let split_state = self.workspace().layout_state().as_split_tree();
         let slot_sessions: std::collections::HashMap<
@@ -2610,7 +2610,7 @@ impl WorkspaceView {
                     preview_bg
                 };
                 let cell_border = if is_selected { primary } else { border_color };
-                let cell_border_width = if is_selected { 2.0 } else { 1.0 };
+                let _cell_border_width = if is_selected { 2.0 } else { 1.0 };
 
                 let mut cell = div()
                     .id(SharedString::from(format!("preview-slot-{}", slot_id.0)))

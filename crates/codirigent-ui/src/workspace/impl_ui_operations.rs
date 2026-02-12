@@ -67,23 +67,27 @@ impl WorkspaceView {
         }
     }
 
+    /// Toggle the task board panel expanded/collapsed state.
     pub fn toggle_task_board(&mut self, cx: &mut Context<Self>) {
         self.task_board.toggle_expanded();
         cx.notify();
     }
 
+    /// Open the session context menu for a specific session.
     pub fn open_session_menu(&mut self, session_id: SessionId, cx: &mut Context<Self>) {
         info!(?session_id, "Opening session menu");
         self.session_menu_open = Some(session_id);
         cx.notify();
     }
 
+    /// Close the currently open session context menu.
     pub fn close_session_menu(&mut self, cx: &mut Context<Self>) {
         info!("Closing session menu");
         self.session_menu_open = None;
         cx.notify();
     }
 
+    /// Handle a session menu action (rename, assign to group, end session, etc.).
     pub fn handle_session_menu_action(
         &mut self,
         session_id: SessionId,

@@ -17,6 +17,7 @@ use std::path::PathBuf;
 use tracing::{info, warn};
 
 impl WorkspaceView {
+    /// Create a new terminal session in the focused pane.
     pub fn create_session(&mut self, cx: &mut Context<Self>) {
         self.create_session_inner(None, cx);
     }

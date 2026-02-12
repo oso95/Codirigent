@@ -20,13 +20,9 @@
 //! ```
 
 use super::core::Workspace;
-use super::editor_detection::{
-    detect_installed_editors, detect_monospace_fonts, extra_editor_dirs, is_terminal_editor,
-};
-use super::cli_helpers::{clear_command, detect_cli_from_output, format_task_input};
-use super::types::{
-    FileTreeContextMenu, SessionActionKind, SessionActionModal, TaskCreationModal,
-};
+use super::editor_detection::detect_monospace_fonts;
+use super::types::{FileTreeContextMenu, SessionActionModal, TaskCreationModal};
+use crate::app::{Copy, Paste};
 // Imports from main branch (terminal integration)
 use crate::input::{key_to_bytes, TerminalKeystroke, TerminalModifiers};
 use crate::terminal_view::TerminalView;
@@ -38,28 +34,19 @@ use crate::terminal_header::TerminalHeader;
 use crate::theme::CodirigentTheme;
 use crate::toolbar::CustomLayoutPicker;
 // Core imports (combined)
-use crate::app::{
-    ClosePane, CloseSession, Copy, FocusSession1, FocusSession2, FocusSession3, FocusSession4,
-    FocusSession5, FocusSession6, FocusSession7, FocusSession8, FocusSession9, NewSession,
-    NextLayout, OpenSettings, Paste, SplitHorizontal, SplitVertical, ToggleSidebar,
-};
-use crate::clipboard;
 use crate::clipboard_preview::ClipboardPreview;
 use crate::settings::SettingsPage;
 use crate::smart_clipboard::SmartClipboardProvider;
 use codirigent_core::compaction::{CompactionConfig, CompactionService};
 use codirigent_core::config_service::{ConfigService, DefaultConfigService};
-use codirigent_core::ClipboardContent;
 use codirigent_core::{
-    AssignmentAction, CodirigentEvent, DefaultEventBus, EventBus, FileStorageService, GridPosition,
-    ProcessMonitor, SessionId, SessionManager, SessionStatus, SplitDirection, TaskManager,
-    TaskManagerConfig, TaskStatus,
+    CodirigentEvent, DefaultEventBus, EventBus, FileStorageService, GridPosition, SessionId,
+    SessionManager, SessionStatus, TaskManager, TaskManagerConfig,
 };
 use codirigent_detector::InputDetector;
 use codirigent_filetree::FileTree;
 use codirigent_session::claude_session_reader::ClaudeSessionReader;
-use codirigent_session::cli_detector::CliDetector;
-use codirigent_session::clipboard_service::{ClipboardService, DefaultClipboardService};
+use codirigent_session::clipboard_service::DefaultClipboardService;
 use codirigent_session::codex_session_reader::CodexSessionReader;
 use codirigent_session::gemini_session_reader::GeminiSessionReader;
 use codirigent_session::DefaultSessionManager;
@@ -69,10 +56,10 @@ use gpui::{
     StatefulInteractiveElement, Styled, Window,
 };
 use std::collections::HashMap;
-use std::path::{Path, PathBuf};
+use std::path::PathBuf;
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
-use tracing::{debug, info, warn};
+use tracing::{info, warn};
 
 /// GPUI View wrapper for Workspace.
 ///
