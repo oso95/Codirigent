@@ -1,8 +1,17 @@
 //! GPUI rendering components for WorkspaceView.
 //!
-//! This module contains the rendering logic for the workspace grid, top bar,
-//! icon rail, drawer, and right task board panel,
-//! separated from the main WorkspaceView to keep file sizes manageable.
+//! This module coordinates rendering across component modules:
+//! - [`grid_render`] - Workspace grid and session cell layout
+//! - [`icon_rail_render`] - Left sidebar icon rail
+//! - [`task_board_render`] - Right task board panel
+//! - [`top_bar_render`] - Top bar and session tabs
+//! - [`modal_render`] - Action modals and dialogs
+//! - [`icon_utils`] - Icon rendering utilities
+//!
+//! This file now contains remaining rendering logic including:
+//! - Terminal content rendering
+//! - Drawer panels (sessions, files, worktrees)
+//! - Session menus and inline UI elements
 
 use super::gpui::WorkspaceView;
 // Import from main branch (terminal rendering)
