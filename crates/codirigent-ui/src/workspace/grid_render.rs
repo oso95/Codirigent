@@ -7,6 +7,7 @@
 //! - Empty cells and placeholders
 
 use crate::empty_session::EmptySessionRenderHints;
+use crate::icons;
 use crate::layout::LayoutProfile;
 use crate::terminal_header::TerminalHeaderRenderHints;
 use crate::terminal_view::CursorShape;
