@@ -20,4 +20,9 @@ regex = "1"
 dirs.workspace = true
 
 [dev-dependencies]
-tempfile = "3.15"
+tempfile = "3.24.0"
+criterion = "0.5"
+
+[[bench]]
+name = "clone_bench"
+harness = false
