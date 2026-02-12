@@ -49,38 +49,8 @@ pub const ABSOLUTE_MIN_CELL_WIDTH: f32 = 200.0;
 /// This is a hard limit - cells will not be smaller than this.
 pub const ABSOLUTE_MIN_CELL_HEIGHT: f32 = 150.0;
 
-/// Legacy alias for recommended minimum width (deprecated).
-#[deprecated(since = "0.1.0", note = "Use RECOMMENDED_MIN_CELL_WIDTH instead")]
-pub const MIN_CELL_WIDTH: f32 = RECOMMENDED_MIN_CELL_WIDTH;
-
-/// Legacy alias for recommended minimum height (deprecated).
-#[deprecated(since = "0.1.0", note = "Use RECOMMENDED_MIN_CELL_HEIGHT instead")]
-pub const MIN_CELL_HEIGHT: f32 = RECOMMENDED_MIN_CELL_HEIGHT;
-
-/// Width of the old sidebar in pixels (deprecated: replaced by IconRail 56px + Drawer 288px).
-#[deprecated(
-    since = "0.1.0",
-    note = "Use icon_rail::IconRail::WIDTH + drawer::Drawer::WIDTH instead"
-)]
-pub const SIDEBAR_WIDTH: f32 = 260.0;
-
-/// Height of the old title bar in pixels (deprecated: replaced by TopBar 48px).
-#[deprecated(since = "0.1.0", note = "Use TOP_BAR_HEIGHT instead")]
-pub const TITLE_BAR_HEIGHT: f32 = 32.0;
-
-/// Height of the old toolbar in pixels (deprecated: merged into TopBar 48px).
-#[deprecated(since = "0.1.0", note = "Use TOP_BAR_HEIGHT instead")]
-pub const TOOLBAR_HEIGHT: f32 = 48.0;
-
 /// Height of the top bar in pixels (replaces TITLE_BAR_HEIGHT + TOOLBAR_HEIGHT).
 pub const TOP_BAR_HEIGHT: f32 = 48.0;
-
-/// Height of the old status bar in pixels (deprecated: removed, info moved to TopBar).
-#[deprecated(
-    since = "0.1.0",
-    note = "Status bar has been removed; info is now in TopBar"
-)]
-pub const STATUS_BAR_HEIGHT: f32 = 24.0;
 
 /// Width of the right task board panel in pixels.
 pub const RIGHT_PANEL_WIDTH: f32 = 288.0;

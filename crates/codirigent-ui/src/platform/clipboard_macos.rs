@@ -252,51 +252,6 @@ impl MacOSSmartClipboard {
         Some((width, height))
     }
 
-    /// Parse JPEG header to extract image dimensions.
-    ///
-    /// JPEG uses markers; we look for SOF0/SOF2 markers which contain dimensions.
-    ///
-    /// Note: Currently unused but kept for potential future JPEG clipboard support.
-    #[allow(dead_code)]
-    fn parse_jpeg_dimensions(data: &[u8]) -> Option<(u32, u32)> {
-        // JPEG must start with FFD8
-        if data.len() < 2 || data[0] != 0xFF || data[1] != 0xD8 {
-            return None;
-        }
-
-        let mut i = 2;
-        while i + 1 < data.len() {
-            if data[i] != 0xFF {
-                i += 1;
-                continue;
-            }
-
-            let marker = data[i + 1];
-
-            // SOF markers (Start of Frame) contain dimensions
-            // SOF0 = 0xC0, SOF1 = 0xC1, SOF2 = 0xC2
-            if marker == 0xC0 || marker == 0xC1 || marker == 0xC2 {
-                // SOF structure: FF C0 length(2) precision(1) height(2) width(2)
-                if i + 9 < data.len() {
-                    let height = u16::from_be_bytes([data[i + 5], data[i + 6]]) as u32;
-                    let width = u16::from_be_bytes([data[i + 7], data[i + 8]]) as u32;
-                    return Some((width, height));
-                }
-                return None;
-            }
-
-            // Skip to next marker
-            if i + 3 < data.len() {
-                let len = u16::from_be_bytes([data[i + 2], data[i + 3]]) as usize;
-                i += 2 + len;
-            } else {
-                break;
-            }
-        }
-
-        None
-    }
-
     /// Try to read image data from the clipboard.
     fn read_image_data(&self) -> Option<ImageData> {
         // Try PNG first

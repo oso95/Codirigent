@@ -141,8 +141,7 @@ impl DetectorConfig {
 /// Tracks the session's output buffer, status, and timing information.
 struct MonitoredSession {
     /// The session ID (stored for debugging and logging purposes).
-    #[allow(dead_code)]
-    session_id: SessionId,
+    _session_id: SessionId,
     /// The PTY process ID.
     pty_pid: u32,
     /// When output was last received.
@@ -161,7 +160,7 @@ impl MonitoredSession {
     /// Create a new monitored session.
     fn new(session_id: SessionId, pty_pid: u32) -> Self {
         Self {
-            session_id,
+            _session_id: session_id,
             pty_pid,
             last_output_time: Instant::now(),
             output_buffer: String::new(),
@@ -874,7 +873,7 @@ mod tests {
     #[test]
     fn test_monitored_session_new() {
         let session = MonitoredSession::new(SessionId(1), 1234);
-        assert_eq!(session.session_id, SessionId(1));
+        assert_eq!(session._session_id, SessionId(1));
         assert_eq!(session.pty_pid, 1234);
         assert!(session.output_buffer.is_empty());
         assert_eq!(session.current_status, SessionStatus::Idle);

@@ -557,11 +557,10 @@ mod tests {
     #[test]
     fn test_session_closed_event() {
         let event = CodirigentEvent::SessionClosed { id: SessionId(42) };
-        if let CodirigentEvent::SessionClosed { id } = event {
-            assert_eq!(id, SessionId(42));
-        } else {
-            panic!("Wrong event type");
-        }
+        let CodirigentEvent::SessionClosed { id } = event else {
+            panic!("Expected SessionClosed, got {event:?}");
+        };
+        assert_eq!(id, SessionId(42));
     }
 
     #[test]
@@ -571,12 +570,11 @@ mod tests {
             old: SessionStatus::Idle,
             new: SessionStatus::Working,
         };
-        if let CodirigentEvent::SessionStatusChanged { old, new, .. } = event {
-            assert_eq!(old, SessionStatus::Idle);
-            assert_eq!(new, SessionStatus::Working);
-        } else {
-            panic!("Wrong event type");
-        }
+        let CodirigentEvent::SessionStatusChanged { old, new, .. } = event else {
+            panic!("Expected SessionStatusChanged, got {event:?}");
+        };
+        assert_eq!(old, SessionStatus::Idle);
+        assert_eq!(new, SessionStatus::Working);
     }
 
     #[test]
@@ -586,16 +584,15 @@ mod tests {
             id: SessionId(1),
             data: data.clone(),
         };
-        if let CodirigentEvent::SessionOutputReceived {
+        let CodirigentEvent::SessionOutputReceived {
             id,
             data: received_data,
         } = event
-        {
-            assert_eq!(id, SessionId(1));
-            assert_eq!(received_data, data);
-        } else {
-            panic!("Wrong event type");
-        }
+        else {
+            panic!("Expected SessionOutputReceived, got {event:?}");
+        };
+        assert_eq!(id, SessionId(1));
+        assert_eq!(received_data, data);
     }
 
     #[test]
@@ -605,18 +602,17 @@ mod tests {
             old_name: "old".to_string(),
             new_name: "new".to_string(),
         };
-        if let CodirigentEvent::SessionRenamed {
+        let CodirigentEvent::SessionRenamed {
             id,
             old_name,
             new_name,
         } = event
-        {
-            assert_eq!(id, SessionId(1));
-            assert_eq!(old_name, "old");
-            assert_eq!(new_name, "new");
-        } else {
-            panic!("Wrong event type");
-        }
+        else {
+            panic!("Expected SessionRenamed, got {event:?}");
+        };
+        assert_eq!(id, SessionId(1));
+        assert_eq!(old_name, "old");
+        assert_eq!(new_name, "new");
     }
 
     #[test]
@@ -626,13 +622,12 @@ mod tests {
             group: Some("backend".to_string()),
             color: Some("#FF0000".to_string()),
         };
-        if let CodirigentEvent::SessionGroupChanged { id, group, color } = event {
-            assert_eq!(id, SessionId(1));
-            assert_eq!(group, Some("backend".to_string()));
-            assert_eq!(color, Some("#FF0000".to_string()));
-        } else {
-            panic!("Wrong event type");
-        }
+        let CodirigentEvent::SessionGroupChanged { id, group, color } = event else {
+            panic!("Expected SessionGroupChanged, got {event:?}");
+        };
+        assert_eq!(id, SessionId(1));
+        assert_eq!(group, Some("backend".to_string()));
+        assert_eq!(color, Some("#FF0000".to_string()));
     }
 
     #[test]
@@ -641,12 +636,11 @@ mod tests {
             session_id: SessionId(1),
             detail: Some("y/n".to_string()),
         };
-        if let CodirigentEvent::AttentionRequired { session_id, detail } = event {
-            assert_eq!(session_id, SessionId(1));
-            assert_eq!(detail, Some("y/n".to_string()));
-        } else {
-            panic!("Wrong event type");
-        }
+        let CodirigentEvent::AttentionRequired { session_id, detail } = event else {
+            panic!("Expected AttentionRequired, got {event:?}");
+        };
+        assert_eq!(session_id, SessionId(1));
+        assert_eq!(detail, Some("y/n".to_string()));
     }
 
     #[test]
@@ -655,11 +649,10 @@ mod tests {
             session_id: SessionId(1),
             detail: None,
         };
-        if let CodirigentEvent::AttentionRequired { detail, .. } = event {
-            assert!(detail.is_none());
-        } else {
-            panic!("Wrong event type");
-        }
+        let CodirigentEvent::AttentionRequired { detail, .. } = event else {
+            panic!("Expected AttentionRequired, got {event:?}");
+        };
+        assert!(detail.is_none());
     }
 
     #[test]
@@ -675,11 +668,10 @@ mod tests {
         let event = CodirigentEvent::LayoutChanged {
             mode: LayoutMode::Grid { rows: 2, cols: 3 },
         };
-        if let CodirigentEvent::LayoutChanged { mode } = event {
-            assert!(matches!(mode, LayoutMode::Grid { rows: 2, cols: 3 }));
-        } else {
-            panic!("Wrong event type");
-        }
+        let CodirigentEvent::LayoutChanged { mode } = event else {
+            panic!("Expected LayoutChanged, got {event:?}");
+        };
+        assert!(matches!(mode, LayoutMode::Grid { rows: 2, cols: 3 }));
     }
 
     #[test]
@@ -693,11 +685,10 @@ mod tests {
         let event = CodirigentEvent::TaskCreated {
             id: TaskId("task-001".to_string()),
         };
-        if let CodirigentEvent::TaskCreated { id } = event {
-            assert_eq!(id, TaskId("task-001".to_string()));
-        } else {
-            panic!("Wrong event type");
-        }
+        let CodirigentEvent::TaskCreated { id } = event else {
+            panic!("Expected TaskCreated, got {event:?}");
+        };
+        assert_eq!(id, TaskId("task-001".to_string()));
     }
 
     #[test]
@@ -706,16 +697,15 @@ mod tests {
             task_id: TaskId("task-001".to_string()),
             session_id: SessionId(1),
         };
-        if let CodirigentEvent::TaskAssigned {
+        let CodirigentEvent::TaskAssigned {
             task_id,
             session_id,
         } = event
-        {
-            assert_eq!(task_id, TaskId("task-001".to_string()));
-            assert_eq!(session_id, SessionId(1));
-        } else {
-            panic!("Wrong event type");
-        }
+        else {
+            panic!("Expected TaskAssigned, got {event:?}");
+        };
+        assert_eq!(task_id, TaskId("task-001".to_string()));
+        assert_eq!(session_id, SessionId(1));
     }
 
     #[test]
@@ -724,12 +714,11 @@ mod tests {
             task_id: TaskId("task-001".to_string()),
             success: true,
         };
-        if let CodirigentEvent::TaskCompleted { task_id, success } = event {
-            assert_eq!(task_id, TaskId("task-001".to_string()));
-            assert!(success);
-        } else {
-            panic!("Wrong event type");
-        }
+        let CodirigentEvent::TaskCompleted { task_id, success } = event else {
+            panic!("Expected TaskCompleted, got {event:?}");
+        };
+        assert_eq!(task_id, TaskId("task-001".to_string()));
+        assert!(success);
     }
 
     #[test]
@@ -738,11 +727,10 @@ mod tests {
             task_id: TaskId("task-001".to_string()),
             success: false,
         };
-        if let CodirigentEvent::TaskCompleted { success, .. } = event {
-            assert!(!success);
-        } else {
-            panic!("Wrong event type");
-        }
+        let CodirigentEvent::TaskCompleted { success, .. } = event else {
+            panic!("Expected TaskCompleted, got {event:?}");
+        };
+        assert!(!success);
     }
 
     #[test]
@@ -753,20 +741,19 @@ mod tests {
             new: TaskStatus::Working,
             reason: Some("Session started working".to_string()),
         };
-        if let CodirigentEvent::TaskStatusChanged {
+        let CodirigentEvent::TaskStatusChanged {
             task_id,
             old,
             new,
             reason,
         } = event
-        {
-            assert_eq!(task_id, TaskId("task-001".to_string()));
-            assert_eq!(old, TaskStatus::Assigned);
-            assert_eq!(new, TaskStatus::Working);
-            assert_eq!(reason, Some("Session started working".to_string()));
-        } else {
-            panic!("Wrong event type");
-        }
+        else {
+            panic!("Expected TaskStatusChanged, got {event:?}");
+        };
+        assert_eq!(task_id, TaskId("task-001".to_string()));
+        assert_eq!(old, TaskStatus::Assigned);
+        assert_eq!(new, TaskStatus::Working);
+        assert_eq!(reason, Some("Session started working".to_string()));
     }
 
     #[test]
@@ -775,12 +762,11 @@ mod tests {
             session_id: SessionId(1),
             path: PathBuf::from("/home/user/file.txt"),
         };
-        if let CodirigentEvent::PathDraggedToSession { session_id, path } = event {
-            assert_eq!(session_id, SessionId(1));
-            assert_eq!(path, PathBuf::from("/home/user/file.txt"));
-        } else {
-            panic!("Wrong event type");
-        }
+        let CodirigentEvent::PathDraggedToSession { session_id, path } = event else {
+            panic!("Expected PathDraggedToSession, got {event:?}");
+        };
+        assert_eq!(session_id, SessionId(1));
+        assert_eq!(path, PathBuf::from("/home/user/file.txt"));
     }
 
     #[test]
@@ -789,12 +775,11 @@ mod tests {
             path: PathBuf::from("/repo/worktrees/feature"),
             branch: "feature-branch".to_string(),
         };
-        if let CodirigentEvent::WorktreeCreated { path, branch } = event {
-            assert_eq!(path, PathBuf::from("/repo/worktrees/feature"));
-            assert_eq!(branch, "feature-branch");
-        } else {
-            panic!("Wrong event type");
-        }
+        let CodirigentEvent::WorktreeCreated { path, branch } = event else {
+            panic!("Expected WorktreeCreated, got {event:?}");
+        };
+        assert_eq!(path, PathBuf::from("/repo/worktrees/feature"));
+        assert_eq!(branch, "feature-branch");
     }
 
     #[test]
@@ -802,11 +787,10 @@ mod tests {
         let event = CodirigentEvent::WorktreeRemoved {
             path: PathBuf::from("/repo/worktrees/feature"),
         };
-        if let CodirigentEvent::WorktreeRemoved { path } = event {
-            assert_eq!(path, PathBuf::from("/repo/worktrees/feature"));
-        } else {
-            panic!("Wrong event type");
-        }
+        let CodirigentEvent::WorktreeRemoved { path } = event else {
+            panic!("Expected WorktreeRemoved, got {event:?}");
+        };
+        assert_eq!(path, PathBuf::from("/repo/worktrees/feature"));
     }
 
     #[test]
@@ -815,16 +799,15 @@ mod tests {
             session_id: SessionId(1),
             worktree_path: PathBuf::from("/repo/worktrees/feature"),
         };
-        if let CodirigentEvent::SessionBoundToWorktree {
+        let CodirigentEvent::SessionBoundToWorktree {
             session_id,
             worktree_path,
         } = event
-        {
-            assert_eq!(session_id, SessionId(1));
-            assert_eq!(worktree_path, PathBuf::from("/repo/worktrees/feature"));
-        } else {
-            panic!("Wrong event type");
-        }
+        else {
+            panic!("Expected SessionBoundToWorktree, got {event:?}");
+        };
+        assert_eq!(session_id, SessionId(1));
+        assert_eq!(worktree_path, PathBuf::from("/repo/worktrees/feature"));
     }
 
     #[test]
@@ -832,11 +815,10 @@ mod tests {
         let event = CodirigentEvent::SessionUnboundFromWorktree {
             session_id: SessionId(1),
         };
-        if let CodirigentEvent::SessionUnboundFromWorktree { session_id } = event {
-            assert_eq!(session_id, SessionId(1));
-        } else {
-            panic!("Wrong event type");
-        }
+        let CodirigentEvent::SessionUnboundFromWorktree { session_id } = event else {
+            panic!("Expected SessionUnboundFromWorktree, got {event:?}");
+        };
+        assert_eq!(session_id, SessionId(1));
     }
 
     #[test]
@@ -861,18 +843,17 @@ mod tests {
             percentage: 0.5,
             effective_percentage: 0.625,
         };
-        if let CodirigentEvent::ContextUsageUpdated {
+        let CodirigentEvent::ContextUsageUpdated {
             session_id,
             percentage,
             effective_percentage,
         } = event
-        {
-            assert_eq!(session_id, SessionId(1));
-            assert!((percentage - 0.5).abs() < f32::EPSILON);
-            assert!((effective_percentage - 0.625).abs() < f32::EPSILON);
-        } else {
-            panic!("Wrong event type");
-        }
+        else {
+            panic!("Expected ContextUsageUpdated, got {event:?}");
+        };
+        assert_eq!(session_id, SessionId(1));
+        assert!((percentage - 0.5).abs() < f32::EPSILON);
+        assert!((effective_percentage - 0.625).abs() < f32::EPSILON);
     }
 
     #[test]
@@ -882,18 +863,17 @@ mod tests {
             threshold: 0.7,
             state: ContextThresholdState::Warning,
         };
-        if let CodirigentEvent::ContextThresholdReached {
+        let CodirigentEvent::ContextThresholdReached {
             session_id,
             threshold,
             state,
         } = event
-        {
-            assert_eq!(session_id, SessionId(1));
-            assert!((threshold - 0.7).abs() < f32::EPSILON);
-            assert_eq!(state, ContextThresholdState::Warning);
-        } else {
-            panic!("Wrong event type");
-        }
+        else {
+            panic!("Expected ContextThresholdReached, got {event:?}");
+        };
+        assert_eq!(session_id, SessionId(1));
+        assert!((threshold - 0.7).abs() < f32::EPSILON);
+        assert_eq!(state, ContextThresholdState::Warning);
     }
 
     #[test]
@@ -903,18 +883,17 @@ mod tests {
             threshold: 0.9,
             state: ContextThresholdState::Critical,
         };
-        if let CodirigentEvent::ContextThresholdReached {
+        let CodirigentEvent::ContextThresholdReached {
             session_id,
             threshold,
             state,
         } = event
-        {
-            assert_eq!(session_id, SessionId(1));
-            assert!((threshold - 0.9).abs() < f32::EPSILON);
-            assert_eq!(state, ContextThresholdState::Critical);
-        } else {
-            panic!("Wrong event type");
-        }
+        else {
+            panic!("Expected ContextThresholdReached, got {event:?}");
+        };
+        assert_eq!(session_id, SessionId(1));
+        assert!((threshold - 0.9).abs() < f32::EPSILON);
+        assert_eq!(state, ContextThresholdState::Critical);
     }
 
     #[test]
@@ -922,11 +901,10 @@ mod tests {
         let event = CodirigentEvent::SkillEnabled {
             name: "commit".to_string(),
         };
-        if let CodirigentEvent::SkillEnabled { name } = event {
-            assert_eq!(name, "commit");
-        } else {
-            panic!("Wrong event type");
-        }
+        let CodirigentEvent::SkillEnabled { name } = event else {
+            panic!("Expected SkillEnabled, got {event:?}");
+        };
+        assert_eq!(name, "commit");
     }
 
     #[test]
@@ -934,11 +912,10 @@ mod tests {
         let event = CodirigentEvent::SkillDisabled {
             name: "commit".to_string(),
         };
-        if let CodirigentEvent::SkillDisabled { name } = event {
-            assert_eq!(name, "commit");
-        } else {
-            panic!("Wrong event type");
-        }
+        let CodirigentEvent::SkillDisabled { name } = event else {
+            panic!("Expected SkillDisabled, got {event:?}");
+        };
+        assert_eq!(name, "commit");
     }
 
     #[test]
@@ -949,12 +926,11 @@ mod tests {
             warning_threshold: 12000,
         };
         let event = CodirigentEvent::TokenBudgetWarning { budget };
-        if let CodirigentEvent::TokenBudgetWarning { budget } = event {
-            assert_eq!(budget.used_tokens, 12500);
-            assert!(budget.used_tokens >= budget.warning_threshold);
-        } else {
-            panic!("Wrong event type");
-        }
+        let CodirigentEvent::TokenBudgetWarning { budget } = event else {
+            panic!("Expected TokenBudgetWarning, got {event:?}");
+        };
+        assert_eq!(budget.used_tokens, 12500);
+        assert!(budget.used_tokens >= budget.warning_threshold);
     }
 
     #[test]
@@ -965,12 +941,11 @@ mod tests {
             warning_threshold: 12000,
         };
         let event = CodirigentEvent::TokenBudgetExceeded { budget };
-        if let CodirigentEvent::TokenBudgetExceeded { budget } = event {
-            assert_eq!(budget.used_tokens, 16000);
-            assert!(budget.used_tokens > budget.max_tokens);
-        } else {
-            panic!("Wrong event type");
-        }
+        let CodirigentEvent::TokenBudgetExceeded { budget } = event else {
+            panic!("Expected TokenBudgetExceeded, got {event:?}");
+        };
+        assert_eq!(budget.used_tokens, 16000);
+        assert!(budget.used_tokens > budget.max_tokens);
     }
 
     #[test]
@@ -979,26 +954,24 @@ mod tests {
             preset_name: "dev".to_string(),
             enabled_count: 5,
         };
-        if let CodirigentEvent::SkillPresetApplied {
+        let CodirigentEvent::SkillPresetApplied {
             preset_name,
             enabled_count,
         } = event
-        {
-            assert_eq!(preset_name, "dev");
-            assert_eq!(enabled_count, 5);
-        } else {
-            panic!("Wrong event type");
-        }
+        else {
+            panic!("Expected SkillPresetApplied, got {event:?}");
+        };
+        assert_eq!(preset_name, "dev");
+        assert_eq!(enabled_count, 5);
     }
 
     #[test]
     fn test_skills_refreshed_event() {
         let event = CodirigentEvent::SkillsRefreshed { count: 10 };
-        if let CodirigentEvent::SkillsRefreshed { count } = event {
-            assert_eq!(count, 10);
-        } else {
-            panic!("Wrong event type");
-        }
+        let CodirigentEvent::SkillsRefreshed { count } = event else {
+            panic!("Expected SkillsRefreshed, got {event:?}");
+        };
+        assert_eq!(count, 10);
     }
 
     // === Ralph Loop Event Tests ===
@@ -1009,12 +982,11 @@ mod tests {
             session_id: SessionId(1),
             config: crate::ralph::RalphLoopConfig::default(),
         };
-        if let CodirigentEvent::RalphLoopStarted { session_id, config } = event {
-            assert_eq!(session_id, SessionId(1));
-            assert_eq!(config.max_iterations, 20); // Default is 20
-        } else {
-            panic!("Wrong event type");
-        }
+        let CodirigentEvent::RalphLoopStarted { session_id, config } = event else {
+            panic!("Expected RalphLoopStarted, got {event:?}");
+        };
+        assert_eq!(session_id, SessionId(1));
+        assert_eq!(config.max_iterations, 20); // Default is 20
     }
 
     #[test]
@@ -1022,11 +994,10 @@ mod tests {
         let event = CodirigentEvent::RalphLoopPaused {
             session_id: SessionId(1),
         };
-        if let CodirigentEvent::RalphLoopPaused { session_id } = event {
-            assert_eq!(session_id, SessionId(1));
-        } else {
-            panic!("Wrong event type");
-        }
+        let CodirigentEvent::RalphLoopPaused { session_id } = event else {
+            panic!("Expected RalphLoopPaused, got {event:?}");
+        };
+        assert_eq!(session_id, SessionId(1));
     }
 
     #[test]
@@ -1034,11 +1005,10 @@ mod tests {
         let event = CodirigentEvent::RalphLoopResumed {
             session_id: SessionId(1),
         };
-        if let CodirigentEvent::RalphLoopResumed { session_id } = event {
-            assert_eq!(session_id, SessionId(1));
-        } else {
-            panic!("Wrong event type");
-        }
+        let CodirigentEvent::RalphLoopResumed { session_id } = event else {
+            panic!("Expected RalphLoopResumed, got {event:?}");
+        };
+        assert_eq!(session_id, SessionId(1));
     }
 
     #[test]
@@ -1046,11 +1016,10 @@ mod tests {
         let event = CodirigentEvent::RalphLoopCancelled {
             session_id: SessionId(1),
         };
-        if let CodirigentEvent::RalphLoopCancelled { session_id } = event {
-            assert_eq!(session_id, SessionId(1));
-        } else {
-            panic!("Wrong event type");
-        }
+        let CodirigentEvent::RalphLoopCancelled { session_id } = event else {
+            panic!("Expected RalphLoopCancelled, got {event:?}");
+        };
+        assert_eq!(session_id, SessionId(1));
     }
 
     #[test]
@@ -1061,20 +1030,19 @@ mod tests {
             passed: true,
             test_failures: Some(0),
         };
-        if let CodirigentEvent::RalphLoopIteration {
+        let CodirigentEvent::RalphLoopIteration {
             session_id,
             iteration,
             passed,
             test_failures,
         } = event
-        {
-            assert_eq!(session_id, SessionId(1));
-            assert_eq!(iteration, 3);
-            assert!(passed);
-            assert_eq!(test_failures, Some(0));
-        } else {
-            panic!("Wrong event type");
-        }
+        else {
+            panic!("Expected RalphLoopIteration, got {event:?}");
+        };
+        assert_eq!(session_id, SessionId(1));
+        assert_eq!(iteration, 3);
+        assert!(passed);
+        assert_eq!(test_failures, Some(0));
     }
 
     #[test]
@@ -1083,16 +1051,15 @@ mod tests {
             session_id: SessionId(1),
             total_iterations: 5,
         };
-        if let CodirigentEvent::RalphLoopCompleted {
+        let CodirigentEvent::RalphLoopCompleted {
             session_id,
             total_iterations,
         } = event
-        {
-            assert_eq!(session_id, SessionId(1));
-            assert_eq!(total_iterations, 5);
-        } else {
-            panic!("Wrong event type");
-        }
+        else {
+            panic!("Expected RalphLoopCompleted, got {event:?}");
+        };
+        assert_eq!(session_id, SessionId(1));
+        assert_eq!(total_iterations, 5);
     }
 
     #[test]
@@ -1102,18 +1069,17 @@ mod tests {
             reason: "Max iterations reached".to_string(),
             iterations: 10,
         };
-        if let CodirigentEvent::RalphLoopFailed {
+        let CodirigentEvent::RalphLoopFailed {
             session_id,
             reason,
             iterations,
         } = event
-        {
-            assert_eq!(session_id, SessionId(1));
-            assert_eq!(reason, "Max iterations reached");
-            assert_eq!(iterations, 10);
-        } else {
-            panic!("Wrong event type");
-        }
+        else {
+            panic!("Expected RalphLoopFailed, got {event:?}");
+        };
+        assert_eq!(session_id, SessionId(1));
+        assert_eq!(reason, "Max iterations reached");
+        assert_eq!(iterations, 10);
     }
 
     #[test]
@@ -1122,16 +1088,15 @@ mod tests {
             session_id: SessionId(1),
             iterations_without_progress: 3,
         };
-        if let CodirigentEvent::RalphLoopStuck {
+        let CodirigentEvent::RalphLoopStuck {
             session_id,
             iterations_without_progress,
         } = event
-        {
-            assert_eq!(session_id, SessionId(1));
-            assert_eq!(iterations_without_progress, 3);
-        } else {
-            panic!("Wrong event type");
-        }
+        else {
+            panic!("Expected RalphLoopStuck, got {event:?}");
+        };
+        assert_eq!(session_id, SessionId(1));
+        assert_eq!(iterations_without_progress, 3);
     }
 
     #[test]
@@ -1140,16 +1105,15 @@ mod tests {
             session_id: SessionId(1),
             iteration: 7,
         };
-        if let CodirigentEvent::RalphLoopCompacted {
+        let CodirigentEvent::RalphLoopCompacted {
             session_id,
             iteration,
         } = event
-        {
-            assert_eq!(session_id, SessionId(1));
-            assert_eq!(iteration, 7);
-        } else {
-            panic!("Wrong event type");
-        }
+        else {
+            panic!("Expected RalphLoopCompacted, got {event:?}");
+        };
+        assert_eq!(session_id, SessionId(1));
+        assert_eq!(iteration, 7);
     }
 
     #[test]
@@ -1380,18 +1344,17 @@ mod tests {
             target_count: 5,
             priority: crate::broadcast::BroadcastPriority::High,
         };
-        if let CodirigentEvent::BroadcastSent {
+        let CodirigentEvent::BroadcastSent {
             id,
             target_count,
             priority,
         } = event
-        {
-            assert_eq!(id, crate::broadcast::BroadcastId(1));
-            assert_eq!(target_count, 5);
-            assert_eq!(priority, crate::broadcast::BroadcastPriority::High);
-        } else {
-            panic!("Wrong event type");
-        }
+        else {
+            panic!("Expected BroadcastSent, got {event:?}");
+        };
+        assert_eq!(id, crate::broadcast::BroadcastId(1));
+        assert_eq!(target_count, 5);
+        assert_eq!(priority, crate::broadcast::BroadcastPriority::High);
     }
 
     #[test]
@@ -1400,12 +1363,11 @@ mod tests {
             id: crate::broadcast::BroadcastId(1),
             session_id: SessionId(42),
         };
-        if let CodirigentEvent::BroadcastDelivered { id, session_id } = event {
-            assert_eq!(id, crate::broadcast::BroadcastId(1));
-            assert_eq!(session_id, SessionId(42));
-        } else {
-            panic!("Wrong event type");
-        }
+        let CodirigentEvent::BroadcastDelivered { id, session_id } = event else {
+            panic!("Expected BroadcastDelivered, got {event:?}");
+        };
+        assert_eq!(id, crate::broadcast::BroadcastId(1));
+        assert_eq!(session_id, SessionId(42));
     }
 
     #[test]
@@ -1415,18 +1377,17 @@ mod tests {
             session_id: SessionId(2),
             error: "Session offline".to_string(),
         };
-        if let CodirigentEvent::BroadcastDeliveryFailed {
+        let CodirigentEvent::BroadcastDeliveryFailed {
             id,
             session_id,
             error,
         } = event
-        {
-            assert_eq!(id, crate::broadcast::BroadcastId(1));
-            assert_eq!(session_id, SessionId(2));
-            assert_eq!(error, "Session offline");
-        } else {
-            panic!("Wrong event type");
-        }
+        else {
+            panic!("Expected BroadcastDeliveryFailed, got {event:?}");
+        };
+        assert_eq!(id, crate::broadcast::BroadcastId(1));
+        assert_eq!(session_id, SessionId(2));
+        assert_eq!(error, "Session offline");
     }
 
     #[test]
@@ -1436,18 +1397,17 @@ mod tests {
             success_count: 8,
             failure_count: 2,
         };
-        if let CodirigentEvent::BroadcastComplete {
+        let CodirigentEvent::BroadcastComplete {
             id,
             success_count,
             failure_count,
         } = event
-        {
-            assert_eq!(id, crate::broadcast::BroadcastId(1));
-            assert_eq!(success_count, 8);
-            assert_eq!(failure_count, 2);
-        } else {
-            panic!("Wrong event type");
-        }
+        else {
+            panic!("Expected BroadcastComplete, got {event:?}");
+        };
+        assert_eq!(id, crate::broadcast::BroadcastId(1));
+        assert_eq!(success_count, 8);
+        assert_eq!(failure_count, 2);
     }
 
     // === Advanced Session Event Tests ===
@@ -1458,12 +1418,11 @@ mod tests {
             source: SessionId(1),
             target: SessionId(2),
         };
-        if let CodirigentEvent::HandoffInitiated { source, target } = event {
-            assert_eq!(source, SessionId(1));
-            assert_eq!(target, SessionId(2));
-        } else {
-            panic!("Wrong event type");
-        }
+        let CodirigentEvent::HandoffInitiated { source, target } = event else {
+            panic!("Expected HandoffInitiated, got {event:?}");
+        };
+        assert_eq!(source, SessionId(1));
+        assert_eq!(target, SessionId(2));
     }
 
     #[test]
@@ -1472,12 +1431,11 @@ mod tests {
             source: SessionId(1),
             target: SessionId(2),
         };
-        if let CodirigentEvent::HandoffCompleted { source, target } = event {
-            assert_eq!(source, SessionId(1));
-            assert_eq!(target, SessionId(2));
-        } else {
-            panic!("Wrong event type");
-        }
+        let CodirigentEvent::HandoffCompleted { source, target } = event else {
+            panic!("Expected HandoffCompleted, got {event:?}");
+        };
+        assert_eq!(source, SessionId(1));
+        assert_eq!(target, SessionId(2));
     }
 
     #[test]
@@ -1487,18 +1445,17 @@ mod tests {
             target: SessionId(2),
             error: "Target session busy".to_string(),
         };
-        if let CodirigentEvent::HandoffFailed {
+        let CodirigentEvent::HandoffFailed {
             source,
             target,
             error,
         } = event
-        {
-            assert_eq!(source, SessionId(1));
-            assert_eq!(target, SessionId(2));
-            assert_eq!(error, "Target session busy");
-        } else {
-            panic!("Wrong event type");
-        }
+        else {
+            panic!("Expected HandoffFailed, got {event:?}");
+        };
+        assert_eq!(source, SessionId(1));
+        assert_eq!(target, SessionId(2));
+        assert_eq!(error, "Target session busy");
     }
 
     #[test]
@@ -1507,16 +1464,15 @@ mod tests {
             session_id: SessionId(1),
             template_name: "development".to_string(),
         };
-        if let CodirigentEvent::SessionCreatedFromTemplate {
+        let CodirigentEvent::SessionCreatedFromTemplate {
             session_id,
             template_name,
         } = event
-        {
-            assert_eq!(session_id, SessionId(1));
-            assert_eq!(template_name, "development");
-        } else {
-            panic!("Wrong event type");
-        }
+        else {
+            panic!("Expected SessionCreatedFromTemplate, got {event:?}");
+        };
+        assert_eq!(session_id, SessionId(1));
+        assert_eq!(template_name, "development");
     }
 
     #[test]
@@ -1524,11 +1480,10 @@ mod tests {
         let event = CodirigentEvent::TemplateSaved {
             name: "my-template".to_string(),
         };
-        if let CodirigentEvent::TemplateSaved { name } = event {
-            assert_eq!(name, "my-template");
-        } else {
-            panic!("Wrong event type");
-        }
+        let CodirigentEvent::TemplateSaved { name } = event else {
+            panic!("Expected TemplateSaved, got {event:?}");
+        };
+        assert_eq!(name, "my-template");
     }
 
     #[test]
@@ -1537,16 +1492,15 @@ mod tests {
             source_session: SessionId(1),
             cloned_session: SessionId(2),
         };
-        if let CodirigentEvent::SessionCloned {
+        let CodirigentEvent::SessionCloned {
             source_session,
             cloned_session,
         } = event
-        {
-            assert_eq!(source_session, SessionId(1));
-            assert_eq!(cloned_session, SessionId(2));
-        } else {
-            panic!("Wrong event type");
-        }
+        else {
+            panic!("Expected SessionCloned, got {event:?}");
+        };
+        assert_eq!(source_session, SessionId(1));
+        assert_eq!(cloned_session, SessionId(2));
     }
 
     #[test]
@@ -1554,11 +1508,10 @@ mod tests {
         let event = CodirigentEvent::SessionGroupCreated {
             name: "backend".to_string(),
         };
-        if let CodirigentEvent::SessionGroupCreated { name } = event {
-            assert_eq!(name, "backend");
-        } else {
-            panic!("Wrong event type");
-        }
+        let CodirigentEvent::SessionGroupCreated { name } = event else {
+            panic!("Expected SessionGroupCreated, got {event:?}");
+        };
+        assert_eq!(name, "backend");
     }
 
     #[test]
@@ -1567,16 +1520,15 @@ mod tests {
             session_id: SessionId(1),
             group_name: "backend".to_string(),
         };
-        if let CodirigentEvent::SessionAddedToGroup {
+        let CodirigentEvent::SessionAddedToGroup {
             session_id,
             group_name,
         } = event
-        {
-            assert_eq!(session_id, SessionId(1));
-            assert_eq!(group_name, "backend");
-        } else {
-            panic!("Wrong event type");
-        }
+        else {
+            panic!("Expected SessionAddedToGroup, got {event:?}");
+        };
+        assert_eq!(session_id, SessionId(1));
+        assert_eq!(group_name, "backend");
     }
 
     #[test]
@@ -1585,16 +1537,15 @@ mod tests {
             session_id: SessionId(1),
             group_name: "backend".to_string(),
         };
-        if let CodirigentEvent::SessionRemovedFromGroup {
+        let CodirigentEvent::SessionRemovedFromGroup {
             session_id,
             group_name,
         } = event
-        {
-            assert_eq!(session_id, SessionId(1));
-            assert_eq!(group_name, "backend");
-        } else {
-            panic!("Wrong event type");
-        }
+        else {
+            panic!("Expected SessionRemovedFromGroup, got {event:?}");
+        };
+        assert_eq!(session_id, SessionId(1));
+        assert_eq!(group_name, "backend");
     }
 
     #[test]
@@ -1603,12 +1554,11 @@ mod tests {
         let event = CodirigentEvent::OvernightStarted {
             config: config.clone(),
         };
-        if let CodirigentEvent::OvernightStarted { config: c } = event {
-            assert_eq!(c.start_hour, config.start_hour);
-            assert_eq!(c.stop_hour, config.stop_hour);
-        } else {
-            panic!("Wrong event type");
-        }
+        let CodirigentEvent::OvernightStarted { config: c } = event else {
+            panic!("Expected OvernightStarted, got {event:?}");
+        };
+        assert_eq!(c.start_hour, config.start_hour);
+        assert_eq!(c.stop_hour, config.stop_hour);
     }
 
     #[test]
@@ -1617,11 +1567,10 @@ mod tests {
         let event = CodirigentEvent::OvernightStopped {
             summary: summary.clone(),
         };
-        if let CodirigentEvent::OvernightStopped { summary: s } = event {
-            assert_eq!(s.tasks_completed, summary.tasks_completed);
-        } else {
-            panic!("Wrong event type");
-        }
+        let CodirigentEvent::OvernightStopped { summary: s } = event else {
+            panic!("Expected OvernightStopped, got {event:?}");
+        };
+        assert_eq!(s.tasks_completed, summary.tasks_completed);
     }
 
     #[test]
@@ -1630,16 +1579,15 @@ mod tests {
             task_number: 5,
             success: true,
         };
-        if let CodirigentEvent::OvernightTaskCompleted {
+        let CodirigentEvent::OvernightTaskCompleted {
             task_number,
             success,
         } = event
-        {
-            assert_eq!(task_number, 5);
-            assert!(success);
-        } else {
-            panic!("Wrong event type");
-        }
+        else {
+            panic!("Expected OvernightTaskCompleted, got {event:?}");
+        };
+        assert_eq!(task_number, 5);
+        assert!(success);
     }
 
     #[test]
@@ -1648,12 +1596,11 @@ mod tests {
             error: "Task timeout".to_string(),
             task_number: Some(3),
         };
-        if let CodirigentEvent::OvernightError { error, task_number } = event {
-            assert_eq!(error, "Task timeout");
-            assert_eq!(task_number, Some(3));
-        } else {
-            panic!("Wrong event type");
-        }
+        let CodirigentEvent::OvernightError { error, task_number } = event else {
+            panic!("Expected OvernightError, got {event:?}");
+        };
+        assert_eq!(error, "Task timeout");
+        assert_eq!(task_number, Some(3));
     }
 
     #[test]
@@ -1662,12 +1609,11 @@ mod tests {
             error: "System error".to_string(),
             task_number: None,
         };
-        if let CodirigentEvent::OvernightError { error, task_number } = event {
-            assert_eq!(error, "System error");
-            assert!(task_number.is_none());
-        } else {
-            panic!("Wrong event type");
-        }
+        let CodirigentEvent::OvernightError { error, task_number } = event else {
+            panic!("Expected OvernightError, got {event:?}");
+        };
+        assert_eq!(error, "System error");
+        assert!(task_number.is_none());
     }
 
     #[test]
@@ -1738,12 +1684,11 @@ mod tests {
             session_id: SessionId(1),
             focus: Some("Focus on implementation".to_string()),
         };
-        if let CodirigentEvent::CompactionStarted { session_id, focus } = event {
-            assert_eq!(session_id, SessionId(1));
-            assert_eq!(focus, Some("Focus on implementation".to_string()));
-        } else {
-            panic!("Wrong event type");
-        }
+        let CodirigentEvent::CompactionStarted { session_id, focus } = event else {
+            panic!("Expected CompactionStarted, got {event:?}");
+        };
+        assert_eq!(session_id, SessionId(1));
+        assert_eq!(focus, Some("Focus on implementation".to_string()));
     }
 
     #[test]
@@ -1752,12 +1697,11 @@ mod tests {
             session_id: SessionId(2),
             focus: None,
         };
-        if let CodirigentEvent::CompactionStarted { session_id, focus } = event {
-            assert_eq!(session_id, SessionId(2));
-            assert!(focus.is_none());
-        } else {
-            panic!("Wrong event type");
-        }
+        let CodirigentEvent::CompactionStarted { session_id, focus } = event else {
+            panic!("Expected CompactionStarted, got {event:?}");
+        };
+        assert_eq!(session_id, SessionId(2));
+        assert!(focus.is_none());
     }
 
     #[test]
@@ -1766,16 +1710,15 @@ mod tests {
             session_id: SessionId(1),
             success: true,
         };
-        if let CodirigentEvent::CompactionCompleted {
+        let CodirigentEvent::CompactionCompleted {
             session_id,
             success,
         } = event
-        {
-            assert_eq!(session_id, SessionId(1));
-            assert!(success);
-        } else {
-            panic!("Wrong event type");
-        }
+        else {
+            panic!("Expected CompactionCompleted, got {event:?}");
+        };
+        assert_eq!(session_id, SessionId(1));
+        assert!(success);
     }
 
     #[test]
@@ -1784,16 +1727,15 @@ mod tests {
             session_id: SessionId(1),
             success: false,
         };
-        if let CodirigentEvent::CompactionCompleted {
+        let CodirigentEvent::CompactionCompleted {
             session_id,
             success,
         } = event
-        {
-            assert_eq!(session_id, SessionId(1));
-            assert!(!success);
-        } else {
-            panic!("Wrong event type");
-        }
+        else {
+            panic!("Expected CompactionCompleted, got {event:?}");
+        };
+        assert_eq!(session_id, SessionId(1));
+        assert!(!success);
     }
 
     // === Git Status Event Tests ===
@@ -1813,20 +1755,19 @@ mod tests {
             session_id: SessionId(1),
             git_info: Some(git_info),
         };
-        if let CodirigentEvent::GitStatusUpdated {
+        let CodirigentEvent::GitStatusUpdated {
             session_id,
             git_info,
         } = event
-        {
-            assert_eq!(session_id, SessionId(1));
-            let info = git_info.unwrap();
-            assert_eq!(info.branch, "feature-branch");
-            assert_eq!(info.dirty_count, 5);
-            assert!(info.has_staged);
-            assert_eq!(info.head_sha, Some("abc12345".to_string()));
-        } else {
-            panic!("Wrong event type");
-        }
+        else {
+            panic!("Expected GitStatusUpdated, got {event:?}");
+        };
+        assert_eq!(session_id, SessionId(1));
+        let info = git_info.unwrap();
+        assert_eq!(info.branch, "feature-branch");
+        assert_eq!(info.dirty_count, 5);
+        assert!(info.has_staged);
+        assert_eq!(info.head_sha, Some("abc12345".to_string()));
     }
 
     #[test]
@@ -1835,16 +1776,15 @@ mod tests {
             session_id: SessionId(1),
             git_info: None,
         };
-        if let CodirigentEvent::GitStatusUpdated {
+        let CodirigentEvent::GitStatusUpdated {
             session_id,
             git_info,
         } = event
-        {
-            assert_eq!(session_id, SessionId(1));
-            assert!(git_info.is_none());
-        } else {
-            panic!("Wrong event type");
-        }
+        else {
+            panic!("Expected GitStatusUpdated, got {event:?}");
+        };
+        assert_eq!(session_id, SessionId(1));
+        assert!(git_info.is_none());
     }
 
     // === Clipboard Event Tests ===
@@ -1888,41 +1828,37 @@ mod tests {
         let event = CodirigentEvent::ClipboardContentDetected {
             content_type: ClipboardContentType::Text,
         };
-        if let CodirigentEvent::ClipboardContentDetected { content_type } = event {
-            assert_eq!(content_type, ClipboardContentType::Text);
-        } else {
-            panic!("Wrong event type");
-        }
+        let CodirigentEvent::ClipboardContentDetected { content_type } = event else {
+            panic!("Expected ClipboardContentDetected, got {event:?}");
+        };
+        assert_eq!(content_type, ClipboardContentType::Text);
 
         // Test with image type
         let event = CodirigentEvent::ClipboardContentDetected {
             content_type: ClipboardContentType::Image,
         };
-        if let CodirigentEvent::ClipboardContentDetected { content_type } = event {
-            assert_eq!(content_type, ClipboardContentType::Image);
-        } else {
-            panic!("Wrong event type");
-        }
+        let CodirigentEvent::ClipboardContentDetected { content_type } = event else {
+            panic!("Expected ClipboardContentDetected, got {event:?}");
+        };
+        assert_eq!(content_type, ClipboardContentType::Image);
 
         // Test with files type
         let event = CodirigentEvent::ClipboardContentDetected {
             content_type: ClipboardContentType::Files,
         };
-        if let CodirigentEvent::ClipboardContentDetected { content_type } = event {
-            assert_eq!(content_type, ClipboardContentType::Files);
-        } else {
-            panic!("Wrong event type");
-        }
+        let CodirigentEvent::ClipboardContentDetected { content_type } = event else {
+            panic!("Expected ClipboardContentDetected, got {event:?}");
+        };
+        assert_eq!(content_type, ClipboardContentType::Files);
 
         // Test with empty type
         let event = CodirigentEvent::ClipboardContentDetected {
             content_type: ClipboardContentType::Empty,
         };
-        if let CodirigentEvent::ClipboardContentDetected { content_type } = event {
-            assert_eq!(content_type, ClipboardContentType::Empty);
-        } else {
-            panic!("Wrong event type");
-        }
+        let CodirigentEvent::ClipboardContentDetected { content_type } = event else {
+            panic!("Expected ClipboardContentDetected, got {event:?}");
+        };
+        assert_eq!(content_type, ClipboardContentType::Empty);
     }
 
     #[test]
@@ -1932,27 +1868,25 @@ mod tests {
             session_id: Some(SessionId(42)),
             path: PathBuf::from("/tmp/clipboard_image.png"),
         };
-        if let CodirigentEvent::ClipboardImageSaved { session_id, path } = event {
-            assert_eq!(session_id, Some(SessionId(42)));
-            assert_eq!(path, PathBuf::from("/tmp/clipboard_image.png"));
-        } else {
-            panic!("Wrong event type");
-        }
+        let CodirigentEvent::ClipboardImageSaved { session_id, path } = event else {
+            panic!("Expected ClipboardImageSaved, got {event:?}");
+        };
+        assert_eq!(session_id, Some(SessionId(42)));
+        assert_eq!(path, PathBuf::from("/tmp/clipboard_image.png"));
 
         // Test without session ID (no focused session)
         let event = CodirigentEvent::ClipboardImageSaved {
             session_id: None,
             path: PathBuf::from("/project/.codirigent/images/img_001.png"),
         };
-        if let CodirigentEvent::ClipboardImageSaved { session_id, path } = event {
-            assert!(session_id.is_none());
-            assert_eq!(
-                path,
-                PathBuf::from("/project/.codirigent/images/img_001.png")
-            );
-        } else {
-            panic!("Wrong event type");
-        }
+        let CodirigentEvent::ClipboardImageSaved { session_id, path } = event else {
+            panic!("Expected ClipboardImageSaved, got {event:?}");
+        };
+        assert!(session_id.is_none());
+        assert_eq!(
+            path,
+            PathBuf::from("/project/.codirigent/images/img_001.png")
+        );
     }
 
     #[test]
@@ -1961,32 +1895,30 @@ mod tests {
             session_id: SessionId(1),
             formatted_content: "formatted code block".to_string(),
         };
-        if let CodirigentEvent::SmartPasteTriggered {
+        let CodirigentEvent::SmartPasteTriggered {
             session_id,
             formatted_content,
         } = event
-        {
-            assert_eq!(session_id, SessionId(1));
-            assert_eq!(formatted_content, "formatted code block");
-        } else {
-            panic!("Wrong event type");
-        }
+        else {
+            panic!("Expected SmartPasteTriggered, got {event:?}");
+        };
+        assert_eq!(session_id, SessionId(1));
+        assert_eq!(formatted_content, "formatted code block");
 
         // Test with empty content
         let event = CodirigentEvent::SmartPasteTriggered {
             session_id: SessionId(99),
             formatted_content: String::new(),
         };
-        if let CodirigentEvent::SmartPasteTriggered {
+        let CodirigentEvent::SmartPasteTriggered {
             session_id,
             formatted_content,
         } = event
-        {
-            assert_eq!(session_id, SessionId(99));
-            assert!(formatted_content.is_empty());
-        } else {
-            panic!("Wrong event type");
-        }
+        else {
+            panic!("Expected SmartPasteTriggered, got {event:?}");
+        };
+        assert_eq!(session_id, SessionId(99));
+        assert!(formatted_content.is_empty());
     }
 
     #[test]

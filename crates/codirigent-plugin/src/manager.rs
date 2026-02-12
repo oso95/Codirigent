@@ -206,10 +206,8 @@ mod tests {
     struct MockPlugin {
         metadata: PluginMetadata,
         state: PluginState,
-        #[allow(dead_code)]
-        init_count: u32,
-        #[allow(dead_code)]
-        shutdown_count: u32,
+        _init_count: u32,
+        _shutdown_count: u32,
     }
 
     impl MockPlugin {
@@ -224,8 +222,8 @@ mod tests {
                     size_bytes: 0,
                 },
                 state: PluginState::Loaded,
-                init_count: 0,
-                shutdown_count: 0,
+                _init_count: 0,
+                _shutdown_count: 0,
             }
         }
     }
@@ -240,13 +238,13 @@ mod tests {
         }
 
         fn initialize(&mut self, _event_bus: &dyn EventBus) -> Result<()> {
-            self.init_count += 1;
+            self._init_count += 1;
             self.state = PluginState::Active;
             Ok(())
         }
 
         fn shutdown(&mut self) -> Result<()> {
-            self.shutdown_count += 1;
+            self._shutdown_count += 1;
             self.state = PluginState::Disabled;
             Ok(())
         }
