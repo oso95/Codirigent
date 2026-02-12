@@ -45,6 +45,9 @@ mod impl_file_tree;
 mod impl_modals;
 
 #[cfg(feature = "gpui-full")]
+mod impl_session_lifecycle;
+
+#[cfg(feature = "gpui-full")]
 mod render;
 
 #[cfg(feature = "gpui-full")]
