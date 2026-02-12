@@ -877,6 +877,7 @@ impl WorkspaceView {
                     info!(?session_id, ?status, ?idle_time, "Session status poll");
                 }
                 let old_status = self.workspace.session(session_id).map(|s| s.status);
+                let mut just_started_compaction = false;
                 if self.workspace.update_session_status(session_id, status) {
                     any_dirty = true;
                     // Sync task board with the canonical (JSONL-corrected) status
@@ -916,6 +917,7 @@ impl WorkspaceView {
                                         let _ = mgr.send_input(session_id, clear_cmd.as_bytes());
                                     }
                                     self.compaction_start_times.insert(session_id, Instant::now());
+                                    just_started_compaction = true;
                                 }
                             }
                         }
@@ -923,7 +925,8 @@ impl WorkspaceView {
                 }
 
                 // NeedsAttention is NOT treated as idle — session is blocked
-                if matches!(status, SessionStatus::Idle) {
+                // Skip if we just started compaction — wait for /clear to finish
+                if matches!(status, SessionStatus::Idle) && !just_started_compaction {
                     let is_compacting = self.compaction.lock()
                         .map(|svc| svc.is_compacting(session_id))
                         .unwrap_or(false);
@@ -3199,11 +3202,13 @@ impl WorkspaceView {
     /// the prompt in a `claude -p "..."` command to launch the CLI.
     fn format_task_input(prompt: &str, cli_type: codirigent_core::CliType) -> String {
         match cli_type {
-            // CLI is already running — send prompt directly as input
+            // CLI is already running — send prompt directly as input.
+            // Wrap in bracketed paste sequences so newlines in the multi-line
+            // prompt template aren't interpreted as individual Enter presses.
             codirigent_core::CliType::ClaudeCode
             | codirigent_core::CliType::GeminiCli
             | codirigent_core::CliType::CodexCli => {
-                format!("{}\r", prompt)
+                format!("\x1b[200~{}\x1b[201~\r", prompt)
             }
             // Should never assign to bare shell sessions
             codirigent_core::CliType::GenericShell => {
