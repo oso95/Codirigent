@@ -57,6 +57,9 @@ dirs = "5"
 
 # Testing
 tempfile = "3"
+tokio-test = "0.4"
+mockall = "0.13"
+proptest = "1.4"
 
 # GPUI from crates.io with pinned core-text to avoid core-graphics conflict
 # Use default-features = false to let individual crates specify platform features
