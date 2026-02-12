@@ -51,6 +51,9 @@ mod impl_session_lifecycle;
 mod impl_keyboard;
 
 #[cfg(feature = "gpui-full")]
+mod impl_task_board;
+
+#[cfg(feature = "gpui-full")]
 mod render;
 
 #[cfg(feature = "gpui-full")]
