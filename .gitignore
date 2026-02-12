@@ -110,3 +110,7 @@ coverage/
 # Profiling data
 *.profdata
 *.profraw
+
+# Git worktrees
+.worktrees/
+worktrees/
