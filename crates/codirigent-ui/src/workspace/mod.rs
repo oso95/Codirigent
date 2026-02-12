@@ -30,7 +30,7 @@ mod core;
 pub mod gpui;
 
 #[cfg(feature = "gpui-full")]
-mod render;
+pub(crate) mod render;
 
 #[cfg(feature = "gpui-full")]
 mod icon_utils;

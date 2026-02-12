@@ -8,13 +8,16 @@ use crate::icons;
 use crate::layout::LayoutProfile;
 use crate::toolbar::CustomLayoutMode;
 use crate::workspace::gpui::{SessionActionKind, SessionActionModal, WorkspaceView};
-use codirigent_core::{LayoutNode, SlotId, SplitDirection};
+use codirigent_core::{LayoutNode, SessionId, SlotId, SplitDirection};
 use gpui::{
-    div, px, ClickEvent, Context, FontWeight, IntoElement, MouseButton, MouseDownEvent,
-    ParentElement, SharedString, StatefulInteractiveElement, Styled,
+    div, px, ClickEvent, Context, FontWeight, InteractiveElement, IntoElement, MouseButton,
+    MouseDownEvent, ParentElement, SharedString, StatefulInteractiveElement, Styled,
 };
 use std::cell::Cell;
 use std::rc::Rc;
+
+// SessionMenuAction is defined in render.rs
+use crate::workspace::render::SessionMenuAction;
 
 impl WorkspaceView {
     /// interactive split tree builder with preview.
