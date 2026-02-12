@@ -25,14 +25,14 @@
 //!
 //! // Start pipeline for a completed task
 //! pipeline.start(
-//!     TaskId("task-001".to_string()),
+//!     TaskId::from("task-001"),
 //!     SessionId(1),
 //!     PathBuf::from("/project"),
 //! ).await?;
 //!
 //! // Later, submit review
 //! pipeline.submit_review(
-//!     &TaskId("task-001".to_string()),
+//!     &TaskId::from("task-001"),
 //!     ReviewDecision::Approve,
 //! ).await?;
 //! # Ok(())
@@ -98,6 +98,9 @@ impl std::fmt::Debug for PipelineOrchestrator {
 }
 
 impl PipelineOrchestrator {
+    // Note: TaskId uses Arc<str> internally, so .clone() is cheap (atomic ref count increment).
+    // These clones are necessary for event ownership but don't allocate heap memory.
+
     /// Create a new pipeline orchestrator.
     ///
     /// # Arguments
@@ -546,7 +549,7 @@ mod tests {
         let temp = TempDir::new().unwrap();
         let pipeline = PipelineOrchestrator::new(temp.path().to_path_buf());
         assert!(pipeline
-            .get_state(&TaskId("nonexistent".to_string()))
+            .get_state(&TaskId::from("nonexistent"))
             .is_none());
     }
 
@@ -597,7 +600,7 @@ mod tests {
         let pipeline = PipelineOrchestrator::new(temp.path().to_path_buf());
 
         // Start a pipeline
-        let task_id = TaskId("task-001".to_string());
+        let task_id = TaskId::from("task-001");
         let state = PipelineState::new(task_id.clone(), SessionId(1), temp.path().to_path_buf());
         pipeline.store_state(state);
         assert!(pipeline.get_state(&task_id).is_some());
@@ -613,7 +616,7 @@ mod tests {
         let pipeline = PipelineOrchestrator::new(temp.path().to_path_buf());
 
         // Cancel nonexistent pipeline should succeed
-        let result = pipeline.cancel(&TaskId("nonexistent".to_string()));
+        let result = pipeline.cancel(&TaskId::from("nonexistent"));
         assert!(result.is_ok());
     }
 
@@ -625,7 +628,7 @@ mod tests {
         let pipeline = PipelineOrchestrator::new(temp.path().to_path_buf());
 
         let result = pipeline
-            .submit_review(&TaskId("nonexistent".to_string()), ReviewDecision::Approve)
+            .submit_review(&TaskId::from("nonexistent"), ReviewDecision::Approve)
             .await;
         assert!(result.is_err());
         assert!(result.unwrap_err().to_string().contains("not found"));
@@ -637,7 +640,7 @@ mod tests {
         let pipeline = PipelineOrchestrator::new(temp.path().to_path_buf());
 
         // Create a pipeline in the wrong stage
-        let task_id = TaskId("task-001".to_string());
+        let task_id = TaskId::from("task-001");
         let mut state =
             PipelineState::new(task_id.clone(), SessionId(1), temp.path().to_path_buf());
         state.stage = PipelineStage::Verifying;
@@ -659,7 +662,7 @@ mod tests {
         let pipeline = PipelineOrchestrator::new(temp.path().to_path_buf());
 
         // Create a pipeline awaiting review
-        let task_id = TaskId("task-001".to_string());
+        let task_id = TaskId::from("task-001");
         let mut state =
             PipelineState::new(task_id.clone(), SessionId(1), temp.path().to_path_buf());
         state.stage = PipelineStage::AwaitingReview;
@@ -684,7 +687,7 @@ mod tests {
         let pipeline = PipelineOrchestrator::new(temp.path().to_path_buf());
 
         // Create a pipeline awaiting review
-        let task_id = TaskId("task-001".to_string());
+        let task_id = TaskId::from("task-001");
         let mut state =
             PipelineState::new(task_id.clone(), SessionId(1), temp.path().to_path_buf());
         state.stage = PipelineStage::AwaitingReview;
@@ -713,7 +716,7 @@ mod tests {
         let pipeline = PipelineOrchestrator::new(temp.path().to_path_buf());
 
         // Create a pipeline awaiting review
-        let task_id = TaskId("task-001".to_string());
+        let task_id = TaskId::from("task-001");
         let mut state =
             PipelineState::new(task_id.clone(), SessionId(1), temp.path().to_path_buf());
         state.stage = PipelineStage::AwaitingReview;
@@ -743,7 +746,7 @@ mod tests {
         let pipeline = PipelineOrchestrator::new(temp.path().to_path_buf());
 
         let result = pipeline
-            .skip_verification(&TaskId("nonexistent".to_string()))
+            .skip_verification(&TaskId::from("nonexistent"))
             .await;
         assert!(result.is_err());
     }
@@ -754,7 +757,7 @@ mod tests {
         let pipeline = PipelineOrchestrator::new(temp.path().to_path_buf());
 
         // Create a pipeline in the wrong stage
-        let task_id = TaskId("task-001".to_string());
+        let task_id = TaskId::from("task-001");
         let mut state =
             PipelineState::new(task_id.clone(), SessionId(1), temp.path().to_path_buf());
         state.stage = PipelineStage::AwaitingReview;
@@ -771,7 +774,7 @@ mod tests {
         let pipeline = PipelineOrchestrator::new(temp.path().to_path_buf());
 
         // Create a pipeline in verifying stage
-        let task_id = TaskId("task-001".to_string());
+        let task_id = TaskId::from("task-001");
         let mut state =
             PipelineState::new(task_id.clone(), SessionId(1), temp.path().to_path_buf());
         state.stage = PipelineStage::Verifying;
@@ -792,7 +795,7 @@ mod tests {
         let temp = TempDir::new().unwrap();
         let pipeline = PipelineOrchestrator::new(temp.path().to_path_buf());
 
-        let task_id = TaskId("task-001".to_string());
+        let task_id = TaskId::from("task-001");
         let result = pipeline
             .start(task_id.clone(), SessionId(1), temp.path().to_path_buf())
             .await;
@@ -815,7 +818,7 @@ mod tests {
         let mut rx = pipeline.subscribe();
 
         // Create a pipeline awaiting review
-        let task_id = TaskId("task-001".to_string());
+        let task_id = TaskId::from("task-001");
         let mut state =
             PipelineState::new(task_id.clone(), SessionId(1), temp.path().to_path_buf());
         state.stage = PipelineStage::AwaitingReview;
@@ -852,7 +855,7 @@ mod tests {
         let temp = TempDir::new().unwrap();
         let pipeline = PipelineOrchestrator::new(temp.path().to_path_buf());
 
-        let task_id = TaskId("task-001".to_string());
+        let task_id = TaskId::from("task-001");
 
         // Start pipeline (should pass verification if no commands detected)
         let result = pipeline
@@ -881,12 +884,34 @@ mod tests {
 
         // Create multiple pipelines
         for i in 0..3 {
-            let task_id = TaskId(format!("task-{:03}", i));
+            let task_id = TaskId::from(format!("task-{:03}", i));
             let state = PipelineState::new(task_id, SessionId(i as u64), temp.path().to_path_buf());
             pipeline.store_state(state);
         }
 
         assert_eq!(pipeline.active_count(), 3);
         assert_eq!(pipeline.all_states().len(), 3);
+    }
+
+    #[tokio::test]
+    async fn test_pipeline_events_share_task_id_reference() {
+        use std::sync::Arc;
+
+        let temp = TempDir::new().unwrap();
+        let pipeline = PipelineOrchestrator::new(temp.path().to_path_buf());
+        let mut rx = pipeline.subscribe();
+
+        let task_id = TaskId::from("test-task");
+        let task_id_arc = task_id.0.clone(); // Get Arc reference
+
+        let _ = pipeline.start(task_id.clone(), SessionId(1), temp.path().to_path_buf()).await;
+
+        // Check that emitted events use same Arc allocation
+        while let Ok(event) = rx.try_recv() {
+            if let PipelineEvent::Started { task_id: emitted_id, .. } = event {
+                assert!(Arc::ptr_eq(&task_id_arc, &emitted_id.0));
+                break;
+            }
+        }
     }
 }

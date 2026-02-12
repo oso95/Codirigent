@@ -21,7 +21,7 @@
 //! // Generate a note
 //! let generator = DefaultNotesGenerator::new();
 //! let params = GenerateNoteParams {
-//!     task_id: TaskId("task-001".to_string()),
+//!     task_id: TaskId::from("task-001"),
 //!     session_id: SessionId(1),
 //!     title: "Refactor Auth".to_string(),
 //!     duration_minutes: 45,

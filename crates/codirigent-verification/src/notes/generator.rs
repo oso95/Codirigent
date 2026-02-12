@@ -27,7 +27,7 @@ use tracing::info;
 ///
 /// let generator = DefaultNotesGenerator::new();
 /// let params = GenerateNoteParams {
-///     task_id: TaskId("task-001".to_string()),
+///     task_id: TaskId::from("task-001"),
 ///     session_id: SessionId(1),
 ///     title: "Test Task".to_string(),
 ///     duration_minutes: 30,
@@ -328,7 +328,7 @@ mod tests {
     fn test_generate_note() {
         let generator = DefaultNotesGenerator::new();
         let params = GenerateNoteParams {
-            task_id: TaskId("task-001".to_string()),
+            task_id: TaskId::from("task-001"),
             session_id: SessionId(1),
             title: "Test Task".to_string(),
             duration_minutes: 30,
@@ -338,7 +338,7 @@ mod tests {
         };
         let note = generator.generate(params).unwrap();
 
-        assert_eq!(note.task_id.0, "task-001");
+        assert_eq!(note.task_id.0.as_ref(), "task-001");
         assert_eq!(note.duration_minutes, 30);
         assert!(note.summary.is_none());
         assert!(note.learnings.is_empty());
@@ -348,7 +348,7 @@ mod tests {
     fn test_generate_note_with_change_summary() {
         let generator = DefaultNotesGenerator::new();
         let summary = ChangeSummary {
-            task_id: TaskId("task-001".to_string()),
+            task_id: TaskId::from("task-001"),
             session_id: SessionId(1),
             changes: vec![FileChange {
                 path: PathBuf::from("src/lib.rs"),
@@ -363,7 +363,7 @@ mod tests {
         };
 
         let params = GenerateNoteParams {
-            task_id: TaskId("task-001".to_string()),
+            task_id: TaskId::from("task-001"),
             session_id: SessionId(1),
             title: "Test Task".to_string(),
             duration_minutes: 30,
@@ -380,7 +380,7 @@ mod tests {
     fn test_generate_note_with_verification() {
         let generator = DefaultNotesGenerator::new();
         let verification = VerificationStatus {
-            task_id: TaskId("task-001".to_string()),
+            task_id: TaskId::from("task-001"),
             session_id: SessionId(1),
             state: VerificationState::Passed,
             retry_count: 0,
@@ -393,7 +393,7 @@ mod tests {
         };
 
         let params = GenerateNoteParams {
-            task_id: TaskId("task-001".to_string()),
+            task_id: TaskId::from("task-001"),
             session_id: SessionId(1),
             title: "Test Task".to_string(),
             duration_minutes: 30,
@@ -410,7 +410,7 @@ mod tests {
     fn test_render_markdown_basic() {
         let generator = DefaultNotesGenerator::new();
         let note = SessionNote {
-            task_id: TaskId("task-001".to_string()),
+            task_id: TaskId::from("task-001"),
             title: "Refactor Auth".to_string(),
             session_id: SessionId(1),
             duration_minutes: 45,
@@ -434,7 +434,7 @@ mod tests {
     fn test_render_markdown_with_summary() {
         let generator = DefaultNotesGenerator::new();
         let note = SessionNote {
-            task_id: TaskId("task-001".to_string()),
+            task_id: TaskId::from("task-001"),
             title: "Test".to_string(),
             session_id: SessionId(1),
             duration_minutes: 30,
@@ -454,7 +454,7 @@ mod tests {
     fn test_render_markdown_no_summary_placeholder() {
         let generator = DefaultNotesGenerator::new();
         let note = SessionNote {
-            task_id: TaskId("task-001".to_string()),
+            task_id: TaskId::from("task-001"),
             title: "Test".to_string(),
             session_id: SessionId(1),
             duration_minutes: 30,
@@ -474,7 +474,7 @@ mod tests {
     fn test_render_markdown_with_changes() {
         let generator = DefaultNotesGenerator::new();
         let summary = ChangeSummary {
-            task_id: TaskId("task-001".to_string()),
+            task_id: TaskId::from("task-001"),
             session_id: SessionId(1),
             changes: vec![
                 FileChange {
@@ -508,7 +508,7 @@ mod tests {
         };
 
         let note = SessionNote {
-            task_id: TaskId("task-001".to_string()),
+            task_id: TaskId::from("task-001"),
             title: "Auth Refactor".to_string(),
             session_id: SessionId(1),
             duration_minutes: 60,
@@ -533,7 +533,7 @@ mod tests {
     fn test_render_markdown_with_verification() {
         let generator = DefaultNotesGenerator::new();
         let verification = VerificationStatus {
-            task_id: TaskId("task-001".to_string()),
+            task_id: TaskId::from("task-001"),
             session_id: SessionId(1),
             state: VerificationState::Passed,
             retry_count: 0,
@@ -547,7 +547,7 @@ mod tests {
         };
 
         let note = SessionNote {
-            task_id: TaskId("task-001".to_string()),
+            task_id: TaskId::from("task-001"),
             title: "Test".to_string(),
             session_id: SessionId(1),
             duration_minutes: 30,
@@ -570,7 +570,7 @@ mod tests {
     fn test_render_markdown_with_failed_verification() {
         let generator = DefaultNotesGenerator::new();
         let verification = VerificationStatus {
-            task_id: TaskId("task-001".to_string()),
+            task_id: TaskId::from("task-001"),
             session_id: SessionId(1),
             state: VerificationState::Failed,
             retry_count: 1,
@@ -585,7 +585,7 @@ mod tests {
         };
 
         let note = SessionNote {
-            task_id: TaskId("task-001".to_string()),
+            task_id: TaskId::from("task-001"),
             title: "Test".to_string(),
             session_id: SessionId(1),
             duration_minutes: 30,
@@ -606,7 +606,7 @@ mod tests {
     fn test_render_markdown_with_learnings() {
         let generator = DefaultNotesGenerator::new();
         let note = SessionNote {
-            task_id: TaskId("task-001".to_string()),
+            task_id: TaskId::from("task-001"),
             title: "Test".to_string(),
             session_id: SessionId(1),
             duration_minutes: 30,
@@ -649,7 +649,7 @@ mod tests {
 
         for status in statuses {
             let note = SessionNote {
-                task_id: TaskId("task-001".to_string()),
+                task_id: TaskId::from("task-001"),
                 title: "Test".to_string(),
                 session_id: SessionId(1),
                 duration_minutes: 30,
@@ -671,7 +671,7 @@ mod tests {
         let temp = TempDir::new().unwrap();
         let generator = DefaultNotesGenerator::new();
         let note = SessionNote {
-            task_id: TaskId("task-001".to_string()),
+            task_id: TaskId::from("task-001"),
             title: "Test Task".to_string(),
             session_id: SessionId(1),
             duration_minutes: 30,
@@ -695,7 +695,7 @@ mod tests {
         let temp = TempDir::new().unwrap();
         let generator = DefaultNotesGenerator::new();
         let note = SessionNote {
-            task_id: TaskId("task-001".to_string()),
+            task_id: TaskId::from("task-001"),
             title: "Test Task".to_string(),
             session_id: SessionId(1),
             duration_minutes: 30,
@@ -718,7 +718,7 @@ mod tests {
         let temp = TempDir::new().unwrap();
         let generator = DefaultNotesGenerator::new();
         let note = SessionNote {
-            task_id: TaskId("task-001".to_string()),
+            task_id: TaskId::from("task-001"),
             title: "Test".to_string(),
             session_id: SessionId(1),
             duration_minutes: 30,
@@ -768,7 +768,7 @@ mod tests {
     fn test_format_changes_all_types() {
         let generator = DefaultNotesGenerator::new();
         let summary = ChangeSummary {
-            task_id: TaskId("task-001".to_string()),
+            task_id: TaskId::from("task-001"),
             session_id: SessionId(1),
             changes: vec![
                 FileChange {
@@ -819,7 +819,7 @@ mod tests {
     fn test_format_verification_all_types() {
         let generator = DefaultNotesGenerator::new();
         let verification = VerificationStatus {
-            task_id: TaskId("task-001".to_string()),
+            task_id: TaskId::from("task-001"),
             session_id: SessionId(1),
             state: VerificationState::Passed,
             retry_count: 0,

@@ -25,7 +25,7 @@
 //!
 //! // Generate full summary
 //! let summary = detector.generate_summary(
-//!     TaskId("task-001".to_string()),
+//!     TaskId::from("task-001"),
 //!     SessionId(1),
 //!     Path::new("/path/to/repo"),
 //!     Some("HEAD~5"),
@@ -729,14 +729,14 @@ mod tests {
     fn test_generate_summary_non_git_dir() {
         let detector = GitChangeDetector::new();
         let result = detector.generate_summary(
-            TaskId("task-001".to_string()),
+            TaskId::from("task-001"),
             SessionId(1),
             Path::new("/tmp"),
             None,
         );
         assert!(result.is_ok());
         let summary = result.unwrap();
-        assert_eq!(summary.task_id, TaskId("task-001".to_string()));
+        assert_eq!(summary.task_id, TaskId::from("task-001"));
         assert_eq!(summary.session_id, SessionId(1));
         assert!(summary.changes.is_empty());
     }

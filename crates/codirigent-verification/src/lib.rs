@@ -47,7 +47,7 @@
 //!
 //! // Generate a full change summary
 //! let summary = detector.generate_summary(
-//!     TaskId("task-001".to_string()),
+//!     TaskId::from("task-001"),
 //!     SessionId(1),
 //!     Path::new("/path/to/repo"),
 //!     Some("HEAD~1"),
@@ -70,14 +70,14 @@
 //!
 //! // Start pipeline for a completed task
 //! pipeline.start(
-//!     TaskId("task-001".to_string()),
+//!     TaskId::from("task-001"),
 //!     SessionId(1),
 //!     PathBuf::from("/project"),
 //! ).await?;
 //!
 //! // Submit review
 //! pipeline.submit_review(
-//!     &TaskId("task-001".to_string()),
+//!     &TaskId::from("task-001"),
 //!     ReviewDecision::Approve,
 //! ).await?;
 //! # Ok(())

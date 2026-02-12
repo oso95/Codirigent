@@ -12,7 +12,7 @@
 //!
 //! # async fn example() -> anyhow::Result<()> {
 //! let gate = VerificationGate::new();
-//! let task_id = TaskId("task-001".to_string());
+//! let task_id = TaskId::from("task-001");
 //!
 //! let status = gate.verify(&task_id, Path::new("/path/to/project")).await?;
 //! if status.all_passed() {
@@ -426,7 +426,7 @@ mod tests {
     #[test]
     fn test_skip_verification() {
         let mut gate = VerificationGate::new();
-        let task_id = TaskId("test-task".to_string());
+        let task_id = TaskId::from("test-task");
 
         gate.skip(&task_id).unwrap();
 
@@ -437,8 +437,8 @@ mod tests {
     #[test]
     fn test_skip_multiple_tasks() {
         let mut gate = VerificationGate::new();
-        let task_id_1 = TaskId("task-1".to_string());
-        let task_id_2 = TaskId("task-2".to_string());
+        let task_id_1 = TaskId::from("task-1");
+        let task_id_2 = TaskId::from("task-2");
 
         gate.skip(&task_id_1).unwrap();
         gate.skip(&task_id_2).unwrap();
@@ -458,7 +458,7 @@ mod tests {
     #[test]
     fn test_get_status_not_found() {
         let gate = VerificationGate::new();
-        let task_id = TaskId("nonexistent".to_string());
+        let task_id = TaskId::from("nonexistent");
 
         assert!(gate.get_status(&task_id).is_none());
     }
@@ -466,7 +466,7 @@ mod tests {
     #[test]
     fn test_get_status_returns_clone() {
         let mut gate = VerificationGate::new();
-        let task_id = TaskId("test-task".to_string());
+        let task_id = TaskId::from("test-task");
 
         gate.skip(&task_id).unwrap();
 
@@ -595,7 +595,7 @@ mod tests {
         let temp = TempDir::new().unwrap();
         // No project files, so no commands will be detected
 
-        let task_id = TaskId("test-task".to_string());
+        let task_id = TaskId::from("test-task");
         let status = gate.verify(&task_id, temp.path()).await.unwrap();
 
         // No commands run = all passed (vacuously true)
@@ -608,7 +608,7 @@ mod tests {
         let gate = VerificationGate::new();
         let temp = TempDir::new().unwrap();
 
-        let task_id = TaskId("test-task".to_string());
+        let task_id = TaskId::from("test-task");
         gate.verify(&task_id, temp.path()).await.unwrap();
 
         let status = gate.get_status(&task_id);
@@ -620,7 +620,7 @@ mod tests {
         let gate = VerificationGate::new();
         let temp = TempDir::new().unwrap();
 
-        let task_id = TaskId("test-task".to_string());
+        let task_id = TaskId::from("test-task");
         gate.verify(&task_id, temp.path()).await.unwrap();
 
         let working_dir = gate.get_working_dir(&task_id);
@@ -633,7 +633,7 @@ mod tests {
         let mut gate = VerificationGate::new();
         let temp = TempDir::new().unwrap();
 
-        let task_id = TaskId("test-task".to_string());
+        let task_id = TaskId::from("test-task");
 
         // First verify
         gate.verify(&task_id, temp.path()).await.unwrap();
@@ -646,7 +646,7 @@ mod tests {
     #[tokio::test]
     async fn test_retry_without_working_dir() {
         let mut gate = VerificationGate::new();
-        let task_id = TaskId("test-task".to_string());
+        let task_id = TaskId::from("test-task");
 
         let result = gate.retry(&task_id).await;
         assert!(result.is_err());
@@ -661,7 +661,7 @@ mod tests {
         let mut gate = VerificationGate::with_config(config);
         let temp = TempDir::new().unwrap();
 
-        let task_id = TaskId("test-task".to_string());
+        let task_id = TaskId::from("test-task");
 
         // First verify
         gate.verify(&task_id, temp.path()).await.unwrap();
@@ -686,7 +686,7 @@ mod tests {
         let gate = VerificationGate::with_config(config);
         let temp = TempDir::new().unwrap();
 
-        let task_id = TaskId("test-task".to_string());
+        let task_id = TaskId::from("test-task");
         let status = gate.verify(&task_id, temp.path()).await.unwrap();
 
         assert_eq!(status.state, VerificationState::Passed);
@@ -709,7 +709,7 @@ mod tests {
         let gate = VerificationGate::with_config(config);
         let temp = TempDir::new().unwrap();
 
-        let task_id = TaskId("test-task".to_string());
+        let task_id = TaskId::from("test-task");
         let status = gate.verify(&task_id, temp.path()).await.unwrap();
 
         assert_eq!(status.state, VerificationState::Failed);
@@ -733,7 +733,7 @@ mod tests {
         let gate = VerificationGate::with_config(config);
         let temp = TempDir::new().unwrap();
 
-        let task_id = TaskId("test-task".to_string());
+        let task_id = TaskId::from("test-task");
         let status = gate.verify(&task_id, temp.path()).await.unwrap();
 
         assert_eq!(status.state, VerificationState::Passed);
@@ -756,7 +756,7 @@ mod tests {
         let gate = VerificationGate::with_config(config);
         let temp = TempDir::new().unwrap();
 
-        let task_id = TaskId("test-task".to_string());
+        let task_id = TaskId::from("test-task");
         let status = gate.verify(&task_id, temp.path()).await.unwrap();
 
         // One passed, one failed = overall failed

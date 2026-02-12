@@ -173,7 +173,7 @@ mod tests {
 
     fn create_failed_status() -> VerificationStatus {
         VerificationStatus {
-            task_id: TaskId("task-001".to_string()),
+            task_id: TaskId::from("task-001"),
             session_id: SessionId(1),
             state: VerificationState::Failed,
             retry_count: 1,
@@ -200,7 +200,7 @@ mod tests {
 
     fn create_status_with_raw_output() -> VerificationStatus {
         VerificationStatus {
-            task_id: TaskId("task-001".to_string()),
+            task_id: TaskId::from("task-001"),
             session_id: SessionId(1),
             state: VerificationState::Failed,
             retry_count: 0,
@@ -300,7 +300,7 @@ mod tests {
     #[test]
     fn test_format_verification_failure_empty_results() {
         let formatter = DefaultFailureFormatter::new();
-        let status = VerificationStatus::new(TaskId("task-001".to_string()), SessionId(1));
+        let status = VerificationStatus::new(TaskId::from("task-001"), SessionId(1));
 
         let message = formatter.format_verification_failure(&status);
 
@@ -311,7 +311,7 @@ mod tests {
     #[test]
     fn test_format_verification_failure_multiple_check_types() {
         let formatter = DefaultFailureFormatter::new();
-        let mut status = VerificationStatus::new(TaskId("task-001".to_string()), SessionId(1));
+        let mut status = VerificationStatus::new(TaskId::from("task-001"), SessionId(1));
         status.state = VerificationState::Failed;
 
         // Add unit test failure
@@ -345,7 +345,7 @@ mod tests {
     #[test]
     fn test_format_verification_failure_passed_results_skipped() {
         let formatter = DefaultFailureFormatter::new();
-        let mut status = VerificationStatus::new(TaskId("task-001".to_string()), SessionId(1));
+        let mut status = VerificationStatus::new(TaskId::from("task-001"), SessionId(1));
         status.state = VerificationState::Failed;
 
         // Add passed result
@@ -374,7 +374,7 @@ mod tests {
     #[test]
     fn test_format_verification_failure_with_message_only() {
         let formatter = DefaultFailureFormatter::new();
-        let mut status = VerificationStatus::new(TaskId("task-001".to_string()), SessionId(1));
+        let mut status = VerificationStatus::new(TaskId::from("task-001"), SessionId(1));
         status.state = VerificationState::Failed;
 
         status.results.push(VerificationResult {
