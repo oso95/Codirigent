@@ -52,10 +52,11 @@ impl WorkspaceView {
                     tv.scroll_to_bottom();
                 }
 
-                let manager = self.session_manager.lock().unwrap();
-                if let Err(e) = manager.send_input(session_id, &bytes) {
-                    warn!("Failed to paste to session {}: {}", session_id, e);
-                }
+                self.with_session_manager(|manager| {
+                    if let Err(e) = manager.send_input(session_id, &bytes) {
+                        warn!("Failed to paste to session {}: {}", session_id, e);
+                    }
+                });
             }
             ClipboardContent::Image(ref _image_data) => {
                 // Get the CLI type for the focused session (defaults to ClaudeCode)
@@ -75,13 +76,14 @@ impl WorkspaceView {
                             tv.scroll_to_bottom();
                         }
 
-                        let manager = self.session_manager.lock().unwrap();
-                        if let Err(e) = manager.send_input(session_id, &bytes) {
-                            warn!(
-                                "Failed to paste image path to session {}: {}",
-                                session_id, e
-                            );
-                        }
+                        self.with_session_manager(|manager| {
+                            if let Err(e) = manager.send_input(session_id, &bytes) {
+                                warn!(
+                                    "Failed to paste image path to session {}: {}",
+                                    session_id, e
+                                );
+                            }
+                        });
 
                         // Hide clipboard preview on paste
                         self.clipboard.clipboard_preview.hide();
@@ -113,10 +115,11 @@ impl WorkspaceView {
                     tv.scroll_to_bottom();
                 }
 
-                let manager = self.session_manager.lock().unwrap();
-                if let Err(e) = manager.send_input(session_id, &bytes) {
-                    warn!("Failed to paste files to session {}: {}", session_id, e);
-                }
+                self.with_session_manager(|manager| {
+                    if let Err(e) = manager.send_input(session_id, &bytes) {
+                        warn!("Failed to paste files to session {}: {}", session_id, e);
+                    }
+                });
             }
             ClipboardContent::Empty => {}
         }
@@ -152,10 +155,11 @@ impl WorkspaceView {
             }
         } else {
             // No selection: send Ctrl+C (interrupt) to the PTY
-            let manager = self.session_manager.lock().unwrap();
-            if let Err(e) = manager.send_input(session_id, b"\x03") {
-                warn!("Failed to send interrupt to session {}: {}", session_id, e);
-            }
+            self.with_session_manager(|manager| {
+                if let Err(e) = manager.send_input(session_id, b"\x03") {
+                    warn!("Failed to send interrupt to session {}: {}", session_id, e);
+                }
+            });
         }
 
         cx.notify();

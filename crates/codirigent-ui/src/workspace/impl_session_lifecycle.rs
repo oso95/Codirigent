@@ -76,29 +76,32 @@ impl WorkspaceView {
             .filter(|s| !s.is_empty());
 
         // Create session with real PTY via session manager
-        let session_id = {
-            let manager = self.session_manager.lock().unwrap();
+        let session_id = self.with_session_manager(|manager| {
             match manager.create_session(name.clone(), working_dir.clone(), shell) {
-                Ok(id) => id,
+                Ok(id) => Some(id),
                 Err(e) => {
                     warn!("Failed to create session: {}", e);
-                    return;
+                    None
                 }
             }
+        });
+        let session_id = match session_id {
+            Some(id) => id,
+            None => return,
         };
 
         // Get child PID for monitoring
-        let child_pid = {
-            let manager = self.session_manager.lock().unwrap();
+        let child_pid = self.with_session_manager(|manager| {
             manager.get_child_pid(session_id)
-        };
+        });
 
         // Start monitoring session status
         if let Some(pid) = child_pid {
-            let mut detector = self.detector.lock().unwrap();
-            if let Err(e) = detector.start_monitoring(session_id, pid) {
-                warn!("Failed to start monitoring session {}: {}", session_id, e);
-            }
+            self.with_detector(|detector| {
+                if let Err(e) = detector.start_monitoring(session_id, pid) {
+                    warn!("Failed to start monitoring session {}: {}", session_id, e);
+                }
+            });
         }
 
         // Create terminal emulator for this session
@@ -108,12 +111,11 @@ impl WorkspaceView {
         self.terminals.insert(session_id, terminal_view);
 
         // Get session from manager (has git_info populated during creation)
-        let session = {
-            let manager = self.session_manager.lock().unwrap();
+        let session = self.with_session_manager(|manager| {
             manager
                 .get_session(session_id)
                 .unwrap_or_else(|| Session::new(session_id, name.clone(), working_dir))
-        };
+        });
 
         let added = match target_slot {
             Some(slot) => self.workspace.add_session_to_slot(session.clone(), slot),
@@ -187,32 +189,35 @@ impl WorkspaceView {
                 .map(|s| s.general.default_shell)
                 .filter(|s| !s.is_empty());
 
-            let session_id = {
-                let manager = self.session_manager.lock().unwrap();
+            let session_id = self.with_session_manager(|manager| {
                 match manager.create_session(saved.name.clone(), working_dir.clone(), shell) {
-                    Ok(id) => id,
+                    Ok(id) => Some(id),
                     Err(e) => {
                         warn!(name = %saved.name, "Failed to restore session: {}", e);
-                        continue;
+                        None
                     }
                 }
+            });
+            let session_id = match session_id {
+                Some(id) => id,
+                None => continue,
             };
 
             // Restore group/color
             if saved.group.is_some() || saved.color.is_some() {
-                let manager = self.session_manager.lock().unwrap();
-                let _ =
-                    manager.set_session_group(session_id, saved.group.clone(), saved.color.clone());
+                self.with_session_manager(|manager| {
+                    let _ = manager.set_session_group(session_id, saved.group.clone(), saved.color.clone());
+                });
             }
 
             // Start monitoring
-            let child_pid = {
-                let manager = self.session_manager.lock().unwrap();
+            let child_pid = self.with_session_manager(|manager| {
                 manager.get_child_pid(session_id)
-            };
+            });
             if let Some(pid) = child_pid {
-                let mut detector = self.detector.lock().unwrap();
-                let _ = detector.start_monitoring(session_id, pid);
+                self.with_detector(|detector| {
+                    let _ = detector.start_monitoring(session_id, pid);
+                });
             }
 
             // Create terminal view
@@ -222,12 +227,11 @@ impl WorkspaceView {
             self.terminals.insert(session_id, terminal_view);
 
             // Get session from manager (has git_info)
-            let session = {
-                let manager = self.session_manager.lock().unwrap();
+            let session = self.with_session_manager(|manager| {
                 manager
                     .get_session(session_id)
                     .unwrap_or_else(|| Session::new(session_id, saved.name.clone(), working_dir))
-            };
+            });
 
             if self.workspace.add_session(session.clone()) {
                 let mut header = TerminalHeader::new(&saved.name, SessionStatus::Idle);
@@ -257,21 +261,19 @@ impl WorkspaceView {
     pub fn close_focused_session(&mut self, cx: &mut Context<Self>) {
         if let Some(id) = self.workspace.focused_session_id() {
             // Stop monitoring (from main branch)
-            {
-                let mut detector = self.detector.lock().unwrap();
+            self.with_detector(|detector| {
                 detector.stop_monitoring(id);
-            }
+            });
 
             // Remove terminal view (from main branch)
             self.terminals.remove(&id);
 
             // Close PTY session (from main branch)
-            {
-                let manager = self.session_manager.lock().unwrap();
+            self.with_session_manager(|manager| {
                 if let Err(e) = manager.close_session(id) {
                     warn!("Failed to close session {}: {}", id, e);
                 }
-            }
+            });
 
             // Clean up compaction state
             if let Ok(mut svc) = self.persistence.compaction.lock() {
@@ -294,21 +296,19 @@ impl WorkspaceView {
     /// Close a specific session by ID.
     pub fn close_session(&mut self, id: SessionId, cx: &mut Context<Self>) {
         // Stop monitoring
-        {
-            let mut detector = self.detector.lock().unwrap();
+        self.with_detector(|detector| {
             detector.stop_monitoring(id);
-        }
+        });
 
         // Remove terminal view
         self.terminals.remove(&id);
 
         // Close PTY session
-        {
-            let manager = self.session_manager.lock().unwrap();
+        self.with_session_manager(|manager| {
             if let Err(e) = manager.close_session(id) {
                 warn!("Failed to close session {}: {}", id, e);
             }
-        }
+        });
 
         // Clean up compaction state
         if let Ok(mut svc) = self.persistence.compaction.lock() {

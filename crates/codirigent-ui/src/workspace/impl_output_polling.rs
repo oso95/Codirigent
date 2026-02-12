@@ -63,10 +63,9 @@ impl WorkspaceView {
 
         for session_id in session_ids {
             // Try to drain output from the session manager
-            let output = {
-                let manager = self.session_manager.lock().unwrap();
+            let output = self.with_session_manager(|manager| {
                 manager.try_drain_output(session_id)
-            };
+            });
 
             if let Some(data) = output {
                 // Feed output to terminal emulator
@@ -86,8 +85,7 @@ impl WorkspaceView {
                 }
 
                 // Feed output to detector for status detection
-                {
-                    let mut detector = self.detector.lock().unwrap();
+                self.with_detector(|detector| {
                     detector.process_output(session_id, &data);
 
                     // Parse OSC 133 shell state markers for reliable idle detection
@@ -95,20 +93,18 @@ impl WorkspaceView {
                     for event in shell_events {
                         detector.set_shell_state(session_id, event);
                     }
-                }
+                });
 
                 // Check for OSC 7 (working directory change) sequences
                 if let Some(new_cwd) = codirigent_session::extract_osc7_path(&data) {
-                    let changed = {
-                        let manager = self.session_manager.lock().unwrap();
+                    let changed = self.with_session_manager(|manager| {
                         manager.update_working_directory(session_id, new_cwd)
-                    };
+                    });
                     if changed {
                         // Force immediate git refresh (updates the manager's copy)
-                        let git_info = {
-                            let manager = self.session_manager.lock().unwrap();
+                        let git_info = self.with_session_manager(|manager| {
                             manager.refresh_git_status(session_id)
-                        };
+                        });
 
                         // Update terminal header (UI-only state, not part of Session)
                         if let Some((_, header)) = self
@@ -126,10 +122,9 @@ impl WorkspaceView {
                         }
 
                         // Sync workspace cache so file tree sees the new CWD
-                        let manager_sessions = {
-                            let manager = self.session_manager.lock().unwrap();
+                        let manager_sessions = self.with_session_manager(|manager| {
                             manager.list_sessions()
-                        };
+                        });
                         self.workspace.sync_sessions_from_manager(&manager_sessions);
 
                         // Update file tree panel if this is the focused session
@@ -143,13 +138,12 @@ impl WorkspaceView {
             }
 
             // Update session status from detector
-            let (mut status, idle_time) = {
-                let detector = self.detector.lock().unwrap();
+            let (mut status, idle_time) = self.with_detector(|detector| {
                 (
                     detector.get_status(session_id),
                     detector.get_idle_time(session_id),
                 )
-            };
+            });
 
             // Overlay CLI-specific session status (throttled to ~1/second)
             if check_jsonl {
@@ -158,10 +152,9 @@ impl WorkspaceView {
                     let cli_type = self.clipboard.clipboard_service.get_session_cli_type(session_id);
 
                     // Get child PID for PID-based JSONL matching
-                    let child_pid = {
-                        let manager = self.session_manager.lock().unwrap();
+                    let child_pid = self.with_session_manager(|manager| {
                         manager.get_child_pid(session_id)
-                    };
+                    });
 
                     let cli_status = match cli_type {
                         codirigent_core::CliType::ClaudeCode => {
@@ -398,25 +391,25 @@ impl WorkspaceView {
             self.polling.last_git_refresh = Instant::now();
             let session_ids: Vec<SessionId> =
                 self.workspace.sessions().iter().map(|s| s.id).collect();
-            {
-                let manager = self.session_manager.lock().unwrap();
-                for id in &session_ids {
-                    if let Some(git_info) = manager.refresh_git_status(*id) {
-                        // Update terminal header (UI-only state)
-                        if let Some((_, header)) =
-                            self.terminal_headers.iter_mut().find(|(sid, _)| sid == id)
-                        {
-                            header.git_branch = Some(git_info.branch.clone());
-                            header.git_dirty_count = Some(git_info.dirty_count);
-                        }
-                    }
+
+            // Collect git info from manager
+            let git_infos = self.with_session_manager(|manager| {
+                session_ids.iter().filter_map(|id| {
+                    manager.refresh_git_status(*id).map(|info| (*id, info))
+                }).collect::<Vec<_>>()
+            });
+
+            // Update terminal headers with git info
+            for (id, git_info) in git_infos {
+                if let Some((_, header)) = self.terminal_headers.iter_mut().find(|(sid, _)| *sid == id) {
+                    header.git_branch = Some(git_info.branch.clone());
+                    header.git_dirty_count = Some(git_info.dirty_count);
                 }
             }
             // Bulk-sync git_info (and all other fields) from manager
-            let manager_sessions = {
-                let manager = self.session_manager.lock().unwrap();
+            let manager_sessions = self.with_session_manager(|manager| {
                 manager.list_sessions()
-            };
+            });
             self.workspace.sync_sessions_from_manager(&manager_sessions);
             any_dirty = true;
         }

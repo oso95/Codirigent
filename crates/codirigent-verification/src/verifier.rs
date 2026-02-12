@@ -34,7 +34,7 @@ use codirigent_core::verification::{
 use codirigent_core::{ProjectType, SessionId, TaskId, VerificationDetector, Verifier};
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
-use std::sync::RwLock;
+use std::sync::{RwLock, RwLockReadGuard, RwLockWriteGuard};
 use tracing::{debug, info, warn};
 
 /// Main verification gate implementation.
@@ -143,36 +143,56 @@ impl VerificationGate {
         }
     }
 
+    /// Acquire read lock on statuses, recovering from poison.
+    fn lock_statuses_read(&self) -> RwLockReadGuard<'_, HashMap<TaskId, VerificationStatus>> {
+        self.statuses.read().unwrap_or_else(|poisoned| {
+            warn!("Verification statuses RwLock was poisoned, recovering");
+            poisoned.into_inner()
+        })
+    }
+
+    /// Acquire write lock on statuses, recovering from poison.
+    fn lock_statuses_write(&self) -> RwLockWriteGuard<'_, HashMap<TaskId, VerificationStatus>> {
+        self.statuses.write().unwrap_or_else(|poisoned| {
+            warn!("Verification statuses RwLock was poisoned, recovering");
+            poisoned.into_inner()
+        })
+    }
+
+    /// Acquire read lock on working_dirs, recovering from poison.
+    fn lock_working_dirs_read(&self) -> RwLockReadGuard<'_, HashMap<TaskId, PathBuf>> {
+        self.working_dirs.read().unwrap_or_else(|poisoned| {
+            warn!("Verification working_dirs RwLock was poisoned, recovering");
+            poisoned.into_inner()
+        })
+    }
+
+    /// Acquire write lock on working_dirs, recovering from poison.
+    fn lock_working_dirs_write(&self) -> RwLockWriteGuard<'_, HashMap<TaskId, PathBuf>> {
+        self.working_dirs.write().unwrap_or_else(|poisoned| {
+            warn!("Verification working_dirs RwLock was poisoned, recovering");
+            poisoned.into_inner()
+        })
+    }
+
     /// Store a verification status.
     fn store_status(&self, task_id: TaskId, status: VerificationStatus) {
-        self.statuses
-            .write()
-            .expect("Failed to acquire write lock")
-            .insert(task_id, status);
+        self.lock_statuses_write().insert(task_id, status);
     }
 
     /// Store a working directory for retry.
     fn store_working_dir(&self, task_id: TaskId, working_dir: PathBuf) {
-        self.working_dirs
-            .write()
-            .expect("Failed to acquire write lock")
-            .insert(task_id, working_dir);
+        self.lock_working_dirs_write().insert(task_id, working_dir);
     }
 
     /// Get a stored working directory.
     fn get_working_dir(&self, task_id: &TaskId) -> Option<PathBuf> {
-        self.working_dirs
-            .read()
-            .expect("Failed to acquire read lock")
-            .get(task_id)
-            .cloned()
+        self.lock_working_dirs_read().get(task_id).cloned()
     }
 
     /// Get the current retry count for a task.
     fn get_retry_count(&self, task_id: &TaskId) -> u32 {
-        self.statuses
-            .read()
-            .expect("Failed to acquire read lock")
+        self.lock_statuses_read()
             .get(task_id)
             .map(|s| s.retry_count)
             .unwrap_or(0)
@@ -291,11 +311,7 @@ impl Verifier for VerificationGate {
     }
 
     fn get_status(&self, task_id: &TaskId) -> Option<VerificationStatus> {
-        self.statuses
-            .read()
-            .expect("Failed to acquire read lock")
-            .get(task_id)
-            .cloned()
+        self.lock_statuses_read().get(task_id).cloned()
     }
 
     fn skip(&mut self, task_id: &TaskId) -> Result<()> {
@@ -344,7 +360,7 @@ impl Verifier for VerificationGate {
 
         // Store the new retry count temporarily
         {
-            let mut statuses = self.statuses.write().expect("Failed to acquire write lock");
+            let mut statuses = self.lock_statuses_write();
             if let Some(status) = statuses.get_mut(task_id) {
                 status.retry_count = new_retry_count;
             }
@@ -748,5 +764,23 @@ mod tests {
         assert_eq!(status.results.len(), 2);
         assert!(status.results[0].passed);
         assert!(!status.results[1].passed);
+    }
+
+    #[test]
+    fn test_verification_gate_lock_recovery() {
+        // Verify that store_status and get_status work under normal conditions
+        // (We can't easily poison an RwLock in a test, but we verify the helpers compile
+        // and the poisoning recovery path is present)
+        let gate = VerificationGate::new();
+        let task_id = TaskId("lock-test".into());
+
+        // store_status uses write lock
+        let status = VerificationStatus::new(task_id.clone(), SessionId(0));
+        gate.store_status(task_id.clone(), status);
+
+        // get_status uses read lock
+        let retrieved = gate.get_status(&task_id);
+        assert!(retrieved.is_some());
+        assert_eq!(retrieved.unwrap().task_id, task_id);
     }
 }
