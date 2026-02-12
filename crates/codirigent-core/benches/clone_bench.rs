@@ -2,9 +2,9 @@ use codirigent_core::{TaskId, SessionId};
 use criterion::{black_box, criterion_group, criterion_main, Criterion};
 
 fn bench_task_id_clone(c: &mut Criterion) {
-    let task_id = TaskId("task-001-with-a-longer-identifier".to_string());
+    let task_id = TaskId::from("task-001-with-a-longer-identifier");
 
-    c.bench_function("TaskId::clone (String)", |b| {
+    c.bench_function("TaskId::clone (Arc<str>)", |b| {
         b.iter(|| {
             let cloned = black_box(task_id.clone());
             cloned
@@ -14,10 +14,10 @@ fn bench_task_id_clone(c: &mut Criterion) {
 
 fn bench_task_id_clone_many(c: &mut Criterion) {
     let task_ids: Vec<TaskId> = (0..100)
-        .map(|i| TaskId(format!("task-{:03}", i)))
+        .map(|i| TaskId::from(format!("task-{:03}", i)))
         .collect();
 
-    c.bench_function("TaskId::clone 100x (String)", |b| {
+    c.bench_function("TaskId::clone 100x (Arc<str>)", |b| {
         b.iter(|| {
             let cloned: Vec<_> = task_ids.iter()
                 .map(|id| black_box(id.clone()))

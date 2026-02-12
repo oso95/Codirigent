@@ -1,9 +1,0 @@
----
-active: true
-iteration: 1
-max_iterations: 0
-completion_promise: null
-started_at: "2026-02-12T18:08:06Z"
----
-
-CRITICAL, THE TASK IS ONLY CONSIDER COMPLETED WHEN ALL THE REMAINING TASKS ARE COMPLETED. NON-NEGOTIABLE. DO NOT STOP UNTIL YOU COMPLETED ALL
