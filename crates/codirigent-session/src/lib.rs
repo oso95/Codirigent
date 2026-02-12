@@ -89,6 +89,7 @@ pub mod osc7;
 pub mod pty;
 pub mod ralph_controller;
 pub mod session;
+pub mod session_reader_common;
 pub mod shell_detection;
 pub mod skill_manager;
 pub mod worktree;
