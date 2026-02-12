@@ -1,0 +1,41 @@
+name: Coverage
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  coverage:
+    name: Test Coverage
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Cache Rust dependencies
+        uses: Swatinem/rust-cache@v2
+
+      - name: Install tarpaulin
+        run: cargo install cargo-tarpaulin
+
+      - name: Run coverage
+        run: |
+          cargo tarpaulin \
+            --workspace \
+            --all-features \
+            --timeout 300 \
+            --out Xml \
+            --output-dir target/coverage
+
+      - name: Upload to codecov
+        uses: codecov/codecov-action@v4
+        with:
+          files: target/coverage/cobertura.xml
+          fail_ci_if_error: true
+          token: ${{ secrets.CODECOV_TOKEN }}
