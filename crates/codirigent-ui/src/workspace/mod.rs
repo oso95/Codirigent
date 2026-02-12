@@ -54,6 +54,9 @@ mod impl_keyboard;
 mod impl_task_board;
 
 #[cfg(feature = "gpui-full")]
+mod impl_output_polling;
+
+#[cfg(feature = "gpui-full")]
 mod render;
 
 #[cfg(feature = "gpui-full")]
