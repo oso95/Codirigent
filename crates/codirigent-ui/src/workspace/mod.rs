@@ -30,6 +30,9 @@ mod core;
 pub mod gpui;
 
 #[cfg(feature = "gpui-full")]
+mod editor_detection;
+
+#[cfg(feature = "gpui-full")]
 mod render;
 
 #[cfg(feature = "gpui-full")]

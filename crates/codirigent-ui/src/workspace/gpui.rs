@@ -20,6 +20,9 @@
 //! ```
 
 use super::core::Workspace;
+use super::editor_detection::{
+    detect_installed_editors, detect_monospace_fonts, extra_editor_dirs, is_terminal_editor,
+};
 // Imports from main branch (terminal integration)
 use crate::input::{key_to_bytes, TerminalKeystroke, TerminalModifiers};
 use crate::terminal::Terminal;
@@ -252,165 +255,6 @@ pub struct WorkspaceView {
 
 /// Returns `true` if the editor command refers to a terminal-based editor
 /// (one that needs to run inside an existing terminal session).
-const KNOWN_GUI_EDITORS: &[&str] = &["code", "zed", "cursor", "windsurf", "codium", "subl"];
-const KNOWN_TERMINAL_EDITORS: &[&str] =
-    &["vim", "nvim", "vi", "nano", "emacs", "helix", "hx", "micro"];
-
-/// Returns additional directories where editor CLI tools are commonly installed,
-/// beyond what the default PATH includes (especially for macOS GUI apps which
-/// inherit a minimal PATH).
-fn extra_editor_dirs() -> Vec<PathBuf> {
-    let mut dirs = Vec::new();
-
-    #[cfg(target_os = "macos")]
-    {
-        dirs.push(PathBuf::from("/usr/local/bin"));
-        dirs.push(PathBuf::from("/opt/homebrew/bin"));
-    }
-
-    #[cfg(target_os = "linux")]
-    {
-        dirs.push(PathBuf::from("/usr/local/bin"));
-        dirs.push(PathBuf::from("/snap/bin"));
-        dirs.push(PathBuf::from("/var/lib/flatpak/exports/bin"));
-        if let Some(home) = std::env::var_os("HOME") {
-            let home = PathBuf::from(home);
-            dirs.push(home.join(".local/bin"));
-            dirs.push(home.join(".local/share/flatpak/exports/bin"));
-        }
-    }
-
-    #[cfg(target_os = "windows")]
-    {
-        if let Some(local) = std::env::var_os("LOCALAPPDATA") {
-            let local = PathBuf::from(local);
-            dirs.push(local.join("Programs/Microsoft VS Code/bin"));
-            dirs.push(local.join("Programs/Cursor/bin"));
-            dirs.push(local.join("Programs/Windsurf/bin"));
-            dirs.push(local.join("Programs/VSCodium/bin"));
-        }
-        if let Some(pf) = std::env::var_os("ProgramFiles") {
-            let pf = PathBuf::from(pf);
-            dirs.push(pf.join("Microsoft VS Code/bin"));
-            dirs.push(pf.join("Sublime Text"));
-            dirs.push(pf.join("Sublime Text 3"));
-        }
-    }
-
-    dirs
-}
-
-/// Checks whether a path exists and is executable.
-#[cfg(unix)]
-fn is_executable(path: &Path) -> bool {
-    use std::os::unix::fs::PermissionsExt;
-    path.is_file()
-        && path
-            .metadata()
-            .map(|m| m.permissions().mode() & 0o111 != 0)
-            .unwrap_or(false)
-}
-
-/// On Windows, existence implies executability for `.exe`/`.cmd` files.
-#[cfg(not(unix))]
-fn is_executable(path: &Path) -> bool {
-    path.is_file()
-}
-
-fn detect_installed_editors() -> Vec<String> {
-    let check_cmd = if cfg!(windows) { "where" } else { "which" };
-    let mut found = HashSet::new();
-
-    // Pass 1: use which/where (finds editors already on PATH)
-    for editor in KNOWN_GUI_EDITORS
-        .iter()
-        .chain(KNOWN_TERMINAL_EDITORS.iter())
-    {
-        let on_path = std::process::Command::new(check_cmd)
-            .arg(editor)
-            .stdout(std::process::Stdio::null())
-            .stderr(std::process::Stdio::null())
-            .status()
-            .map(|s| s.success())
-            .unwrap_or(false);
-        if on_path {
-            found.insert(*editor);
-        }
-    }
-
-    // Pass 2: check extra directories for editors not found in Pass 1
-    let extra_dirs = extra_editor_dirs();
-    for editor in KNOWN_GUI_EDITORS
-        .iter()
-        .chain(KNOWN_TERMINAL_EDITORS.iter())
-    {
-        if found.contains(editor) {
-            continue;
-        }
-        for dir in &extra_dirs {
-            if is_executable(&dir.join(editor)) {
-                found.insert(*editor);
-                break;
-            }
-        }
-    }
-
-    // Return in original order (GUI first, then terminal) to keep the dropdown consistent
-    KNOWN_GUI_EDITORS
-        .iter()
-        .chain(KNOWN_TERMINAL_EDITORS.iter())
-        .filter(|e| found.contains(*e))
-        .map(|s| s.to_string())
-        .collect()
-}
-
-/// Detect installed monospace fonts by querying the GPUI text system.
-///
-/// Enumerates all system fonts and filters for monospace by comparing
-/// the advance width of 'm' vs 'i' — in a monospace font these are equal.
-fn detect_monospace_fonts(text_system: &gpui::TextSystem) -> Vec<String> {
-    use gpui::{Font, FontFeatures, FontStyle, FontWeight};
-
-    let all_names = text_system.all_font_names();
-    let font_size = px(14.0);
-    let mut monospace = Vec::new();
-
-    for name in &all_names {
-        // Skip internal/system fonts (names starting with '.')
-        if name.starts_with('.') {
-            continue;
-        }
-
-        let font = Font {
-            family: name.clone().into(),
-            features: FontFeatures::default(),
-            fallbacks: None,
-            weight: FontWeight::NORMAL,
-            style: FontStyle::Normal,
-        };
-
-        let font_id = text_system.resolve_font(&font);
-
-        let adv_m = text_system.advance(font_id, font_size, 'm');
-        let adv_i = text_system.advance(font_id, font_size, 'i');
-
-        if let (Ok(am), Ok(ai)) = (adv_m, adv_i) {
-            if (f32::from(am.width) - f32::from(ai.width)).abs() < 0.01 {
-                monospace.push(name.clone());
-            }
-        }
-    }
-
-    monospace.sort();
-    monospace.dedup();
-    monospace
-}
-
-fn is_terminal_editor(editor: &str) -> bool {
-    let base = editor.rsplit('/').next().unwrap_or(editor);
-    KNOWN_TERMINAL_EDITORS.contains(&base)
-}
-
 impl WorkspaceView {
     /// Create a new workspace view.
     ///
@@ -4388,50 +4232,6 @@ mod tests {
         assert!(ws.sessions().is_empty());
     }
 
-    #[test]
-    fn test_extra_editor_dirs_returns_entries() {
-        let dirs = super::extra_editor_dirs();
-        // On macOS and Linux we always add at least /usr/local/bin;
-        // on Windows we add dirs based on env vars (may be empty in CI).
-        #[cfg(any(target_os = "macos", target_os = "linux"))]
-        assert!(
-            !dirs.is_empty(),
-            "extra_editor_dirs should return entries on macOS/Linux"
-        );
-        // All entries should be absolute paths
-        for d in &dirs {
-            assert!(d.is_absolute(), "expected absolute path, got {:?}", d);
-        }
-    }
-
-    #[test]
-    fn test_detect_installed_editors_no_duplicates() {
-        let editors = super::detect_installed_editors();
-        let unique: std::collections::HashSet<&String> = editors.iter().collect();
-        assert_eq!(
-            editors.len(),
-            unique.len(),
-            "detect_installed_editors returned duplicates: {:?}",
-            editors
-        );
-    }
-
-    #[test]
-    fn test_detect_installed_editors_gui_before_terminal() {
-        let editors = super::detect_installed_editors();
-        let mut seen_terminal = false;
-        for e in &editors {
-            if super::KNOWN_TERMINAL_EDITORS.contains(&e.as_str()) {
-                seen_terminal = true;
-            } else if super::KNOWN_GUI_EDITORS.contains(&e.as_str()) {
-                assert!(
-                    !seen_terminal,
-                    "GUI editor {:?} appeared after a terminal editor in {:?}",
-                    e, editors
-                );
-            }
-        }
-    }
 
     #[cfg(unix)]
     #[test]
