@@ -240,6 +240,14 @@ pub struct WorkspaceView {
     cached_cli_status: HashMap<SessionId, (SessionStatus, Option<String>)>,
     /// Pending layout profile deletion: (tab_index, profile_name) awaiting confirmation.
     pub(super) pending_profile_deletion: Option<(usize, String)>,
+    /// Sessions that need a deferred Enter keypress sent to their PTY.
+    /// After sending prompt/command text, we delay the Enter so the CLI
+    /// receives it as a separate stdin event.
+    /// Value: `(timestamp, enter_sent)` — when `enter_sent` is false we wait
+    /// 100 ms then send `\r`; once sent we flip to true and keep the entry
+    /// for a 500 ms grace period so the CLI can process the command before
+    /// auto-assign runs.
+    pending_enters: HashMap<SessionId, (Instant, bool)>,
 }
 
 /// Returns `true` if the editor command refers to a terminal-based editor
@@ -553,6 +561,7 @@ impl WorkspaceView {
             compaction_start_times: HashMap::new(),
             cached_cli_status: HashMap::new(),
             pending_profile_deletion: None,
+            pending_enters: HashMap::new(),
         };
 
         // Restore sessions from previous run
@@ -682,6 +691,34 @@ impl WorkspaceView {
 
     /// Poll PTY output and feed to terminal emulators.
     fn poll_output(&mut self, cx: &mut Context<Self>) {
+        // Send deferred Enter keypresses (text was sent earlier; Enter comes
+        // as a separate write so ink treats it as a distinct stdin event).
+        // Phase 1: entries where Enter hasn't been sent yet and 100ms elapsed → send \r.
+        let need_enter: Vec<SessionId> = self
+            .pending_enters
+            .iter()
+            .filter(|(_, (when, sent))| !sent && when.elapsed() >= Duration::from_millis(100))
+            .map(|(id, _)| *id)
+            .collect();
+        for session_id in need_enter {
+            if let Ok(mgr) = self.session_manager.lock() {
+                let _ = mgr.send_input(session_id, b"\r");
+            }
+            // Flip to phase 2: keep entry for a grace period so the CLI can
+            // process the command before auto-assign considers this session.
+            self.pending_enters.insert(session_id, (Instant::now(), true));
+        }
+        // Phase 2: remove entries where Enter was already sent and grace period elapsed.
+        let expired: Vec<SessionId> = self
+            .pending_enters
+            .iter()
+            .filter(|(_, (when, sent))| *sent && when.elapsed() >= Duration::from_millis(500))
+            .map(|(id, _)| *id)
+            .collect();
+        for session_id in expired {
+            self.pending_enters.remove(&session_id);
+        }
+
         let session_ids: Vec<SessionId> = self.terminals.keys().copied().collect();
         let mut any_dirty = false;
 
@@ -916,6 +953,7 @@ impl WorkspaceView {
                                     if let Ok(mgr) = self.session_manager.lock() {
                                         let _ = mgr.send_input(session_id, clear_cmd.as_bytes());
                                     }
+                                    self.pending_enters.insert(session_id, (Instant::now(), false));
                                     self.compaction_start_times.insert(session_id, Instant::now());
                                     just_started_compaction = true;
                                 }
@@ -926,7 +964,11 @@ impl WorkspaceView {
 
                 // NeedsAttention is NOT treated as idle — session is blocked
                 // Skip if we just started compaction — wait for /clear to finish
-                if matches!(status, SessionStatus::Idle) && !just_started_compaction {
+                // Skip if a deferred Enter is pending — text hasn't been submitted yet
+                if matches!(status, SessionStatus::Idle)
+                    && !just_started_compaction
+                    && !self.pending_enters.contains_key(&session_id)
+                {
                     let is_compacting = self.compaction.lock()
                         .map(|svc| svc.is_compacting(session_id))
                         .unwrap_or(false);
@@ -1185,6 +1227,7 @@ impl WorkspaceView {
                         warn!("Failed to send task prompt to session {}: {}", target_id, e);
                     }
                 }
+                self.pending_enters.insert(target_id, (Instant::now(), false));
 
                 info!(?task_id, ?target_id, "Auto-assigned task to session");
             }
@@ -2105,6 +2148,7 @@ impl WorkspaceView {
                                                 warn!("Failed to send task prompt: {}", e);
                                             }
                                         }
+                                        self.pending_enters.insert(session.id, (Instant::now(), false));
                                         if let Some(ws_session) =
                                             self.workspace.session_mut(session.id)
                                         {
@@ -2195,6 +2239,7 @@ impl WorkspaceView {
                         );
                     }
                 }
+                self.pending_enters.insert(session_id, (Instant::now(), false));
 
                 info!(?task_id, ?session_id, "Confirmed and sent task to session");
             }
@@ -3213,11 +3258,12 @@ impl WorkspaceView {
             codirigent_core::CliType::ClaudeCode
             | codirigent_core::CliType::GeminiCli
             | codirigent_core::CliType::CodexCli => {
-                format!("{}\n", flat)
+                // No trailing newline — caller schedules a deferred Enter
+                flat
             }
             codirigent_core::CliType::GenericShell => {
                 warn!("format_task_input called with GenericShell — this should not happen");
-                format!("{}\n", flat)
+                flat
             }
         }
     }
@@ -3225,9 +3271,9 @@ impl WorkspaceView {
     /// Return the CLI-specific command to clear/reset context between tasks.
     fn clear_command(cli_type: codirigent_core::CliType) -> String {
         match cli_type {
-            codirigent_core::CliType::ClaudeCode => "/clear\n".to_string(),
-            codirigent_core::CliType::CodexCli => "/new\n".to_string(),
-            codirigent_core::CliType::GeminiCli => "/clear\n".to_string(),
+            codirigent_core::CliType::ClaudeCode => "/clear".to_string(),
+            codirigent_core::CliType::CodexCli => "/new".to_string(),
+            codirigent_core::CliType::GeminiCli => "/clear".to_string(),
             codirigent_core::CliType::GenericShell => String::new(),
         }
     }
