@@ -36,10 +36,20 @@ pub fn read_file_tail(path: &Path, max_bytes: u64) -> Option<String> {
     Some(buf)
 }
 
+/// Check whether an RFC 3339 timestamp string is within `threshold_secs` of now.
+///
+/// Returns `Some(true)` if the timestamp is recent, `Some(false)` if stale,
+/// or `None` if the timestamp cannot be parsed.
+pub fn is_timestamp_recent(timestamp: &str, threshold_secs: i64) -> Option<bool> {
+    use chrono::{DateTime, Utc};
+    let parsed = timestamp.parse::<DateTime<Utc>>().ok()?;
+    let elapsed = Utc::now().signed_duration_since(parsed);
+    Some(elapsed.num_seconds().abs() <= threshold_secs)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::io::Write;
     use tempfile::TempDir;
 
     #[test]
@@ -84,5 +94,22 @@ mod tests {
 
         let result = read_file_tail(&path, 1024);
         assert_eq!(result, Some(String::new()));
+    }
+
+    #[test]
+    fn test_is_timestamp_recent_now() {
+        let now = chrono::Utc::now().to_rfc3339();
+        assert_eq!(is_timestamp_recent(&now, 60), Some(true));
+    }
+
+    #[test]
+    fn test_is_timestamp_recent_old() {
+        // A timestamp from 2020 should not be recent
+        assert_eq!(is_timestamp_recent("2020-01-01T00:00:00Z", 60), Some(false));
+    }
+
+    #[test]
+    fn test_is_timestamp_recent_invalid() {
+        assert_eq!(is_timestamp_recent("not-a-date", 60), None);
     }
 }
