@@ -360,10 +360,7 @@ mod tests {
 
     #[test]
     fn test_stale_session_returns_unknown() {
-        let session = make_session(
-            vec![make_user_msg()],
-            Some(&stale_timestamp()),
-        );
+        let session = make_session(vec![make_user_msg()], Some(&stale_timestamp()));
         assert_eq!(
             GeminiSessionReader::determine_status(&session),
             GeminiSessionStatus::Unknown
@@ -372,10 +369,7 @@ mod tests {
 
     #[test]
     fn test_user_message_last_means_working() {
-        let session = make_session(
-            vec![make_user_msg()],
-            Some(&recent_timestamp()),
-        );
+        let session = make_session(vec![make_user_msg()], Some(&recent_timestamp()));
         assert_eq!(
             GeminiSessionReader::determine_status(&session),
             GeminiSessionStatus::Working
@@ -384,10 +378,7 @@ mod tests {
 
     #[test]
     fn test_gemini_message_no_tools_means_waiting() {
-        let session = make_session(
-            vec![make_gemini_msg(vec![])],
-            Some(&recent_timestamp()),
-        );
+        let session = make_session(vec![make_gemini_msg(vec![])], Some(&recent_timestamp()));
         assert_eq!(
             GeminiSessionReader::determine_status(&session),
             GeminiSessionStatus::NeedsAttention { detail: None }

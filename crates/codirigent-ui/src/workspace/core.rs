@@ -379,11 +379,7 @@ impl Workspace {
         match &mut self.layout_state {
             WorkspaceLayoutState::Grid(s) => s.focus_direction(direction),
             WorkspaceLayoutState::SplitTree(s) => {
-                let layout = SplitLayout::new(
-                    s.tree().clone(),
-                    bounds,
-                    gap,
-                );
+                let layout = SplitLayout::new(s.tree().clone(), bounds, gap);
                 s.focus_direction(direction, &layout);
             }
         }

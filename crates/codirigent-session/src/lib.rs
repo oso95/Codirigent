@@ -93,10 +93,10 @@ pub mod worktree;
 
 pub use broadcast_service::DefaultBroadcastService;
 pub use claude_session_reader::{ClaudeSessionReader, ClaudeSessionStatus};
-pub use codex_session_reader::{CodexSessionReader, CodexSessionStatus};
-pub use gemini_session_reader::{GeminiSessionReader, GeminiSessionStatus};
 pub use cli_detector::{CliDetector, DefaultCliDetector};
 pub use clipboard_service::{ClipboardService, DefaultClipboardService};
+pub use codex_session_reader::{CodexSessionReader, CodexSessionStatus};
+pub use gemini_session_reader::{GeminiSessionReader, GeminiSessionStatus};
 pub use git_status::GitStatusService;
 pub use manager::DefaultSessionManager;
 pub use osc133::{extract_osc133_events, ShellState};

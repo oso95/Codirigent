@@ -142,10 +142,18 @@ fn test_state_persistence() {
             CodirigentIntegration::with_config(temp.path().to_path_buf(), config).unwrap();
 
         integration
-            .create_session("Persistent Session".to_string(), temp.path().to_path_buf(), None)
+            .create_session(
+                "Persistent Session".to_string(),
+                temp.path().to_path_buf(),
+                None,
+            )
             .unwrap();
         integration
-            .create_session("Another Session".to_string(), temp.path().to_path_buf(), None)
+            .create_session(
+                "Another Session".to_string(),
+                temp.path().to_path_buf(),
+                None,
+            )
             .unwrap();
 
         integration.save_state().unwrap();
@@ -255,7 +263,11 @@ fn test_custom_input_patterns() {
         CodirigentIntegration::with_config(temp.path().to_path_buf(), config).unwrap();
 
     let id = integration
-        .create_session("Custom Pattern Test".to_string(), temp.path().to_path_buf(), None)
+        .create_session(
+            "Custom Pattern Test".to_string(),
+            temp.path().to_path_buf(),
+            None,
+        )
         .unwrap();
 
     // Process output with custom pattern

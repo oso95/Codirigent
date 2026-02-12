@@ -507,7 +507,7 @@ impl LayoutProfile {
             LayoutMode::Grid { rows: 3, cols: 3 } => Some(LayoutProfile::Grid3x3),
             LayoutMode::Single => Some(LayoutProfile::Single),
             LayoutMode::Grid { rows, cols } => LayoutProfile::custom(*rows, *cols),
-            LayoutMode::Custom { .. } => None,   // Custom positions not supported
+            LayoutMode::Custom { .. } => None, // Custom positions not supported
             LayoutMode::SplitTree { .. } => None, // Split trees use SplitLayout, not grid profiles
         }
     }
@@ -1308,11 +1308,7 @@ impl SplitLayoutState {
     /// Returns true if assigned successfully.
     pub fn add_session(&mut self, session_id: SessionId) -> bool {
         // Don't add duplicates
-        if self
-            .assignments
-            .iter()
-            .any(|(_, s)| *s == Some(session_id))
-        {
+        if self.assignments.iter().any(|(_, s)| *s == Some(session_id)) {
             return false;
         }
         for entry in &mut self.assignments {
@@ -1327,11 +1323,7 @@ impl SplitLayoutState {
     /// Assign a session to a specific slot.
     pub fn assign_session_to_slot(&mut self, session_id: SessionId, slot: SlotId) -> bool {
         // Don't add duplicates
-        if self
-            .assignments
-            .iter()
-            .any(|(_, s)| *s == Some(session_id))
-        {
+        if self.assignments.iter().any(|(_, s)| *s == Some(session_id)) {
             return false;
         }
         for entry in &mut self.assignments {
@@ -2660,9 +2652,15 @@ mod tests {
         let layout = SplitLayout::new(root, Bounds::from_size(1000.0, 800.0), 4.0);
 
         // Point in left half
-        assert_eq!(layout.slot_at_point(Point::new(100.0, 400.0)), Some(SlotId(0)));
+        assert_eq!(
+            layout.slot_at_point(Point::new(100.0, 400.0)),
+            Some(SlotId(0))
+        );
         // Point in right half
-        assert_eq!(layout.slot_at_point(Point::new(700.0, 400.0)), Some(SlotId(1)));
+        assert_eq!(
+            layout.slot_at_point(Point::new(700.0, 400.0)),
+            Some(SlotId(1))
+        );
         // Point outside
         assert_eq!(layout.slot_at_point(Point::new(1100.0, 400.0)), None);
     }
@@ -2828,11 +2826,7 @@ mod tests {
         state.add_session(SessionId(4));
         state.focus_session(SessionId(1)); // top-left
 
-        let layout = SplitLayout::new(
-            state.tree().clone(),
-            Bounds::from_size(1000.0, 800.0),
-            4.0,
-        );
+        let layout = SplitLayout::new(state.tree().clone(), Bounds::from_size(1000.0, 800.0), 4.0);
 
         // Move right
         state.focus_direction(FocusDirection::Right, &layout);

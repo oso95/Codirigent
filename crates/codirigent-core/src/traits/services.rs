@@ -91,7 +91,12 @@ pub trait SessionManager: Send + Sync {
     /// # Returns
     ///
     /// The ID of the newly created session, or an error if creation failed.
-    fn create_session(&self, name: String, working_dir: std::path::PathBuf, shell: Option<String>) -> Result<SessionId>;
+    fn create_session(
+        &self,
+        name: String,
+        working_dir: std::path::PathBuf,
+        shell: Option<String>,
+    ) -> Result<SessionId>;
 
     /// Close and cleanup a session.
     ///

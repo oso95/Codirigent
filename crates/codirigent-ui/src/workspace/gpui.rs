@@ -55,14 +55,15 @@ use codirigent_core::{
 use codirigent_detector::InputDetector;
 use codirigent_filetree::FileTree;
 use codirigent_session::claude_session_reader::ClaudeSessionReader;
-use codirigent_session::codex_session_reader::CodexSessionReader;
-use codirigent_session::gemini_session_reader::GeminiSessionReader;
 use codirigent_session::cli_detector::CliDetector;
 use codirigent_session::clipboard_service::{ClipboardService, DefaultClipboardService};
+use codirigent_session::codex_session_reader::CodexSessionReader;
+use codirigent_session::gemini_session_reader::GeminiSessionReader;
 use codirigent_session::DefaultSessionManager;
 use gpui::{
-    div, px, App, AppContext, ClickEvent, Context, Entity, FocusHandle, Focusable, InteractiveElement,
-    IntoElement, KeyDownEvent, ParentElement, Render, StatefulInteractiveElement, Styled, Window,
+    div, px, App, AppContext, ClickEvent, Context, Entity, FocusHandle, Focusable,
+    InteractiveElement, IntoElement, KeyDownEvent, ParentElement, Render,
+    StatefulInteractiveElement, Styled, Window,
 };
 use std::collections::{HashMap, HashSet};
 use std::path::{Path, PathBuf};
@@ -253,7 +254,8 @@ pub struct WorkspaceView {
 /// Returns `true` if the editor command refers to a terminal-based editor
 /// (one that needs to run inside an existing terminal session).
 const KNOWN_GUI_EDITORS: &[&str] = &["code", "zed", "cursor", "windsurf", "codium", "subl"];
-const KNOWN_TERMINAL_EDITORS: &[&str] = &["vim", "nvim", "vi", "nano", "emacs", "helix", "hx", "micro"];
+const KNOWN_TERMINAL_EDITORS: &[&str] =
+    &["vim", "nvim", "vi", "nano", "emacs", "helix", "hx", "micro"];
 
 /// Returns additional directories where editor CLI tools are commonly installed,
 /// beyond what the default PATH includes (especially for macOS GUI apps which
@@ -321,7 +323,10 @@ fn detect_installed_editors() -> Vec<String> {
     let mut found = HashSet::new();
 
     // Pass 1: use which/where (finds editors already on PATH)
-    for editor in KNOWN_GUI_EDITORS.iter().chain(KNOWN_TERMINAL_EDITORS.iter()) {
+    for editor in KNOWN_GUI_EDITORS
+        .iter()
+        .chain(KNOWN_TERMINAL_EDITORS.iter())
+    {
         let on_path = std::process::Command::new(check_cmd)
             .arg(editor)
             .stdout(std::process::Stdio::null())
@@ -336,7 +341,10 @@ fn detect_installed_editors() -> Vec<String> {
 
     // Pass 2: check extra directories for editors not found in Pass 1
     let extra_dirs = extra_editor_dirs();
-    for editor in KNOWN_GUI_EDITORS.iter().chain(KNOWN_TERMINAL_EDITORS.iter()) {
+    for editor in KNOWN_GUI_EDITORS
+        .iter()
+        .chain(KNOWN_TERMINAL_EDITORS.iter())
+    {
         if found.contains(editor) {
             continue;
         }
@@ -557,7 +565,9 @@ impl WorkspaceView {
             gemini_reader: GeminiSessionReader::new(),
             cli_detector: codirigent_session::DefaultCliDetector::new(),
             last_jsonl_check: Instant::now(),
-            compaction: Arc::new(Mutex::new(CompactionService::new(CompactionConfig::default()))),
+            compaction: Arc::new(Mutex::new(CompactionService::new(
+                CompactionConfig::default(),
+            ))),
             compaction_start_times: HashMap::new(),
             cached_cli_status: HashMap::new(),
             pending_profile_deletion: None,
@@ -573,7 +583,8 @@ impl WorkspaceView {
         // Load saved layout profiles from user settings
         if let Some(ref config_service) = view.config_service {
             if let Ok(user_settings) = config_service.load_user_settings() {
-                view.top_bar.load_saved_profiles(user_settings.saved_layouts);
+                view.top_bar
+                    .load_saved_profiles(user_settings.saved_layouts);
             }
         }
 
@@ -706,7 +717,8 @@ impl WorkspaceView {
             }
             // Flip to phase 2: keep entry for a grace period so the CLI can
             // process the command before auto-assign considers this session.
-            self.pending_enters.insert(session_id, (Instant::now(), true));
+            self.pending_enters
+                .insert(session_id, (Instant::now(), true));
         }
         // Phase 2: remove entries where Enter was already sent and grace period elapsed.
         let expired: Vec<SessionId> = self
@@ -726,8 +738,8 @@ impl WorkspaceView {
         let has_any_reader = self.claude_reader.is_some()
             || self.codex_reader.is_some()
             || self.gemini_reader.is_some();
-        let check_jsonl = has_any_reader
-            && self.last_jsonl_check.elapsed() >= Duration::from_secs(1);
+        let check_jsonl =
+            has_any_reader && self.last_jsonl_check.elapsed() >= Duration::from_secs(1);
         if check_jsonl {
             self.last_jsonl_check = Instant::now();
         }
@@ -835,18 +847,21 @@ impl WorkspaceView {
                     };
 
                     let cli_status = match cli_type {
-                        codirigent_core::CliType::ClaudeCode => self
-                            .claude_reader
-                            .as_mut()
-                            .and_then(|r| r.get_status(&working_dir, child_pid).to_session_status()),
-                        codirigent_core::CliType::CodexCli => self
-                            .codex_reader
-                            .as_mut()
-                            .and_then(|r| r.get_status(&working_dir, child_pid).to_session_status()),
-                        codirigent_core::CliType::GeminiCli => self
-                            .gemini_reader
-                            .as_mut()
-                            .and_then(|r| r.get_status(&working_dir, child_pid).to_session_status()),
+                        codirigent_core::CliType::ClaudeCode => {
+                            self.claude_reader.as_mut().and_then(|r| {
+                                r.get_status(&working_dir, child_pid).to_session_status()
+                            })
+                        }
+                        codirigent_core::CliType::CodexCli => {
+                            self.codex_reader.as_mut().and_then(|r| {
+                                r.get_status(&working_dir, child_pid).to_session_status()
+                            })
+                        }
+                        codirigent_core::CliType::GeminiCli => {
+                            self.gemini_reader.as_mut().and_then(|r| {
+                                r.get_status(&working_dir, child_pid).to_session_status()
+                            })
+                        }
                         codirigent_core::CliType::GenericShell => {
                             // Use process tree to detect CLI type before reading JSONL.
                             // Prevents stale JSONL from previous sessions causing false promotion.
@@ -856,18 +871,24 @@ impl WorkspaceView {
                                     self.clipboard_service
                                         .set_session_cli_type(session_id, detected);
                                     match detected {
-                                        codirigent_core::CliType::ClaudeCode => self
-                                            .claude_reader
-                                            .as_mut()
-                                            .and_then(|r| r.get_status(&working_dir, child_pid).to_session_status()),
-                                        codirigent_core::CliType::CodexCli => self
-                                            .codex_reader
-                                            .as_mut()
-                                            .and_then(|r| r.get_status(&working_dir, child_pid).to_session_status()),
-                                        codirigent_core::CliType::GeminiCli => self
-                                            .gemini_reader
-                                            .as_mut()
-                                            .and_then(|r| r.get_status(&working_dir, child_pid).to_session_status()),
+                                        codirigent_core::CliType::ClaudeCode => {
+                                            self.claude_reader.as_mut().and_then(|r| {
+                                                r.get_status(&working_dir, child_pid)
+                                                    .to_session_status()
+                                            })
+                                        }
+                                        codirigent_core::CliType::CodexCli => {
+                                            self.codex_reader.as_mut().and_then(|r| {
+                                                r.get_status(&working_dir, child_pid)
+                                                    .to_session_status()
+                                            })
+                                        }
+                                        codirigent_core::CliType::GeminiCli => {
+                                            self.gemini_reader.as_mut().and_then(|r| {
+                                                r.get_status(&working_dir, child_pid)
+                                                    .to_session_status()
+                                            })
+                                        }
                                         _ => None,
                                     }
                                 } else {
@@ -920,10 +941,13 @@ impl WorkspaceView {
                     // Sync task board with the canonical (JSONL-corrected) status
                     if let Some(old) = old_status {
                         // Check if task transitioned to Review
-                        let task_transitioned_to_review = if let Ok(mut task_mgr) = self.task_manager.lock() {
+                        let task_transitioned_to_review = if let Ok(mut task_mgr) =
+                            self.task_manager.lock()
+                        {
                             let tid = task_mgr.on_session_status_changed(session_id, old, status);
                             if let Some(ref task_id) = tid {
-                                task_mgr.get_task(task_id)
+                                task_mgr
+                                    .get_task(task_id)
                                     .map_or(false, |t| t.status == TaskStatus::Review)
                             } else {
                                 false
@@ -953,8 +977,10 @@ impl WorkspaceView {
                                     if let Ok(mgr) = self.session_manager.lock() {
                                         let _ = mgr.send_input(session_id, clear_cmd.as_bytes());
                                     }
-                                    self.pending_enters.insert(session_id, (Instant::now(), false));
-                                    self.compaction_start_times.insert(session_id, Instant::now());
+                                    self.pending_enters
+                                        .insert(session_id, (Instant::now(), false));
+                                    self.compaction_start_times
+                                        .insert(session_id, Instant::now());
                                     just_started_compaction = true;
                                 }
                             }
@@ -969,7 +995,9 @@ impl WorkspaceView {
                     && !just_started_compaction
                     && !self.pending_enters.contains_key(&session_id)
                 {
-                    let is_compacting = self.compaction.lock()
+                    let is_compacting = self
+                        .compaction
+                        .lock()
                         .map(|svc| svc.is_compacting(session_id))
                         .unwrap_or(false);
 
@@ -979,15 +1007,18 @@ impl WorkspaceView {
                             svc.end_compaction(session_id);
                         }
                         self.compaction_start_times.remove(&session_id);
-                        self.event_bus.publish(CodirigentEvent::CompactionCompleted {
-                            session_id,
-                            success: true,
-                        });
+                        self.event_bus
+                            .publish(CodirigentEvent::CompactionCompleted {
+                                session_id,
+                                success: true,
+                            });
                         info!(?session_id, "Compaction completed successfully");
                         // Fall through to try_auto_assign
                     } else {
                         // Not compacting — check if we should compact before proceeding
-                        let has_task = self.workspace.session(session_id)
+                        let has_task = self
+                            .workspace
+                            .session(session_id)
                             .map_or(false, |s| s.current_task.is_some());
                         if has_task && self.try_compact(session_id) {
                             // Compaction started — skip auto-assign this cycle
@@ -1001,10 +1032,14 @@ impl WorkspaceView {
         }
 
         // Compaction timeout: end compaction for sessions that exceeded the limit
-        let timeout_secs = self.compaction.lock()
+        let timeout_secs = self
+            .compaction
+            .lock()
             .map(|svc| svc.timeout_secs())
             .unwrap_or(120);
-        let timed_out: Vec<SessionId> = self.compaction_start_times.iter()
+        let timed_out: Vec<SessionId> = self
+            .compaction_start_times
+            .iter()
             .filter(|(_, start)| start.elapsed() > Duration::from_secs(timeout_secs))
             .map(|(id, _)| *id)
             .collect();
@@ -1013,10 +1048,11 @@ impl WorkspaceView {
                 svc.end_compaction(session_id);
             }
             self.compaction_start_times.remove(&session_id);
-            self.event_bus.publish(CodirigentEvent::CompactionCompleted {
-                session_id,
-                success: false,
-            });
+            self.event_bus
+                .publish(CodirigentEvent::CompactionCompleted {
+                    session_id,
+                    success: false,
+                });
             warn!(?session_id, "Compaction timed out");
         }
 
@@ -1112,7 +1148,9 @@ impl WorkspaceView {
     /// Try to compact a session before verification.
     /// Returns true if compaction was started, false if skipped.
     fn try_compact(&mut self, session_id: SessionId) -> bool {
-        let context_usage = self.workspace.session(session_id)
+        let context_usage = self
+            .workspace
+            .session(session_id)
             .and_then(|s| s.context_usage);
 
         let command = {
@@ -1140,14 +1178,16 @@ impl WorkspaceView {
             }
         }
 
-        self.compaction_start_times.insert(session_id, Instant::now());
+        self.compaction_start_times
+            .insert(session_id, Instant::now());
 
-        let focus = self.compaction.lock().ok()
+        let focus = self
+            .compaction
+            .lock()
+            .ok()
             .and_then(|svc| svc.config().focus_instructions.clone());
-        self.event_bus.publish(CodirigentEvent::CompactionStarted {
-            session_id,
-            focus,
-        });
+        self.event_bus
+            .publish(CodirigentEvent::CompactionStarted { session_id, focus });
 
         info!(?session_id, "Compaction started");
         true
@@ -1227,7 +1267,8 @@ impl WorkspaceView {
                         warn!("Failed to send task prompt to session {}: {}", target_id, e);
                     }
                 }
-                self.pending_enters.insert(target_id, (Instant::now(), false));
+                self.pending_enters
+                    .insert(target_id, (Instant::now(), false));
 
                 info!(?task_id, ?target_id, "Auto-assigned task to session");
             }
@@ -1237,7 +1278,11 @@ impl WorkspaceView {
             }) => {
                 // Pending assignment is stored in AssignmentManager.pending;
                 // the UI will render the confirmation banner on next frame.
-                info!(?task_id, ?target_id, "Task proposed — awaiting user confirmation");
+                info!(
+                    ?task_id,
+                    ?target_id,
+                    "Task proposed — awaiting user confirmation"
+                );
             }
             Some(AssignmentAction::NoTask) | None => {}
         }
@@ -1520,9 +1565,7 @@ impl WorkspaceView {
     fn save_layout_profiles_to_settings(&self) {
         if let Some(ref config_service) = self.config_service {
             // Load current user settings
-            let mut user_settings = config_service
-                .load_user_settings()
-                .unwrap_or_default();
+            let mut user_settings = config_service.load_user_settings().unwrap_or_default();
 
             // Update saved_layouts with current profiles
             user_settings.saved_layouts = self.top_bar.export_user_profiles();
@@ -1808,7 +1851,8 @@ impl WorkspaceView {
                             self.workspace.set_layout(profile);
                         }
                         codirigent_core::LayoutMode::Single => {
-                            self.workspace.set_layout(crate::layout::LayoutProfile::Single);
+                            self.workspace
+                                .set_layout(crate::layout::LayoutProfile::Single);
                         }
                         codirigent_core::LayoutMode::SplitTree { root } => {
                             self.workspace.set_split_tree(root);
@@ -1826,7 +1870,10 @@ impl WorkspaceView {
                         self.custom_picker.close();
                     } else {
                         let current_tree = if self.workspace.is_split_tree_mode() {
-                            self.workspace.layout_state().as_split_tree().map(|s| s.tree().clone())
+                            self.workspace
+                                .layout_state()
+                                .as_split_tree()
+                                .map(|s| s.tree().clone())
                         } else {
                             None
                         };
@@ -1938,7 +1985,13 @@ impl WorkspaceView {
                 detected_fonts.insert(0, current_font.clone());
             }
 
-            self.settings_page = Some(SettingsPage::new(user_settings, project_config, detected, detected_shells, detected_fonts));
+            self.settings_page = Some(SettingsPage::new(
+                user_settings,
+                project_config,
+                detected,
+                detected_shells,
+                detected_fonts,
+            ));
         }
         self.settings_open = true;
     }
@@ -2122,7 +2175,8 @@ impl WorkspaceView {
                             info!("Assign action triggered for task {}", task_id);
                             // Get task for directory matching
                             let task = manager.get_task(&task_id).cloned();
-                            let target = task.as_ref()
+                            let target = task
+                                .as_ref()
                                 .and_then(|t| self.find_assignable_session_for_task(t));
 
                             if let Some(session) = target {
@@ -2148,7 +2202,8 @@ impl WorkspaceView {
                                                 warn!("Failed to send task prompt: {}", e);
                                             }
                                         }
-                                        self.pending_enters.insert(session.id, (Instant::now(), false));
+                                        self.pending_enters
+                                            .insert(session.id, (Instant::now(), false));
                                         if let Some(ws_session) =
                                             self.workspace.session_mut(session.id)
                                         {
@@ -2201,8 +2256,9 @@ impl WorkspaceView {
                     match manager.assignment_mut().confirm_assignment(&task_id) {
                         Ok(assignment) => {
                             // Also assign the task in the queue
-                            if let Err(e) =
-                                manager.queue_mut().assign_task(&task_id, assignment.session_id)
+                            if let Err(e) = manager
+                                .queue_mut()
+                                .assign_task(&task_id, assignment.session_id)
                             {
                                 warn!("Failed to assign task in queue: {}", e);
                                 cx.notify();
@@ -2239,7 +2295,8 @@ impl WorkspaceView {
                         );
                     }
                 }
-                self.pending_enters.insert(session_id, (Instant::now(), false));
+                self.pending_enters
+                    .insert(session_id, (Instant::now(), false));
 
                 info!(?task_id, ?session_id, "Confirmed and sent task to session");
             }
@@ -3173,7 +3230,8 @@ impl WorkspaceView {
     /// 1. The currently focused session (if it matches)
     /// 2. Otherwise, the session with the lowest context_usage (freshest context)
     fn find_assignable_session_for_task(&self, task: &codirigent_core::Task) -> Option<Session> {
-        let candidates: Vec<_> = self.workspace
+        let candidates: Vec<_> = self
+            .workspace
             .sessions()
             .iter()
             .filter(|s| {
@@ -3200,12 +3258,13 @@ impl WorkspaceView {
         }
 
         // Among remaining, pick the session with lowest context_usage (freshest context window)
-        candidates.into_iter()
-            .min_by(|a, b| {
-                let usage_a = a.context_usage.unwrap_or(0.0);
-                let usage_b = b.context_usage.unwrap_or(0.0);
-                usage_a.partial_cmp(&usage_b).unwrap_or(std::cmp::Ordering::Equal)
-            })
+        candidates.into_iter().min_by(|a, b| {
+            let usage_a = a.context_usage.unwrap_or(0.0);
+            let usage_b = b.context_usage.unwrap_or(0.0);
+            usage_a
+                .partial_cmp(&usage_b)
+                .unwrap_or(std::cmp::Ordering::Equal)
+        })
     }
 
     /// Detect CLI type from PTY output by scanning for known banners.
@@ -3764,7 +3823,8 @@ impl WorkspaceView {
             CustomLayoutMode::Split => {
                 match key.as_str() {
                     "h" => {
-                        self.custom_picker.split_selected(SplitDirection::Horizontal);
+                        self.custom_picker
+                            .split_selected(SplitDirection::Horizontal);
                         cx.notify();
                         return true;
                     }
@@ -3782,7 +3842,9 @@ impl WorkspaceView {
                         // Cycle selected slot
                         let slots = self.custom_picker.split_tree.slots_in_order();
                         if !slots.is_empty() {
-                            let current_idx = self.custom_picker.selected_slot
+                            let current_idx = self
+                                .custom_picker
+                                .selected_slot
                                 .and_then(|s| slots.iter().position(|&o| o == s));
                             let next = match current_idx {
                                 Some(i) => (i + 1) % slots.len(),
@@ -3800,7 +3862,6 @@ impl WorkspaceView {
 
         true
     }
-
 }
 
 impl Focusable for WorkspaceView {

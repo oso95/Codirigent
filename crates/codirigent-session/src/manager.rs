@@ -282,7 +282,12 @@ impl SessionManager for DefaultSessionManager {
         self.lock_sessions().get(&id).map(|s| s.session.clone())
     }
 
-    fn create_session(&self, name: String, working_dir: PathBuf, shell: Option<String>) -> Result<SessionId> {
+    fn create_session(
+        &self,
+        name: String,
+        working_dir: PathBuf,
+        shell: Option<String>,
+    ) -> Result<SessionId> {
         let id = self.next_session_id();
         info!(%id, %name, ?working_dir, ?shell, "Creating session");
 
@@ -305,8 +310,15 @@ impl SessionManager for DefaultSessionManager {
             if !shell_name.is_empty() {
                 let shell_cmd = crate::pty::resolve_shell(shell_name);
                 let args: Vec<&str> = shell_cmd.args.iter().map(|a| a.as_str()).collect();
-                PtyHandle::spawn_command(&working_dir, &shell_cmd.program, &args, DEFAULT_PTY_ROWS, DEFAULT_PTY_COLS, &[])
-                    .context("Failed to spawn PTY with selected shell")?
+                PtyHandle::spawn_command(
+                    &working_dir,
+                    &shell_cmd.program,
+                    &args,
+                    DEFAULT_PTY_ROWS,
+                    DEFAULT_PTY_COLS,
+                    &[],
+                )
+                .context("Failed to spawn PTY with selected shell")?
             } else {
                 PtyHandle::spawn(&working_dir, DEFAULT_PTY_ROWS, DEFAULT_PTY_COLS, &[])
                     .context("Failed to spawn PTY")?

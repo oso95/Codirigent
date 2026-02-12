@@ -328,10 +328,21 @@ impl super::gpui::WorkspaceView {
         let shell_display_options: Vec<String> = page
             .detected_shells
             .iter()
-            .map(|s| if s.is_empty() { "(Auto-detect)".to_string() } else { s.clone() })
+            .map(|s| {
+                if s.is_empty() {
+                    "(Auto-detect)".to_string()
+                } else {
+                    s.clone()
+                }
+            })
             .collect();
-        let shell_option_refs: Vec<&str> = shell_display_options.iter().map(|s| s.as_str()).collect();
-        let shell_display = if shell.is_empty() { "(Auto-detect)".to_string() } else { shell.clone() };
+        let shell_option_refs: Vec<&str> =
+            shell_display_options.iter().map(|s| s.as_str()).collect();
+        let shell_display = if shell.is_empty() {
+            "(Auto-detect)".to_string()
+        } else {
+            shell.clone()
+        };
 
         div()
             .flex()
@@ -368,7 +379,11 @@ impl super::gpui::WorkspaceView {
                     |this, val, _, _| {
                         if let Some(page) = this.settings_page.as_mut() {
                             // Map "(Auto-detect)" back to empty string
-                            let stored = if val == "(Auto-detect)" { String::new() } else { val };
+                            let stored = if val == "(Auto-detect)" {
+                                String::new()
+                            } else {
+                                val
+                            };
                             page.user_settings.general.default_shell = stored;
                             page.user_save_pending = true;
                         }

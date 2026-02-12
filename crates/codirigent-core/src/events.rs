@@ -641,11 +641,7 @@ mod tests {
             session_id: SessionId(1),
             detail: Some("y/n".to_string()),
         };
-        if let CodirigentEvent::AttentionRequired {
-            session_id,
-            detail,
-        } = event
-        {
+        if let CodirigentEvent::AttentionRequired { session_id, detail } = event {
             assert_eq!(session_id, SessionId(1));
             assert_eq!(detail, Some("y/n".to_string()));
         } else {

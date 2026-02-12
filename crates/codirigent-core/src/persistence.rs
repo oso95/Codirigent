@@ -818,12 +818,8 @@ mod tests {
             root: LayoutNode::Split {
                 direction: SplitDirection::Horizontal,
                 ratio: 0.6,
-                first: Box::new(LayoutNode::Leaf {
-                    slot: SlotId(0),
-                }),
-                second: Box::new(LayoutNode::Leaf {
-                    slot: SlotId(1),
-                }),
+                first: Box::new(LayoutNode::Leaf { slot: SlotId(0) }),
+                second: Box::new(LayoutNode::Leaf { slot: SlotId(1) }),
             },
         };
 

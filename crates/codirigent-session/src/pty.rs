@@ -454,7 +454,10 @@ pub fn detect_available_shells() -> Vec<String> {
                 if line.is_empty() || line.starts_with('#') {
                     continue;
                 }
-                if let Some(basename) = std::path::Path::new(line).file_name().and_then(|n| n.to_str()) {
+                if let Some(basename) = std::path::Path::new(line)
+                    .file_name()
+                    .and_then(|n| n.to_str())
+                {
                     if seen.insert(basename.to_string()) {
                         shells.push(basename.to_string());
                     }
@@ -522,7 +525,10 @@ pub fn resolve_shell(shell_name: &str) -> ShellCommand {
                 if line.is_empty() || line.starts_with('#') {
                     continue;
                 }
-                if let Some(basename) = std::path::Path::new(line).file_name().and_then(|n| n.to_str()) {
+                if let Some(basename) = std::path::Path::new(line)
+                    .file_name()
+                    .and_then(|n| n.to_str())
+                {
                     if basename == shell_name {
                         return ShellCommand {
                             program: line.to_string(),
@@ -534,10 +540,7 @@ pub fn resolve_shell(shell_name: &str) -> ShellCommand {
         }
 
         // Fallback to `which`
-        if let Ok(output) = std::process::Command::new("which")
-            .arg(shell_name)
-            .output()
-        {
+        if let Ok(output) = std::process::Command::new("which").arg(shell_name).output() {
             if output.status.success() {
                 let path = String::from_utf8_lossy(&output.stdout).trim().to_string();
                 if !path.is_empty() {
@@ -626,7 +629,7 @@ fn is_zsh_shell(command: &str) -> bool {
     std::path::Path::new(command)
         .file_name()
         .and_then(|n| n.to_str())
-        .map_or(false, |base| base == "zsh")
+        == Some("zsh")
 }
 
 /// Set up zsh shell integration via a ZDOTDIR redirect.
@@ -639,8 +642,7 @@ fn is_zsh_shell(command: &str) -> bool {
 #[cfg(unix)]
 fn setup_zsh_integration() -> Result<std::path::PathBuf> {
     let zdotdir = std::env::temp_dir().join("codirigent-zsh-integration");
-    std::fs::create_dir_all(&zdotdir)
-        .context("Failed to create zsh integration directory")?;
+    std::fs::create_dir_all(&zdotdir).context("Failed to create zsh integration directory")?;
 
     // .zshenv — always sourced (interactive, non-interactive, login, non-login).
     // Forward to user's .zshenv; do NOT restore ZDOTDIR here so our
@@ -1418,10 +1420,7 @@ mod tests {
         let zdotdir = setup_zsh_integration().expect("setup_zsh_integration should succeed");
 
         assert!(zdotdir.join(".zshenv").exists(), ".zshenv should exist");
-        assert!(
-            zdotdir.join(".zprofile").exists(),
-            ".zprofile should exist"
-        );
+        assert!(zdotdir.join(".zprofile").exists(), ".zprofile should exist");
         assert!(zdotdir.join(".zshrc").exists(), ".zshrc should exist");
     }
 

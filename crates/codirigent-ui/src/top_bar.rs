@@ -70,15 +70,21 @@ impl TopBar {
     pub fn new() -> Self {
         let mut manager = LayoutProfileManager::new();
         // Add only the three profiles matching the original hardcoded tabs
-        manager.add_profile(
-            SavedLayoutProfile::new("2x2", "2x2", LayoutMode::Grid { rows: 2, cols: 2 }),
-        );
-        manager.add_profile(
-            SavedLayoutProfile::new("2x3", "3x2", LayoutMode::Grid { rows: 2, cols: 3 }),
-        );
-        manager.add_profile(
-            SavedLayoutProfile::new("single", "Focus", LayoutMode::Single),
-        );
+        manager.add_profile(SavedLayoutProfile::new(
+            "2x2",
+            "2x2",
+            LayoutMode::Grid { rows: 2, cols: 2 },
+        ));
+        manager.add_profile(SavedLayoutProfile::new(
+            "2x3",
+            "3x2",
+            LayoutMode::Grid { rows: 2, cols: 3 },
+        ));
+        manager.add_profile(SavedLayoutProfile::new(
+            "single",
+            "Focus",
+            LayoutMode::Single,
+        ));
         manager.set_active("2x2");
 
         let tabs = Self::derive_tabs(&manager);
@@ -352,11 +358,8 @@ mod tests {
     #[test]
     fn saved_profile_appears_as_tab() {
         let mut bar = TopBar::new();
-        let profile = SavedLayoutProfile::new(
-            "custom-3x3",
-            "3x3",
-            LayoutMode::Grid { rows: 3, cols: 3 },
-        );
+        let profile =
+            SavedLayoutProfile::new("custom-3x3", "3x3", LayoutMode::Grid { rows: 3, cols: 3 });
         bar.profile_manager.add_profile(profile);
         bar.refresh_tabs();
         assert_eq!(bar.tabs().len(), 4);

@@ -437,7 +437,6 @@ fn test_status_badge_for_error() {
     assert!(!badge.animated);
 }
 
-
 fn create_session_with_context(
     id: u64,
     name: &str,

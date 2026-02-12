@@ -130,7 +130,12 @@ impl ClaudeSessionReader {
     ///
     /// Uses PID-based matching (via `lsof`) when available, falling back to
     /// most-recently-modified file. Uses seek-from-end for efficiency.
-    fn read_recent_entries(&self, session_dir: &Path, max_entries: usize, pid: Option<u32>) -> Vec<JsonlEntry> {
+    fn read_recent_entries(
+        &self,
+        session_dir: &Path,
+        max_entries: usize,
+        pid: Option<u32>,
+    ) -> Vec<JsonlEntry> {
         let Some(jsonl_path) = Self::find_jsonl_for_pid(session_dir, pid) else {
             return Vec::new();
         };
@@ -261,7 +266,7 @@ impl ClaudeSessionReader {
     /// 1. Find the last assistant message
     /// 2. If it has a tool_use with no tool_result → NeedsAttention
     ///    (if it's actually auto-approved, the result appears within ~1s
-    ///     and the next poll will update the status)
+    ///    and the next poll will update the status)
     /// 3. If stop_reason is "end_turn" → NeedsAttention
     /// 4. Otherwise → Unknown (fall through to other detectors)
     fn determine_status(&self, entries: &[JsonlEntry]) -> ClaudeSessionStatus {
@@ -354,7 +359,10 @@ impl ClaudeSessionReader {
                             }
                         }
 
-                        debug!(?tool_name, "JSONL: pending tool_use (stop=tool_use) ≥ 3s → NeedsAttention");
+                        debug!(
+                            ?tool_name,
+                            "JSONL: pending tool_use (stop=tool_use) ≥ 3s → NeedsAttention"
+                        );
                         return ClaudeSessionStatus::NeedsAttention {
                             detail: Some(tool_name.to_string()),
                         };
@@ -378,8 +386,7 @@ impl ClaudeSessionReader {
         // Check if there's a human entry after the last assistant (tool results
         // sent back → Claude is processing the next turn).
         let has_human_after_assistant = entries[last_assistant_idx + 1..].iter().any(|e| {
-            e.entry_type == "human"
-                || e.message.as_ref().is_some_and(|m| m.role == "user")
+            e.entry_type == "human" || e.message.as_ref().is_some_and(|m| m.role == "user")
         });
 
         if has_human_after_assistant {
@@ -409,7 +416,6 @@ impl ClaudeSessionReader {
 
         ClaudeSessionStatus::Unknown
     }
-
 }
 
 #[cfg(test)]
@@ -566,10 +572,7 @@ mod tests {
     #[test]
     fn test_empty_entries_returns_unknown() {
         let reader = test_reader();
-        assert_eq!(
-            reader.determine_status(&[]),
-            ClaudeSessionStatus::Unknown
-        );
+        assert_eq!(reader.determine_status(&[]), ClaudeSessionStatus::Unknown);
     }
 
     #[test]
@@ -634,7 +637,11 @@ mod tests {
         )
         .unwrap();
         for _ in 0..50 {
-            writeln!(file, r#"{{"type":"progress","timestamp":"2026-01-01T00:00:00Z"}}"#).unwrap();
+            writeln!(
+                file,
+                r#"{{"type":"progress","timestamp":"2026-01-01T00:00:00Z"}}"#
+            )
+            .unwrap();
         }
         writeln!(
             file,

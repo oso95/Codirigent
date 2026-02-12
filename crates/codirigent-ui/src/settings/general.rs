@@ -25,11 +25,7 @@ pub fn render_general_panel(page: &SettingsPage, theme: &CodirigentTheme) -> imp
             "Default editor",
             "External editor to open files with",
             theme,
-            setting_dropdown(
-                &editor_options,
-                &general.editor_command,
-                theme,
-            ),
+            setting_dropdown(&editor_options, &general.editor_command, theme),
         ))
         // Shell section
         .child(settings_section_header("Shell", theme, false))

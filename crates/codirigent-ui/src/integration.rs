@@ -150,7 +150,9 @@ impl CodirigentIntegration {
             event_bus.clone(),
         )));
 
-        let compaction = Arc::new(Mutex::new(CompactionService::new(config.compaction.clone())));
+        let compaction = Arc::new(Mutex::new(CompactionService::new(
+            config.compaction.clone(),
+        )));
 
         let task_manager = Arc::new(Mutex::new(TaskManager::new(
             TaskManagerConfig::default(),
@@ -207,13 +209,13 @@ impl CodirigentIntegration {
                     match rx.recv().await {
                         Ok(event) => {
                             Self::handle_event(
-                            &event,
-                            &session_manager,
-                            &storage,
-                            &task_manager,
-                            auto_save,
-                            notifications_enabled,
-                        );
+                                &event,
+                                &session_manager,
+                                &storage,
+                                &task_manager,
+                                auto_save,
+                                notifications_enabled,
+                            );
                         }
                         Err(broadcast::error::RecvError::Closed) => {
                             info!("Event bus closed, stopping event loop");
@@ -255,7 +257,8 @@ impl CodirigentIntegration {
                     if let Some((task_id, task)) = task_mgr.find_task_by_session(*id) {
                         if matches!(
                             task.status,
-                            codirigent_core::TaskStatus::Working | codirigent_core::TaskStatus::Verifying
+                            codirigent_core::TaskStatus::Working
+                                | codirigent_core::TaskStatus::Verifying
                         ) {
                             warn!(%id, ?task_id, "Session closed with active task, marking as blocked");
                             if let Err(e) = task_mgr.transition_task_status(
@@ -278,15 +281,14 @@ impl CodirigentIntegration {
 
                 // Automatically sync task status based on session status
                 if let Ok(mut task_mgr) = task_manager.lock() {
-                    if let Some(updated_task_id) = task_mgr.on_session_status_changed(*id, *old, *new) {
+                    if let Some(updated_task_id) =
+                        task_mgr.on_session_status_changed(*id, *old, *new)
+                    {
                         info!(%id, ?updated_task_id, "Task status automatically synced with session");
                     }
                 }
             }
-            CodirigentEvent::AttentionRequired {
-                session_id,
-                detail,
-            } => {
+            CodirigentEvent::AttentionRequired { session_id, detail } => {
                 info!(%session_id, ?detail, "Attention required");
                 if notifications_enabled {
                     let session_name = session_manager
@@ -296,10 +298,8 @@ impl CodirigentIntegration {
                         .map(|s| s.name.clone())
                         .unwrap_or_else(|| format!("Session {}", session_id.0));
                     if let Some(tool) = detail {
-                        let body = format!(
-                            "Session '{}' needs permission for {}",
-                            session_name, tool
-                        );
+                        let body =
+                            format!("Session '{}' needs permission for {}", session_name, tool);
                         send_notification("Codirigent", &body);
                     } else {
                         notify_input_required(*session_id, &session_name);
@@ -370,7 +370,12 @@ impl CodirigentIntegration {
     /// # Errors
     ///
     /// Returns an error if session creation or monitoring setup fails.
-    pub fn create_session(&self, name: String, working_dir: PathBuf, shell: Option<String>) -> Result<SessionId> {
+    pub fn create_session(
+        &self,
+        name: String,
+        working_dir: PathBuf,
+        shell: Option<String>,
+    ) -> Result<SessionId> {
         let session_id = {
             let manager = self.lock_session_manager()?;
             manager.create_session(name, working_dir, shell)?
@@ -569,7 +574,11 @@ impl CodirigentIntegration {
 
         let mut restored = 0;
         for session in state.sessions {
-            match self.create_session(session.name.clone(), session.working_directory.clone(), None) {
+            match self.create_session(
+                session.name.clone(),
+                session.working_directory.clone(),
+                None,
+            ) {
                 Ok(id) => {
                     // Restore group/color if present
                     if session.group.is_some() || session.color.is_some() {
@@ -651,11 +660,7 @@ impl CodirigentIntegration {
     ///
     /// * `session_id` - The session to compact
     /// * `context_usage` - The session's current context usage (0.0-1.0)
-    pub fn try_compact_session(
-        &self,
-        session_id: SessionId,
-        context_usage: Option<f32>,
-    ) -> bool {
+    pub fn try_compact_session(&self, session_id: SessionId, context_usage: Option<f32>) -> bool {
         let (should_compact, command, timeout_secs, focus) = {
             let mut compaction = match self.compaction.lock() {
                 Ok(c) => c,
@@ -697,10 +702,8 @@ impl CodirigentIntegration {
         info!(%session_id, ?focus, "Compaction started");
 
         // Publish CompactionStarted event
-        self.event_bus.publish(CodirigentEvent::CompactionStarted {
-            session_id,
-            focus,
-        });
+        self.event_bus
+            .publish(CodirigentEvent::CompactionStarted { session_id, focus });
 
         // Spawn background thread to wait for compaction to complete
         let event_bus = self.event_bus.clone();
@@ -749,9 +752,7 @@ impl CodirigentIntegration {
                                 // Needs input during compaction - treat as failure
                                 return false;
                             }
-                            Ok(CodirigentEvent::SessionClosed { id })
-                                if id == session_id =>
-                            {
+                            Ok(CodirigentEvent::SessionClosed { id }) if id == session_id => {
                                 // Session closed during compaction
                                 if let Ok(mut svc) = compaction.lock() {
                                     svc.end_compaction(session_id);
@@ -1008,7 +1009,11 @@ mod tests {
                 CodirigentIntegration::with_config(temp.path().to_path_buf(), config).unwrap();
 
             integration
-                .create_session("Persistent Session".to_string(), temp.path().to_path_buf(), None)
+                .create_session(
+                    "Persistent Session".to_string(),
+                    temp.path().to_path_buf(),
+                    None,
+                )
                 .unwrap();
 
             integration.save_state().unwrap();
@@ -1119,7 +1124,11 @@ mod tests {
                 CodirigentIntegration::with_config(temp.path().to_path_buf(), config).unwrap();
 
             let id = integration
-                .create_session("Grouped Session".to_string(), temp.path().to_path_buf(), None)
+                .create_session(
+                    "Grouped Session".to_string(),
+                    temp.path().to_path_buf(),
+                    None,
+                )
                 .unwrap();
 
             integration
@@ -1183,7 +1192,18 @@ mod tests {
         let storage = Arc::new(FileStorageService::new(temp.path()).unwrap());
 
         let event = CodirigentEvent::SessionCreated { id: SessionId(1) };
-        CodirigentIntegration::handle_event(&event, &session_manager, &storage, &Arc::new(Mutex::new(TaskManager::new(TaskManagerConfig::default(), storage.clone(), event_bus.clone()))), false, false);
+        CodirigentIntegration::handle_event(
+            &event,
+            &session_manager,
+            &storage,
+            &Arc::new(Mutex::new(TaskManager::new(
+                TaskManagerConfig::default(),
+                storage.clone(),
+                event_bus.clone(),
+            ))),
+            false,
+            false,
+        );
         // Should not panic
     }
 
@@ -1195,7 +1215,18 @@ mod tests {
         let storage = Arc::new(FileStorageService::new(temp.path()).unwrap());
 
         let event = CodirigentEvent::SessionClosed { id: SessionId(1) };
-        CodirigentIntegration::handle_event(&event, &session_manager, &storage, &Arc::new(Mutex::new(TaskManager::new(TaskManagerConfig::default(), storage.clone(), event_bus.clone()))), false, false);
+        CodirigentIntegration::handle_event(
+            &event,
+            &session_manager,
+            &storage,
+            &Arc::new(Mutex::new(TaskManager::new(
+                TaskManagerConfig::default(),
+                storage.clone(),
+                event_bus.clone(),
+            ))),
+            false,
+            false,
+        );
         // Should not panic
     }
 
@@ -1211,7 +1242,18 @@ mod tests {
             old: SessionStatus::Idle,
             new: SessionStatus::Working,
         };
-        CodirigentIntegration::handle_event(&event, &session_manager, &storage, &Arc::new(Mutex::new(TaskManager::new(TaskManagerConfig::default(), storage.clone(), event_bus.clone()))), false, false);
+        CodirigentIntegration::handle_event(
+            &event,
+            &session_manager,
+            &storage,
+            &Arc::new(Mutex::new(TaskManager::new(
+                TaskManagerConfig::default(),
+                storage.clone(),
+                event_bus.clone(),
+            ))),
+            false,
+            false,
+        );
         // Should not panic
     }
 
@@ -1226,7 +1268,18 @@ mod tests {
             session_id: SessionId(1),
             detail: Some("[y/n]".to_string()),
         };
-        CodirigentIntegration::handle_event(&event, &session_manager, &storage, &Arc::new(Mutex::new(TaskManager::new(TaskManagerConfig::default(), storage.clone(), event_bus.clone()))), false, false);
+        CodirigentIntegration::handle_event(
+            &event,
+            &session_manager,
+            &storage,
+            &Arc::new(Mutex::new(TaskManager::new(
+                TaskManagerConfig::default(),
+                storage.clone(),
+                event_bus.clone(),
+            ))),
+            false,
+            false,
+        );
         // Should not panic
     }
 
@@ -1240,7 +1293,18 @@ mod tests {
         let event = CodirigentEvent::InputProvided {
             session_id: SessionId(1),
         };
-        CodirigentIntegration::handle_event(&event, &session_manager, &storage, &Arc::new(Mutex::new(TaskManager::new(TaskManagerConfig::default(), storage.clone(), event_bus.clone()))), false, false);
+        CodirigentIntegration::handle_event(
+            &event,
+            &session_manager,
+            &storage,
+            &Arc::new(Mutex::new(TaskManager::new(
+                TaskManagerConfig::default(),
+                storage.clone(),
+                event_bus.clone(),
+            ))),
+            false,
+            false,
+        );
         // Should not panic
     }
 
@@ -1256,7 +1320,18 @@ mod tests {
             old_name: "Old".to_string(),
             new_name: "New".to_string(),
         };
-        CodirigentIntegration::handle_event(&event, &session_manager, &storage, &Arc::new(Mutex::new(TaskManager::new(TaskManagerConfig::default(), storage.clone(), event_bus.clone()))), false, false);
+        CodirigentIntegration::handle_event(
+            &event,
+            &session_manager,
+            &storage,
+            &Arc::new(Mutex::new(TaskManager::new(
+                TaskManagerConfig::default(),
+                storage.clone(),
+                event_bus.clone(),
+            ))),
+            false,
+            false,
+        );
         // Should not panic
     }
 
@@ -1272,7 +1347,18 @@ mod tests {
             group: Some("backend".to_string()),
             color: Some("#ff0000".to_string()),
         };
-        CodirigentIntegration::handle_event(&event, &session_manager, &storage, &Arc::new(Mutex::new(TaskManager::new(TaskManagerConfig::default(), storage.clone(), event_bus.clone()))), false, false);
+        CodirigentIntegration::handle_event(
+            &event,
+            &session_manager,
+            &storage,
+            &Arc::new(Mutex::new(TaskManager::new(
+                TaskManagerConfig::default(),
+                storage.clone(),
+                event_bus.clone(),
+            ))),
+            false,
+            false,
+        );
         // Should not panic
     }
 

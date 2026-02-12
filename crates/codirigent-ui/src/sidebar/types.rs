@@ -132,10 +132,10 @@ pub struct StatusColors {
 impl Default for StatusColors {
     fn default() -> Self {
         Self {
-            idle: Color::from_hex("#6c7086"),           // Gray
-            working: Color::from_hex("#f9e2af"),        // Yellow
+            idle: Color::from_hex("#6c7086"),            // Gray
+            working: Color::from_hex("#f9e2af"),         // Yellow
             needs_attention: Color::from_hex("#f43f5e"), // Rose
-            error: Color::from_hex("#f38ba8"),          // Red
+            error: Color::from_hex("#f38ba8"),           // Red
         }
     }
 }

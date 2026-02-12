@@ -321,7 +321,10 @@ impl LayoutNode {
     ///   └── H(0.333) → H(0.5) → [slot3] [slot4] [slot5]
     /// ```
     pub fn from_grid(rows: u32, cols: u32) -> Self {
-        assert!(rows >= 1 && cols >= 1, "Grid must have at least 1 row and 1 column");
+        assert!(
+            rows >= 1 && cols >= 1,
+            "Grid must have at least 1 row and 1 column"
+        );
         let mut next_slot = 0u32;
         Self::build_grid_rows(rows, cols, &mut next_slot)
     }
@@ -371,14 +374,12 @@ impl LayoutNode {
         new_slot: SlotId,
     ) -> Option<LayoutNode> {
         match self {
-            LayoutNode::Leaf { slot } if *slot == target => {
-                Some(LayoutNode::Split {
-                    direction,
-                    ratio,
-                    first: Box::new(LayoutNode::Leaf { slot: *slot }),
-                    second: Box::new(LayoutNode::Leaf { slot: new_slot }),
-                })
-            }
+            LayoutNode::Leaf { slot } if *slot == target => Some(LayoutNode::Split {
+                direction,
+                ratio,
+                first: Box::new(LayoutNode::Leaf { slot: *slot }),
+                second: Box::new(LayoutNode::Leaf { slot: new_slot }),
+            }),
             LayoutNode::Leaf { .. } => None,
             LayoutNode::Split {
                 direction: d,
@@ -393,17 +394,15 @@ impl LayoutNode {
                         first: Box::new(new_first),
                         second: second.clone(),
                     })
-                } else if let Some(new_second) =
-                    second.split_slot(target, direction, ratio, new_slot)
-                {
-                    Some(LayoutNode::Split {
-                        direction: *d,
-                        ratio: *r,
-                        first: first.clone(),
-                        second: Box::new(new_second),
-                    })
                 } else {
-                    None
+                    second
+                        .split_slot(target, direction, ratio, new_slot)
+                        .map(|new_second| LayoutNode::Split {
+                            direction: *d,
+                            ratio: *r,
+                            first: first.clone(),
+                            second: Box::new(new_second),
+                        })
                 }
             }
         }
@@ -444,15 +443,15 @@ impl LayoutNode {
                         first: Box::new(new_first),
                         second: second.clone(),
                     })
-                } else if let Some(new_second) = second.close_slot(target) {
-                    Some(LayoutNode::Split {
-                        direction: *direction,
-                        ratio: *ratio,
-                        first: first.clone(),
-                        second: Box::new(new_second),
-                    })
                 } else {
-                    None
+                    second
+                        .close_slot(target)
+                        .map(|new_second| LayoutNode::Split {
+                            direction: *direction,
+                            ratio: *ratio,
+                            first: first.clone(),
+                            second: Box::new(new_second),
+                        })
                 }
             }
         }
@@ -492,17 +491,15 @@ impl LayoutNode {
                             first: Box::new(new_first),
                             second: second.clone(),
                         })
-                    } else if let Some(new_second) =
-                        second.set_ratio_for_slot(target, new_ratio)
-                    {
-                        Some(LayoutNode::Split {
-                            direction: *direction,
-                            ratio: *ratio,
-                            first: first.clone(),
-                            second: Box::new(new_second),
-                        })
                     } else {
-                        None
+                        second
+                            .set_ratio_for_slot(target, new_ratio)
+                            .map(|new_second| LayoutNode::Split {
+                                direction: *direction,
+                                ratio: *ratio,
+                                first: first.clone(),
+                                second: Box::new(new_second),
+                            })
                     }
                 }
             }
@@ -2337,7 +2334,14 @@ mod tests {
         let slots = node.slots_in_order();
         assert_eq!(
             slots,
-            vec![SlotId(0), SlotId(1), SlotId(2), SlotId(3), SlotId(4), SlotId(5)]
+            vec![
+                SlotId(0),
+                SlotId(1),
+                SlotId(2),
+                SlotId(3),
+                SlotId(4),
+                SlotId(5)
+            ]
         );
     }
 
@@ -2519,8 +2523,8 @@ mod tests {
         let slots = node.slots_in_order();
         assert_eq!(slots.len(), 9);
         // Slots should be numbered 0-8
-        for i in 0..9 {
-            assert_eq!(slots[i], SlotId(i as u32));
+        for (i, slot) in slots.iter().enumerate().take(9) {
+            assert_eq!(*slot, SlotId(i as u32));
         }
     }
 }

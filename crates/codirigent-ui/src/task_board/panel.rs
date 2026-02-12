@@ -213,9 +213,9 @@ impl AutoAssignToggle {
     /// Get the dot color based on mode.
     pub fn dot_color(&self) -> Color {
         match self.mode {
-            AutoAssignMode::Off => Color::from_hex("#6b7280"),    // Gray
+            AutoAssignMode::Off => Color::from_hex("#6b7280"), // Gray
             AutoAssignMode::Confirm => Color::from_hex("#f59e0b"), // Amber
-            AutoAssignMode::Auto => Color::from_hex("#39d353"),    // Green
+            AutoAssignMode::Auto => Color::from_hex("#39d353"), // Green
         }
     }
 
@@ -354,18 +354,16 @@ impl TaskBoardPanel {
 
     /// Emit a ConfirmAssignment event.
     pub fn confirm_pending_assignment(&mut self, task_id: impl Into<String>) {
-        self.pending_events
-            .push(TaskBoardEvent::ConfirmAssignment {
-                task_id: task_id.into(),
-            });
+        self.pending_events.push(TaskBoardEvent::ConfirmAssignment {
+            task_id: task_id.into(),
+        });
     }
 
     /// Emit a RejectAssignment event.
     pub fn reject_pending_assignment(&mut self, task_id: impl Into<String>) {
-        self.pending_events
-            .push(TaskBoardEvent::RejectAssignment {
-                task_id: task_id.into(),
-            });
+        self.pending_events.push(TaskBoardEvent::RejectAssignment {
+            task_id: task_id.into(),
+        });
     }
 
     /// Click the add task button.

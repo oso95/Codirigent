@@ -412,10 +412,10 @@ impl CodirigentTheme {
             input_required_accent: hex("#f43f5e"),
 
             // === Session Status Colors ===
-            session_idle: hex("#52525b"),    // Zinc-600 for idle
-            session_working: hex("#f59e0b"), // Amber-500 for working
+            session_idle: hex("#52525b"),            // Zinc-600 for idle
+            session_working: hex("#f59e0b"),         // Amber-500 for working
             session_needs_attention: hex("#f43f5e"), // Rose-500 for needs attention
-            session_error: hex("#ef4444"),   // Red-500 for error
+            session_error: hex("#ef4444"),           // Red-500 for error
 
             // === Priority Colors ===
             priority_high: hex("#FF6B6B"),   // Red
@@ -506,10 +506,10 @@ impl CodirigentTheme {
             input_required_accent: hex("#e11d48"),
 
             // === Session Status Colors ===
-            session_idle: hex("#71717a"),    // Zinc-500
-            session_working: hex("#d97706"), // Amber-600
+            session_idle: hex("#71717a"),            // Zinc-500
+            session_working: hex("#d97706"),         // Amber-600
             session_needs_attention: hex("#e11d48"), // Rose-600
-            session_error: hex("#dc2626"),   // Red-600
+            session_error: hex("#dc2626"),           // Red-600
 
             // === Priority Colors ===
             priority_high: hex("#dc2626"),
@@ -718,7 +718,10 @@ mod tests {
         let attention = theme.status_color(SessionStatus::NeedsAttention);
         let idle = theme.status_color(SessionStatus::Idle);
 
-        assert_ne!(working, attention, "Working and NeedsAttention should be different");
+        assert_ne!(
+            working, attention,
+            "Working and NeedsAttention should be different"
+        );
         assert_ne!(idle, working, "Idle and Working should be different");
     }
 

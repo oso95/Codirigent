@@ -12,16 +12,16 @@ use crate::components::text_input::{text_input, TextInputStyle};
 use crate::empty_session::EmptySessionRenderHints;
 use crate::icons;
 use crate::layout::LayoutProfile;
-use crate::toolbar::CustomLayoutMode;
 use crate::terminal_header::TerminalHeaderRenderHints;
 use crate::theme::CodirigentTheme;
 use crate::title_bar::TitleBar;
+use crate::toolbar::CustomLayoutMode;
 use codirigent_core::{LayoutNode, Session, SessionId, SlotId, SplitDirection};
 use gpui::{
-    div, prelude::FluentBuilder, px, relative, ClickEvent, Context, FontWeight, Image,
-    ImageFormat, InteractiveElement, IntoElement, MouseButton, MouseDownEvent, MouseMoveEvent,
-    MouseUpEvent, ObjectFit, ParentElement, ScrollWheelEvent, SharedString,
-    StatefulInteractiveElement, Styled, StyledImage, Window, WindowControlArea,
+    div, prelude::FluentBuilder, px, relative, ClickEvent, Context, FontWeight, Image, ImageFormat,
+    InteractiveElement, IntoElement, MouseButton, MouseDownEvent, MouseMoveEvent, MouseUpEvent,
+    ObjectFit, ParentElement, ScrollWheelEvent, SharedString, StatefulInteractiveElement, Styled,
+    StyledImage, Window, WindowControlArea,
 };
 use std::cell::Cell;
 use std::rc::Rc;
@@ -817,14 +817,25 @@ impl WorkspaceView {
                 let label_for_confirm = label.clone();
                 tab_pill = tab_pill.child(
                     div()
-                        .id(SharedString::from(format!("top-bar-tab-remove-{}", tab_idx)))
+                        .id(SharedString::from(format!(
+                            "top-bar-tab-remove-{}",
+                            tab_idx
+                        )))
                         .text_xs()
                         .text_color(muted)
                         .cursor_pointer()
-                        .hover(|style| style.text_color(gpui::Hsla { h: 0.0, s: 0.8, l: 0.6, a: 1.0 }))
+                        .hover(|style| {
+                            style.text_color(gpui::Hsla {
+                                h: 0.0,
+                                s: 0.8,
+                                l: 0.6,
+                                a: 1.0,
+                            })
+                        })
                         .on_click(cx.listener(move |this, _: &ClickEvent, _window, cx| {
                             // Set pending deletion to show confirmation dialog
-                            this.pending_profile_deletion = Some((tab_idx, label_for_confirm.clone()));
+                            this.pending_profile_deletion =
+                                Some((tab_idx, label_for_confirm.clone()));
                             cx.notify();
                         }))
                         .child("\u{00d7}"), // × character
@@ -1238,17 +1249,26 @@ impl WorkspaceView {
         let cells = self.workspace().cell_info();
         let focused_session = self.workspace().focused_session_id();
         let split_state = self.workspace().layout_state().as_split_tree();
-        let slot_sessions: std::collections::HashMap<SlotId, (SessionId, bool, String, codirigent_core::SessionStatus)> =
-            if let Some(state) = split_state {
-                state.assignments().iter().filter_map(|(slot, opt_sid)| {
+        let slot_sessions: std::collections::HashMap<
+            SlotId,
+            (SessionId, bool, String, codirigent_core::SessionStatus),
+        > = if let Some(state) = split_state {
+            state
+                .assignments()
+                .iter()
+                .filter_map(|(slot, opt_sid)| {
                     let sid = (*opt_sid)?;
                     let session = self.workspace().session(sid)?;
                     let is_focused = focused_session == Some(sid);
-                    Some((*slot, (sid, is_focused, session.name.clone(), session.status)))
-                }).collect()
-            } else {
-                std::collections::HashMap::new()
-            };
+                    Some((
+                        *slot,
+                        (sid, is_focused, session.name.clone(), session.status),
+                    ))
+                })
+                .collect()
+        } else {
+            std::collections::HashMap::new()
+        };
 
         // Get cell height for the full grid area (used for empty cells)
         let layout = self.grid_layout_with_task_board();
@@ -1261,7 +1281,10 @@ impl WorkspaceView {
     fn render_split_node(
         &mut self,
         node: &LayoutNode,
-        slot_sessions: &std::collections::HashMap<SlotId, (SessionId, bool, String, codirigent_core::SessionStatus)>,
+        slot_sessions: &std::collections::HashMap<
+            SlotId,
+            (SessionId, bool, String, codirigent_core::SessionStatus),
+        >,
         theme: &CodirigentTheme,
         cell_height: f32,
         gap: f32,
@@ -1281,14 +1304,13 @@ impl WorkspaceView {
                         border_color
                     };
 
-                    let header_hints =
-                        if let Some(header) = self.get_terminal_header(*session_id) {
-                            header.render_hints()
-                        } else {
-                            crate::terminal_header::TerminalHeader::new(name, *status)
-                                .with_focused(*is_focused)
-                                .render_hints()
-                        };
+                    let header_hints = if let Some(header) = self.get_terminal_header(*session_id) {
+                        header.render_hints()
+                    } else {
+                        crate::terminal_header::TerminalHeader::new(name, *status)
+                            .with_focused(*is_focused)
+                            .render_hints()
+                    };
 
                     self.render_session_cell_with_terminal(
                         *session_id,
@@ -1314,8 +1336,10 @@ impl WorkspaceView {
                 second,
             } => {
                 // Render children recursively
-                let first_elem = self.render_split_node(first, slot_sessions, theme, cell_height, gap, cx);
-                let second_elem = self.render_split_node(second, slot_sessions, theme, cell_height, gap, cx);
+                let first_elem =
+                    self.render_split_node(first, slot_sessions, theme, cell_height, gap, cx);
+                let second_elem =
+                    self.render_split_node(second, slot_sessions, theme, cell_height, gap, cx);
 
                 // Use flex ratio to distribute space: first gets `ratio`, second gets `1 - ratio`
                 // Multiply by 1000 for precision in flex-grow values
@@ -1627,99 +1651,95 @@ impl WorkspaceView {
             terminal_area = terminal_area.flex_1();
         }
 
-        outer
-            .child(header)
-            .child(
-                terminal_area
-                    .overflow_hidden()
-                    .on_scroll_wheel(cx.listener(
-                        move |this, event: &ScrollWheelEvent, _window, cx| {
-                            if let Some(tv) = this.terminals_mut().get_mut(&session_id) {
-                                let cell_h: f32 = tv.cell_height();
-                                let delta_y: f32 = event.delta.pixel_delta(px(cell_h)).y.into();
-                                // GPUI on Windows: positive y = finger/wheel up = show older content
-                                if delta_y > 0.0 {
-                                    let lines = (delta_y / cell_h).ceil().max(1.0) as usize;
-                                    tv.scroll_up(lines);
-                                } else if delta_y < 0.0 {
-                                    let lines = (-delta_y / cell_h).ceil().max(1.0) as usize;
-                                    tv.scroll_down(lines);
-                                }
+        outer.child(header).child(
+            terminal_area
+                .overflow_hidden()
+                .on_scroll_wheel(
+                    cx.listener(move |this, event: &ScrollWheelEvent, _window, cx| {
+                        if let Some(tv) = this.terminals_mut().get_mut(&session_id) {
+                            let cell_h: f32 = tv.cell_height();
+                            let delta_y: f32 = event.delta.pixel_delta(px(cell_h)).y.into();
+                            // GPUI on Windows: positive y = finger/wheel up = show older content
+                            if delta_y > 0.0 {
+                                let lines = (delta_y / cell_h).ceil().max(1.0) as usize;
+                                tv.scroll_up(lines);
+                            } else if delta_y < 0.0 {
+                                let lines = (-delta_y / cell_h).ceil().max(1.0) as usize;
+                                tv.scroll_down(lines);
+                            }
+                            cx.notify();
+                        }
+                    }),
+                )
+                // Mouse down: start text selection
+                .on_mouse_down(
+                    MouseButton::Left,
+                    cx.listener(move |this, event: &MouseDownEvent, _window, cx| {
+                        let (ox, oy) = origin_for_down.get();
+                        let mouse_x: f32 = event.position.x.into();
+                        let mouse_y: f32 = event.position.y.into();
+                        let rel_x = mouse_x - ox;
+                        let rel_y = mouse_y - oy;
+
+                        if let Some(tv) = this.terminals_mut().get_mut(&session_id) {
+                            let cell_pos: Option<(usize, usize)> = tv.pixel_to_cell(rel_x, rel_y);
+                            if let Some((row, col)) = cell_pos {
+                                tv.start_selection(row, col);
+                                this.is_selecting = true;
+                                this.selecting_session_id = Some(session_id);
                                 cx.notify();
                             }
-                        },
-                    ))
-                    // Mouse down: start text selection
-                    .on_mouse_down(
-                        MouseButton::Left,
-                        cx.listener(move |this, event: &MouseDownEvent, _window, cx| {
-                            let (ox, oy) = origin_for_down.get();
-                            let mouse_x: f32 = event.position.x.into();
-                            let mouse_y: f32 = event.position.y.into();
-                            let rel_x = mouse_x - ox;
-                            let rel_y = mouse_y - oy;
+                        }
+                    }),
+                )
+                // Mouse move: update selection during drag
+                .on_mouse_move(
+                    cx.listener(move |this, event: &MouseMoveEvent, _window, cx| {
+                        if !this.is_selecting {
+                            return;
+                        }
+                        if this.selecting_session_id != Some(session_id) {
+                            return;
+                        }
 
-                            if let Some(tv) = this.terminals_mut().get_mut(&session_id) {
-                                let cell_pos: Option<(usize, usize)> =
-                                    tv.pixel_to_cell(rel_x, rel_y);
-                                if let Some((row, col)) = cell_pos {
-                                    tv.start_selection(row, col);
-                                    this.is_selecting = true;
-                                    this.selecting_session_id = Some(session_id);
-                                    cx.notify();
-                                }
-                            }
-                        }),
-                    )
-                    // Mouse move: update selection during drag
-                    .on_mouse_move(
-                        cx.listener(move |this, event: &MouseMoveEvent, _window, cx| {
-                            if !this.is_selecting {
-                                return;
-                            }
-                            if this.selecting_session_id != Some(session_id) {
-                                return;
-                            }
+                        let (ox, oy) = origin_for_move.get();
+                        let mouse_x: f32 = event.position.x.into();
+                        let mouse_y: f32 = event.position.y.into();
+                        let rel_x = mouse_x - ox;
+                        let rel_y = mouse_y - oy;
 
-                            let (ox, oy) = origin_for_move.get();
-                            let mouse_x: f32 = event.position.x.into();
-                            let mouse_y: f32 = event.position.y.into();
-                            let rel_x = mouse_x - ox;
-                            let rel_y = mouse_y - oy;
-
-                            if let Some(tv) = this.terminals_mut().get_mut(&session_id) {
-                                let cell_pos: Option<(usize, usize)> =
-                                    tv.pixel_to_cell(rel_x, rel_y);
-                                if let Some((row, col)) = cell_pos {
-                                    tv.update_selection(row, col);
-                                    cx.notify();
-                                }
-                            }
-                        }),
-                    )
-                    // Right-click: paste from clipboard (standard terminal behavior)
-                    .on_mouse_down(
-                        MouseButton::Right,
-                        cx.listener(move |this, _event: &MouseDownEvent, window, cx| {
-                            this.handle_paste(&crate::app::Paste, window, cx);
-                        }),
-                    )
-                    // Mouse up: end selection
-                    .on_mouse_up(
-                        MouseButton::Left,
-                        cx.listener(move |this, _event: &MouseUpEvent, _window, cx| {
-                            if this.is_selecting && this.selecting_session_id == Some(session_id) {
-                                if let Some(tv) = this.terminals_mut().get_mut(&session_id) {
-                                    tv.end_selection();
-                                }
-                                this.is_selecting = false;
-                                this.selecting_session_id = None;
+                        if let Some(tv) = this.terminals_mut().get_mut(&session_id) {
+                            let cell_pos: Option<(usize, usize)> = tv.pixel_to_cell(rel_x, rel_y);
+                            if let Some((row, col)) = cell_pos {
+                                tv.update_selection(row, col);
                                 cx.notify();
                             }
-                        }),
-                    )
-                    .child(terminal_content),
-            )
+                        }
+                    }),
+                )
+                // Right-click: paste from clipboard (standard terminal behavior)
+                .on_mouse_down(
+                    MouseButton::Right,
+                    cx.listener(move |this, _event: &MouseDownEvent, window, cx| {
+                        this.handle_paste(&crate::app::Paste, window, cx);
+                    }),
+                )
+                // Mouse up: end selection
+                .on_mouse_up(
+                    MouseButton::Left,
+                    cx.listener(move |this, _event: &MouseUpEvent, _window, cx| {
+                        if this.is_selecting && this.selecting_session_id == Some(session_id) {
+                            if let Some(tv) = this.terminals_mut().get_mut(&session_id) {
+                                tv.end_selection();
+                            }
+                            this.is_selecting = false;
+                            this.selecting_session_id = None;
+                            cx.notify();
+                        }
+                    }),
+                )
+                .child(terminal_content),
+        )
     }
 
     /// Render terminal header inline (returns Stateful<Div> for type consistency).
@@ -2016,11 +2036,32 @@ impl WorkspaceView {
         let picker_error = picker.error.clone();
 
         // Mode tab bar
-        let grid_tab_color = if current_mode == CustomLayoutMode::Grid { primary } else { muted };
-        let split_tab_color = if current_mode == CustomLayoutMode::Split { primary } else { muted };
-        let transparent = gpui::Hsla { h: 0.0, s: 0.0, l: 0.0, a: 0.0 };
-        let grid_tab_border = if current_mode == CustomLayoutMode::Grid { primary } else { transparent };
-        let split_tab_border = if current_mode == CustomLayoutMode::Split { primary } else { transparent };
+        let grid_tab_color = if current_mode == CustomLayoutMode::Grid {
+            primary
+        } else {
+            muted
+        };
+        let split_tab_color = if current_mode == CustomLayoutMode::Split {
+            primary
+        } else {
+            muted
+        };
+        let transparent = gpui::Hsla {
+            h: 0.0,
+            s: 0.0,
+            l: 0.0,
+            a: 0.0,
+        };
+        let grid_tab_border = if current_mode == CustomLayoutMode::Grid {
+            primary
+        } else {
+            transparent
+        };
+        let split_tab_border = if current_mode == CustomLayoutMode::Split {
+            primary
+        } else {
+            transparent
+        };
 
         let mode_tabs = div()
             .flex()
@@ -2087,26 +2128,24 @@ impl WorkspaceView {
             .text_color(gpui::Hsla::white())
             .cursor_pointer()
             .hover(|style| style.bg(primary.opacity(0.8)))
-            .on_click(cx.listener(
-                |this, _: &ClickEvent, _window, cx| {
-                    match this.custom_picker.mode {
-                        CustomLayoutMode::Grid => {
-                            if let Some((rows, cols)) = this.custom_picker.validate() {
-                                this.custom_picker.close();
-                                let profile = crate::layout::LayoutProfile::Custom { rows, cols };
-                                this.workspace.set_layout(profile);
-                            }
-                        }
-                        CustomLayoutMode::Split => {
-                            if let Some(tree) = this.custom_picker.validate_split() {
-                                this.custom_picker.close();
-                                this.workspace.set_split_tree(tree);
-                            }
+            .on_click(cx.listener(|this, _: &ClickEvent, _window, cx| {
+                match this.custom_picker.mode {
+                    CustomLayoutMode::Grid => {
+                        if let Some((rows, cols)) = this.custom_picker.validate() {
+                            this.custom_picker.close();
+                            let profile = crate::layout::LayoutProfile::Custom { rows, cols };
+                            this.workspace.set_layout(profile);
                         }
                     }
-                    cx.notify();
-                },
-            ))
+                    CustomLayoutMode::Split => {
+                        if let Some(tree) = this.custom_picker.validate_split() {
+                            this.custom_picker.close();
+                            this.workspace.set_split_tree(tree);
+                        }
+                    }
+                }
+                cx.notify();
+            }))
             .child(self.aligned_icon_label_row(
                 icons::check(),
                 gpui::Hsla::white(),
@@ -2173,9 +2212,10 @@ impl WorkspaceView {
                         // Error message (shared across modes)
                         .when_some(picker_error, |this, error| {
                             this.child(
-                                div().px_4().pb_2().child(
-                                    div().text_sm().text_color(error_color).child(error),
-                                ),
+                                div()
+                                    .px_4()
+                                    .pb_2()
+                                    .child(div().text_sm().text_color(error_color).child(error)),
                             )
                         })
                         // Footer with buttons
@@ -2272,15 +2312,21 @@ impl WorkspaceView {
                             rows_value.clone()
                         };
 
-                        text_input("rows-input", display_value, is_focused, has_error, &input_style)
-                            .cursor_pointer()
-                            .on_mouse_down(
-                                MouseButton::Left,
-                                cx.listener(|this, _event, _window, cx| {
-                                    this.custom_picker.set_focus(0);
-                                    cx.notify();
-                                }),
-                            )
+                        text_input(
+                            "rows-input",
+                            display_value,
+                            is_focused,
+                            has_error,
+                            &input_style,
+                        )
+                        .cursor_pointer()
+                        .on_mouse_down(
+                            MouseButton::Left,
+                            cx.listener(|this, _event, _window, cx| {
+                                this.custom_picker.set_focus(0);
+                                cx.notify();
+                            }),
+                        )
                     }),
             )
             // Columns input
@@ -2298,15 +2344,21 @@ impl WorkspaceView {
                             cols_value.clone()
                         };
 
-                        text_input("cols-input", display_value, is_focused, has_error, &input_style)
-                            .cursor_pointer()
-                            .on_mouse_down(
-                                MouseButton::Left,
-                                cx.listener(|this, _event, _window, cx| {
-                                    this.custom_picker.set_focus(1);
-                                    cx.notify();
-                                }),
-                            )
+                        text_input(
+                            "cols-input",
+                            display_value,
+                            is_focused,
+                            has_error,
+                            &input_style,
+                        )
+                        .cursor_pointer()
+                        .on_mouse_down(
+                            MouseButton::Left,
+                            cx.listener(|this, _event, _window, cx| {
+                                this.custom_picker.set_focus(1);
+                                cx.notify();
+                            }),
+                        )
                     }),
             )
             // Preview grid
@@ -2365,7 +2417,8 @@ impl WorkspaceView {
                             .opacity(btn_opacity)
                             .hover(|style| style.bg(border_color.opacity(0.1)))
                             .on_click(cx.listener(|this, _: &ClickEvent, _window, cx| {
-                                this.custom_picker.split_selected(SplitDirection::Horizontal);
+                                this.custom_picker
+                                    .split_selected(SplitDirection::Horizontal);
                                 cx.notify();
                             }))
                             .child(self.aligned_icon_label_row(
@@ -2442,12 +2495,11 @@ impl WorkspaceView {
                     ),
             )
             // Pane count info
-            .child(
-                div()
-                    .text_xs()
-                    .text_color(muted)
-                    .child(format!("{} pane{}", pane_count, if pane_count == 1 { "" } else { "s" })),
-            )
+            .child(div().text_xs().text_color(muted).child(format!(
+                "{} pane{}",
+                pane_count,
+                if pane_count == 1 { "" } else { "s" }
+            )))
             // Preview label
             .child(div().text_sm().text_color(muted).child("Preview:"))
             // Interactive preview
@@ -2461,7 +2513,14 @@ impl WorkspaceView {
                     .overflow_hidden()
                     .flex()
                     .flex_col()
-                    .child(Self::render_split_preview_node(&tree, selected, primary, preview_bg, border_color, cx)),
+                    .child(Self::render_split_preview_node(
+                        &tree,
+                        selected,
+                        primary,
+                        preview_bg,
+                        border_color,
+                        cx,
+                    )),
             )
     }
 
@@ -2520,8 +2579,22 @@ impl WorkspaceView {
                 first,
                 second,
             } => {
-                let first_elem = Self::render_split_preview_node(first, selected, primary, preview_bg, border_color, cx);
-                let second_elem = Self::render_split_preview_node(second, selected, primary, preview_bg, border_color, cx);
+                let first_elem = Self::render_split_preview_node(
+                    first,
+                    selected,
+                    primary,
+                    preview_bg,
+                    border_color,
+                    cx,
+                );
+                let second_elem = Self::render_split_preview_node(
+                    second,
+                    selected,
+                    primary,
+                    preview_bg,
+                    border_color,
+                    cx,
+                );
 
                 let first_flex = *ratio * 1000.0;
                 let second_flex = (1.0 - *ratio) * 1000.0;
@@ -4176,12 +4249,7 @@ impl WorkspaceView {
                             .items_center()
                             .gap_1()
                             // Icon
-                            .child(
-                                div()
-                                    .text_xs()
-                                    .text_color(icon_color)
-                                    .child(icon),
-                            )
+                            .child(div().text_xs().text_color(icon_color).child(icon))
                             // Branch name
                             .child(
                                 div()
@@ -4693,9 +4761,12 @@ impl WorkspaceView {
             .flex_col()
             .py_1()
             // Prevent clicks on the menu from propagating to elements behind it
-            .on_mouse_down(MouseButton::Left, cx.listener(|_this, _: &MouseDownEvent, _window, cx| {
-                cx.stop_propagation();
-            }))
+            .on_mouse_down(
+                MouseButton::Left,
+                cx.listener(|_this, _: &MouseDownEvent, _window, cx| {
+                    cx.stop_propagation();
+                }),
+            )
             .child(insert_item)
             .child(copy_item)
             .child(create_task_item);
@@ -5111,85 +5182,97 @@ impl WorkspaceView {
         let panel_icon_y_offset = 1.0;
 
         // Fetch real task data from TaskManager
-        let (running_items, queued_items, review_items, done_items, auto_assign_mode, pending_assignments) =
-            if let Ok(manager) = self.task_manager.lock() {
-                let all_tasks = manager.list_tasks();
+        let (
+            running_items,
+            queued_items,
+            review_items,
+            done_items,
+            auto_assign_mode,
+            pending_assignments,
+        ) = if let Ok(manager) = self.task_manager.lock() {
+            let all_tasks = manager.list_tasks();
 
-                let running: Vec<_> = all_tasks
-                    .iter()
-                    .filter(|t| {
-                        matches!(
-                            t.status,
-                            codirigent_core::TaskStatus::Assigned
-                                | codirigent_core::TaskStatus::Working
-                        )
-                    })
-                    .map(|t| self.core_task_to_ui_item(t))
-                    .collect();
-                let queued: Vec<_> = all_tasks
-                    .iter()
-                    .filter(|t| {
-                        matches!(
-                            t.status,
-                            codirigent_core::TaskStatus::Queued
-                                | codirigent_core::TaskStatus::Blocked
-                        )
-                    })
-                    .map(|t| self.core_task_to_ui_item(t))
-                    .collect();
-                let review: Vec<_> = all_tasks
-                    .iter()
-                    .filter(|t| {
-                        matches!(
-                            t.status,
-                            codirigent_core::TaskStatus::Verifying
-                                | codirigent_core::TaskStatus::Review
-                        )
-                    })
-                    .map(|t| self.core_task_to_ui_item(t))
-                    .collect();
-                let done: Vec<_> = all_tasks
-                    .iter()
-                    .filter(|t| t.status == codirigent_core::TaskStatus::Done)
-                    .map(|t| self.core_task_to_ui_item(t))
-                    .collect();
-                let config = manager.assignment().config();
-                let mode = crate::task_board::AutoAssignMode::from_config(
-                    config.auto_assign,
-                    config.confirm_before_assign,
-                );
+            let running: Vec<_> = all_tasks
+                .iter()
+                .filter(|t| {
+                    matches!(
+                        t.status,
+                        codirigent_core::TaskStatus::Assigned
+                            | codirigent_core::TaskStatus::Working
+                    )
+                })
+                .map(|t| self.core_task_to_ui_item(t))
+                .collect();
+            let queued: Vec<_> = all_tasks
+                .iter()
+                .filter(|t| {
+                    matches!(
+                        t.status,
+                        codirigent_core::TaskStatus::Queued | codirigent_core::TaskStatus::Blocked
+                    )
+                })
+                .map(|t| self.core_task_to_ui_item(t))
+                .collect();
+            let review: Vec<_> = all_tasks
+                .iter()
+                .filter(|t| {
+                    matches!(
+                        t.status,
+                        codirigent_core::TaskStatus::Verifying
+                            | codirigent_core::TaskStatus::Review
+                    )
+                })
+                .map(|t| self.core_task_to_ui_item(t))
+                .collect();
+            let done: Vec<_> = all_tasks
+                .iter()
+                .filter(|t| t.status == codirigent_core::TaskStatus::Done)
+                .map(|t| self.core_task_to_ui_item(t))
+                .collect();
+            let config = manager.assignment().config();
+            let mode = crate::task_board::AutoAssignMode::from_config(
+                config.auto_assign,
+                config.confirm_before_assign,
+            );
 
-                // Collect pending assignments for the confirmation banner
-                let pending: Vec<_> = manager
-                    .assignment()
-                    .pending_assignments()
-                    .iter()
-                    .map(|p| {
-                        let task_title = all_tasks
-                            .iter()
-                            .find(|t| t.id == p.task_id)
-                            .map(|t| t.title.clone())
-                            .unwrap_or_else(|| p.task_id.to_string());
-                        (p.task_id.to_string(), p.session_id.0, task_title)
-                    })
-                    .collect();
+            // Collect pending assignments for the confirmation banner
+            let pending: Vec<_> = manager
+                .assignment()
+                .pending_assignments()
+                .iter()
+                .map(|p| {
+                    let task_title = all_tasks
+                        .iter()
+                        .find(|t| t.id == p.task_id)
+                        .map(|t| t.title.clone())
+                        .unwrap_or_else(|| p.task_id.to_string());
+                    (p.task_id.to_string(), p.session_id.0, task_title)
+                })
+                .collect();
 
-                let queue_count = queued.len();
-                let in_progress_count = running.len();
-                let review_count = review.len();
-                let done_count = done.len();
-                drop(manager);
-                self.task_board.set_task_counts(
-                    queue_count,
-                    in_progress_count,
-                    review_count,
-                    done_count,
-                );
+            let queue_count = queued.len();
+            let in_progress_count = running.len();
+            let review_count = review.len();
+            let done_count = done.len();
+            drop(manager);
+            self.task_board.set_task_counts(
+                queue_count,
+                in_progress_count,
+                review_count,
+                done_count,
+            );
 
-                (running, queued, review, done, mode, pending)
-            } else {
-                (Vec::new(), Vec::new(), Vec::new(), Vec::new(), crate::task_board::AutoAssignMode::Off, Vec::new())
-            };
+            (running, queued, review, done, mode, pending)
+        } else {
+            (
+                Vec::new(),
+                Vec::new(),
+                Vec::new(),
+                Vec::new(),
+                crate::task_board::AutoAssignMode::Off,
+                Vec::new(),
+            )
+        };
 
         let running_count = running_items.len();
         let queued_count = queued_items.len();
@@ -5203,12 +5286,8 @@ impl WorkspaceView {
                 crate::task_board::AutoAssignMode::Off => {
                     (muted.opacity(0.4), 0.4, 0.05, 0.1, "Off")
                 }
-                crate::task_board::AutoAssignMode::Confirm => {
-                    (amber, 0.8, 0.1, 0.2, "Confirm")
-                }
-                crate::task_board::AutoAssignMode::Auto => {
-                    (primary, 0.8, 0.1, 0.2, "Auto")
-                }
+                crate::task_board::AutoAssignMode::Confirm => (amber, 0.8, 0.1, 0.2, "Confirm"),
+                crate::task_board::AutoAssignMode::Auto => (primary, 0.8, 0.1, 0.2, "Auto"),
             };
         let auto_badge_accent = match auto_assign_mode {
             crate::task_board::AutoAssignMode::Off => muted,
@@ -5326,112 +5405,130 @@ impl WorkspaceView {
                                     .child(
                                         div()
                                             .text_size(px(panel_label_size))
-                                            .text_color(auto_badge_accent.opacity(auto_text_opacity))
+                                            .text_color(
+                                                auto_badge_accent.opacity(auto_text_opacity),
+                                            )
                                             .child(auto_label),
                                     ),
                             ),
                     ),
             )
             // Pending assignment confirmation banners
-            .children(pending_assignments.into_iter().map(|(task_id, session_num, task_title)| {
-                let confirm_task_id = task_id.clone();
-                let reject_task_id = task_id.clone();
-                let amber_bg: gpui::Hsla = gpui::hsla(0.11, 0.95, 0.55, 0.08);
-                let amber_border: gpui::Hsla = gpui::hsla(0.11, 0.95, 0.55, 0.25);
-                let amber_text: gpui::Hsla = gpui::hsla(0.11, 0.95, 0.55, 0.9);
-                let green_bg: gpui::Hsla = gpui::hsla(0.40, 0.7, 0.45, 0.20);
-                let green_fg: gpui::Hsla = gpui::hsla(0.40, 0.8, 0.60, 1.0);
+            .children(
+                pending_assignments
+                    .into_iter()
+                    .map(|(task_id, session_num, task_title)| {
+                        let confirm_task_id = task_id.clone();
+                        let reject_task_id = task_id.clone();
+                        let amber_bg: gpui::Hsla = gpui::hsla(0.11, 0.95, 0.55, 0.08);
+                        let amber_border: gpui::Hsla = gpui::hsla(0.11, 0.95, 0.55, 0.25);
+                        let amber_text: gpui::Hsla = gpui::hsla(0.11, 0.95, 0.55, 0.9);
+                        let green_bg: gpui::Hsla = gpui::hsla(0.40, 0.7, 0.45, 0.20);
+                        let green_fg: gpui::Hsla = gpui::hsla(0.40, 0.8, 0.60, 1.0);
 
-                div()
-                    .id(SharedString::from(format!("pending-confirm-{}", task_id)))
-                    .mx_2()
-                    .mt_2()
-                    .p_2()
-                    .rounded_md()
-                    .bg(amber_bg)
-                    .border_1()
-                    .border_color(amber_border)
-                    .flex()
-                    .flex_col()
-                    .gap(px(6.0))
-                    // Row 1: pause icon + task title + "Proposed for Session N"
-                    .child(
                         div()
+                            .id(SharedString::from(format!("pending-confirm-{}", task_id)))
+                            .mx_2()
+                            .mt_2()
+                            .p_2()
+                            .rounded_md()
+                            .bg(amber_bg)
+                            .border_1()
+                            .border_color(amber_border)
                             .flex()
-                            .items_center()
+                            .flex_col()
                             .gap(px(6.0))
+                            // Row 1: pause icon + task title + "Proposed for Session N"
                             .child(
                                 div()
-                                    .text_size(px(11.0))
-                                    .text_color(amber_text)
-                                    .child("⏸"),
-                            )
-                            .child(
-                                div()
-                                    .flex_1()
-                                    .overflow_hidden()
+                                    .flex()
+                                    .items_center()
+                                    .gap(px(6.0))
+                                    .child(
+                                        div().text_size(px(11.0)).text_color(amber_text).child("⏸"),
+                                    )
+                                    .child(
+                                        div().flex_1().overflow_hidden().child(
+                                            div()
+                                                .text_size(px(12.0))
+                                                .font_weight(FontWeight::MEDIUM)
+                                                .text_color(amber_text)
+                                                .child(task_title),
+                                        ),
+                                    )
                                     .child(
                                         div()
-                                            .text_size(px(12.0))
-                                            .font_weight(FontWeight::MEDIUM)
-                                            .text_color(amber_text)
-                                            .child(task_title),
-                                    ),
-                            )
-                            .child(
-                                div()
-                                    .text_size(px(10.0))
-                                    .text_color(muted.opacity(0.7))
-                                    .child(format!("→ Session {}", session_num)),
-                            ),
-                    )
-                    // Row 2: Send + Skip buttons
-                    .child(
-                        div()
-                            .flex()
-                            .items_center()
-                            .gap(px(6.0))
-                            .child(
-                                div()
-                                    .id(SharedString::from(format!("confirm-send-{}", confirm_task_id)))
-                                    .px(px(10.0))
-                                    .py(px(3.0))
-                                    .rounded(px(4.0))
-                                    .bg(green_bg)
-                                    .cursor_pointer()
-                                    .hover(|style| style.bg(gpui::hsla(0.40, 0.7, 0.45, 0.35)))
-                                    .on_click(cx.listener(move |this, _: &ClickEvent, _window, _cx| {
-                                        this.task_board.confirm_pending_assignment(confirm_task_id.clone());
-                                    }))
-                                    .child(
-                                        div()
-                                            .text_size(px(11.0))
-                                            .font_weight(FontWeight::MEDIUM)
-                                            .text_color(green_fg)
-                                            .child("Send"),
-                                    ),
-                            )
-                            .child(
-                                div()
-                                    .id(SharedString::from(format!("confirm-skip-{}", reject_task_id)))
-                                    .px(px(10.0))
-                                    .py(px(3.0))
-                                    .rounded(px(4.0))
-                                    .bg(active_bg.opacity(0.4))
-                                    .cursor_pointer()
-                                    .hover(|style| style.bg(gpui::hsla(0.0, 0.0, 0.5, 0.15)))
-                                    .on_click(cx.listener(move |this, _: &ClickEvent, _window, _cx| {
-                                        this.task_board.reject_pending_assignment(reject_task_id.clone());
-                                    }))
-                                    .child(
-                                        div()
-                                            .text_size(px(11.0))
+                                            .text_size(px(10.0))
                                             .text_color(muted.opacity(0.7))
-                                            .child("Skip"),
+                                            .child(format!("→ Session {}", session_num)),
                                     ),
-                            ),
-                    )
-            }))
+                            )
+                            // Row 2: Send + Skip buttons
+                            .child(
+                                div()
+                                    .flex()
+                                    .items_center()
+                                    .gap(px(6.0))
+                                    .child(
+                                        div()
+                                            .id(SharedString::from(format!(
+                                                "confirm-send-{}",
+                                                confirm_task_id
+                                            )))
+                                            .px(px(10.0))
+                                            .py(px(3.0))
+                                            .rounded(px(4.0))
+                                            .bg(green_bg)
+                                            .cursor_pointer()
+                                            .hover(|style| {
+                                                style.bg(gpui::hsla(0.40, 0.7, 0.45, 0.35))
+                                            })
+                                            .on_click(cx.listener(
+                                                move |this, _: &ClickEvent, _window, _cx| {
+                                                    this.task_board.confirm_pending_assignment(
+                                                        confirm_task_id.clone(),
+                                                    );
+                                                },
+                                            ))
+                                            .child(
+                                                div()
+                                                    .text_size(px(11.0))
+                                                    .font_weight(FontWeight::MEDIUM)
+                                                    .text_color(green_fg)
+                                                    .child("Send"),
+                                            ),
+                                    )
+                                    .child(
+                                        div()
+                                            .id(SharedString::from(format!(
+                                                "confirm-skip-{}",
+                                                reject_task_id
+                                            )))
+                                            .px(px(10.0))
+                                            .py(px(3.0))
+                                            .rounded(px(4.0))
+                                            .bg(active_bg.opacity(0.4))
+                                            .cursor_pointer()
+                                            .hover(|style| {
+                                                style.bg(gpui::hsla(0.0, 0.0, 0.5, 0.15))
+                                            })
+                                            .on_click(cx.listener(
+                                                move |this, _: &ClickEvent, _window, _cx| {
+                                                    this.task_board.reject_pending_assignment(
+                                                        reject_task_id.clone(),
+                                                    );
+                                                },
+                                            ))
+                                            .child(
+                                                div()
+                                                    .text_size(px(11.0))
+                                                    .text_color(muted.opacity(0.7))
+                                                    .child("Skip"),
+                                            ),
+                                    ),
+                            )
+                    }),
+            )
             // Scrollable content - Running + Queue sections
             .child(
                 div()

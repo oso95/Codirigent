@@ -189,9 +189,7 @@ mod tests {
     #[test]
     fn test_compaction_config_with_focus() {
         let config = CompactionConfig {
-            focus_instructions: Some(
-                "Focus on implementation and test requirements".to_string(),
-            ),
+            focus_instructions: Some("Focus on implementation and test requirements".to_string()),
             ..Default::default()
         };
         let json = serde_json::to_string(&config).unwrap();
@@ -285,9 +283,7 @@ mod tests {
     #[test]
     fn test_compact_command_with_focus() {
         let service = CompactionService::new(CompactionConfig {
-            focus_instructions: Some(
-                "Focus on implementation and test requirements".to_string(),
-            ),
+            focus_instructions: Some("Focus on implementation and test requirements".to_string()),
             ..Default::default()
         });
         assert_eq!(

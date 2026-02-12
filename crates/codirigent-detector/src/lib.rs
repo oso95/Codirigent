@@ -119,7 +119,11 @@ pub fn find_file_opened_by_pid(candidates: &[PathBuf], pid: u32) -> Option<PathB
 fn canonical_candidate_map(candidates: &[PathBuf]) -> Vec<(PathBuf, PathBuf)> {
     candidates
         .iter()
-        .filter_map(|c| std::fs::canonicalize(c).ok().map(|canon| (canon, c.clone())))
+        .filter_map(|c| {
+            std::fs::canonicalize(c)
+                .ok()
+                .map(|canon| (canon, c.clone()))
+        })
         .collect()
 }
 
@@ -162,8 +166,8 @@ fn find_file_opened_by_pid_impl(candidates: &[PathBuf], pid: u32) -> Option<Path
 #[cfg(target_os = "windows")]
 fn find_file_opened_by_pid_impl(candidates: &[PathBuf], pid: u32) -> Option<PathBuf> {
     use std::os::windows::ffi::OsStrExt;
+    use windows::core::{PCWSTR, PWSTR};
     use windows::Win32::System::RestartManager::*;
-    use windows::core::PCWSTR;
 
     for candidate in candidates {
         let wide_path: Vec<u16> = candidate
@@ -175,7 +179,7 @@ fn find_file_opened_by_pid_impl(candidates: &[PathBuf], pid: u32) -> Option<Path
         let mut session_key = [0u16; CCH_RM_SESSION_KEY as usize + 1];
 
         unsafe {
-            if RmStartSession(&mut session, 0, session_key.as_mut_ptr()).is_err() {
+            if RmStartSession(&mut session, Some(0), PWSTR(session_key.as_mut_ptr())).is_err() {
                 continue;
             }
             let file_ptr = PCWSTR(wide_path.as_ptr());

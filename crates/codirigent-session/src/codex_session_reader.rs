@@ -314,8 +314,7 @@ impl CodexSessionReader {
                     // Check for function_call
                     if let Some(item_type) = payload.get("type").and_then(|v| v.as_str()) {
                         if item_type == "function_call" {
-                            if let Some(call_id) = payload.get("call_id").and_then(|v| v.as_str())
-                            {
+                            if let Some(call_id) = payload.get("call_id").and_then(|v| v.as_str()) {
                                 let name = payload
                                     .get("name")
                                     .and_then(|v| v.as_str())
@@ -324,8 +323,7 @@ impl CodexSessionReader {
                                 pending_calls.insert(call_id.to_string(), name);
                             }
                         } else if item_type == "function_call_output" {
-                            if let Some(call_id) = payload.get("call_id").and_then(|v| v.as_str())
-                            {
+                            if let Some(call_id) = payload.get("call_id").and_then(|v| v.as_str()) {
                                 pending_calls.remove(call_id);
                             }
                         }
@@ -556,7 +554,12 @@ mod tests {
     #[test]
     fn test_find_rollout_file_with_date_dirs() {
         let tmp = TempDir::new().unwrap();
-        let sessions_dir = tmp.path().join("sessions").join("2025").join("01").join("15");
+        let sessions_dir = tmp
+            .path()
+            .join("sessions")
+            .join("2025")
+            .join("01")
+            .join("15");
         fs::create_dir_all(&sessions_dir).unwrap();
 
         let rollout_path = sessions_dir.join("rollout-12345-uuid.jsonl");
@@ -584,7 +587,12 @@ mod tests {
     #[test]
     fn test_find_rollout_file_no_match() {
         let tmp = TempDir::new().unwrap();
-        let sessions_dir = tmp.path().join("sessions").join("2025").join("01").join("15");
+        let sessions_dir = tmp
+            .path()
+            .join("sessions")
+            .join("2025")
+            .join("01")
+            .join("15");
         fs::create_dir_all(&sessions_dir).unwrap();
 
         let rollout_path = sessions_dir.join("rollout-12345-uuid.jsonl");
@@ -607,7 +615,12 @@ mod tests {
     #[test]
     fn test_session_file_cache_hit() {
         let tmp = TempDir::new().unwrap();
-        let sessions_dir = tmp.path().join("sessions").join("2025").join("01").join("15");
+        let sessions_dir = tmp
+            .path()
+            .join("sessions")
+            .join("2025")
+            .join("01")
+            .join("15");
         fs::create_dir_all(&sessions_dir).unwrap();
 
         let rollout_path = sessions_dir.join("rollout-12345-uuid.jsonl");

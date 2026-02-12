@@ -743,11 +743,8 @@ impl TaskManager {
         let current_task_status = task.status;
 
         // Determine if task status should change
-        let new_task_status = self.map_session_to_task_status(
-            old_status,
-            new_status,
-            current_task_status,
-        )?;
+        let new_task_status =
+            self.map_session_to_task_status(old_status, new_status, current_task_status)?;
 
         // Update task status
         let reason = format!(
@@ -786,7 +783,11 @@ impl TaskManager {
     ) -> Option<TaskStatus> {
         match (old_session, new_session, current_task) {
             // Session started working on an assigned task
-            (SessionStatus::Idle | SessionStatus::NeedsAttention, SessionStatus::Working, TaskStatus::Assigned) => {
+            (
+                SessionStatus::Idle | SessionStatus::NeedsAttention,
+                SessionStatus::Working,
+                TaskStatus::Assigned,
+            ) => {
                 tracing::info!("Session started working, transitioning task Assigned → Working");
                 Some(TaskStatus::Working)
             }
@@ -1597,7 +1598,7 @@ mod tests {
             "Test".to_string(),
             "".to_string(),
         );
-         // Manually set to Working
+        // Manually set to Working
         manager.create_task(task).unwrap();
         manager
             .queue
@@ -1605,7 +1606,10 @@ mod tests {
             .unwrap();
 
         // Update task status to Working via queue
-        let task_mut = manager.queue.get_task_mut(&TaskId("task-001".to_string())).unwrap();
+        let task_mut = manager
+            .queue
+            .get_task_mut(&TaskId("task-001".to_string()))
+            .unwrap();
         task_mut.status = TaskStatus::Working;
 
         // Simulate session finishing work (returned to idle)
@@ -1640,7 +1644,10 @@ mod tests {
             .unwrap();
 
         // Update task status to Working
-        let task_mut = manager.queue.get_task_mut(&TaskId("task-001".to_string())).unwrap();
+        let task_mut = manager
+            .queue
+            .get_task_mut(&TaskId("task-001".to_string()))
+            .unwrap();
         task_mut.status = TaskStatus::Working;
 
         // Simulate session encountering error

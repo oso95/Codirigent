@@ -112,9 +112,7 @@ impl CustomLayoutPicker {
             error: None,
             focused_input: None,
             mode: CustomLayoutMode::Grid,
-            split_tree: LayoutNode::Leaf {
-                slot: SlotId(0),
-            },
+            split_tree: LayoutNode::Leaf { slot: SlotId(0) },
             selected_slot: Some(SlotId(0)),
             next_slot_id: 1,
         }
@@ -858,7 +856,9 @@ mod tests {
 
         // Selected should move to remaining slot
         assert!(picker.selected_slot.is_some());
-        assert!(picker.split_tree.contains_slot(picker.selected_slot.unwrap()));
+        assert!(picker
+            .split_tree
+            .contains_slot(picker.selected_slot.unwrap()));
     }
 
     #[test]
