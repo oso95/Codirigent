@@ -1104,6 +1104,7 @@ dependencies = [
  "codirigent-filetree",
  "codirigent-session",
  "core-text",
+ "dirs 5.0.1",
  "dispatch",
  "git2",
  "gpui",

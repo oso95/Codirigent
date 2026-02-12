@@ -26,7 +26,6 @@ use crate::terminal::Terminal;
 use crate::terminal_view::TerminalView;
 // Imports from feature branch (UI components)
 use crate::empty_session::{EmptySessionEvent, EmptySessionPool};
-use crate::layout::LayoutProfile;
 use crate::sidebar::{
     FileTreeEntryData, FileTreeEvent, FileTreePanel, WorktreeEvent, WorktreePanel,
 };
@@ -464,22 +463,20 @@ impl WorkspaceView {
         .detach();
 
         // Initialize task manager with file storage
-        let storage = if let Ok(cwd) = std::env::current_dir() {
-            Arc::new(FileStorageService::new(&cwd).unwrap_or_else(|e| {
-                warn!(
-                    "Failed to create file storage: {}, using in-memory fallback",
-                    e
-                );
-                // Fallback: create in temp directory
-                let temp_dir = std::env::temp_dir().join("codirigent-fallback");
-                FileStorageService::new(&temp_dir).expect("Failed to create fallback storage")
-            })) as Arc<dyn codirigent_core::StorageService>
-        } else {
-            // Fallback: use temp directory if current_dir fails
+        // Use platform-appropriate data directory (e.g. %APPDATA%/Codirigent on Windows)
+        // instead of current_dir, which may be read-only (e.g. C:\Program Files)
+        let data_dir = dirs::data_dir()
+            .map(|d| d.join("Codirigent"))
+            .unwrap_or_else(|| std::env::temp_dir().join("codirigent-fallback"));
+        let storage = Arc::new(FileStorageService::new(&data_dir).unwrap_or_else(|e| {
+            warn!(
+                "Failed to create file storage at {}: {}, using temp fallback",
+                data_dir.display(),
+                e
+            );
             let temp_dir = std::env::temp_dir().join("codirigent-fallback");
-            Arc::new(FileStorageService::new(&temp_dir).expect("Failed to create fallback storage"))
-                as Arc<dyn codirigent_core::StorageService>
-        };
+            FileStorageService::new(&temp_dir).expect("Failed to create fallback storage")
+        })) as Arc<dyn codirigent_core::StorageService>;
 
         let task_manager = Arc::new(Mutex::new(TaskManager::new(
             TaskManagerConfig::default(),

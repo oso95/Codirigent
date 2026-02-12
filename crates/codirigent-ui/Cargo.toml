@@ -27,6 +27,7 @@ tokio.workspace = true
 tracing.workspace = true
 chrono.workspace = true
 git2.workspace = true
+dirs.workspace = true
 
 # Image processing for thumbnail generation
 image = { version = "0.25", default-features = false, features = ["png", "jpeg"] }

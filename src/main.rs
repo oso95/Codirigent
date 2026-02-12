@@ -1,3 +1,5 @@
+#![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
+
 //! Codirigent - AI Coding Agent Orchestration IDE
 //!
 //! Entry point for the Codirigent application.
