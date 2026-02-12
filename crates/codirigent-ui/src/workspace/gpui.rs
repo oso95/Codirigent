@@ -3201,19 +3201,23 @@ impl WorkspaceView {
     /// (the CLI will receive it as stdin). If it's a bare shell, wraps
     /// the prompt in a `claude -p "..."` command to launch the CLI.
     fn format_task_input(prompt: &str, cli_type: codirigent_core::CliType) -> String {
+        // Collapse the multi-line prompt into a single line so newlines
+        // aren't interpreted as individual Enter presses by the CLI.
+        let flat: String = prompt
+            .lines()
+            .filter(|l| !l.is_empty())
+            .collect::<Vec<_>>()
+            .join(" ");
+
         match cli_type {
-            // CLI is already running — send prompt directly as input.
-            // Wrap in bracketed paste sequences so newlines in the multi-line
-            // prompt template aren't interpreted as individual Enter presses.
             codirigent_core::CliType::ClaudeCode
             | codirigent_core::CliType::GeminiCli
             | codirigent_core::CliType::CodexCli => {
-                format!("\x1b[200~{}\x1b[201~\r", prompt)
+                format!("{}\n", flat)
             }
-            // Should never assign to bare shell sessions
             codirigent_core::CliType::GenericShell => {
                 warn!("format_task_input called with GenericShell — this should not happen");
-                format!("{}\r", prompt)
+                format!("{}\n", flat)
             }
         }
     }
