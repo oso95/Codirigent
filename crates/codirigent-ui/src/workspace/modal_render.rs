@@ -16,6 +16,7 @@ use gpui::{
 use std::cell::Cell;
 use std::rc::Rc;
 
+impl WorkspaceView {
     /// interactive split tree builder with preview.
     pub(super) fn render_custom_layout_modal(
         &mut self,

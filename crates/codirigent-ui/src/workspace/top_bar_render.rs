@@ -8,6 +8,7 @@ use crate::toolbar::CustomLayoutMode;
 use crate::workspace::gpui::WorkspaceView;
 use gpui::{div, px, Context, IntoElement, ParentElement, Styled, Window, WindowControlArea};
 
+impl WorkspaceView {
     /// token counter, right-panel toggle, and window controls.
     pub(super) fn render_top_bar(&mut self, cx: &mut Context<Self>) -> impl IntoElement {
         let theme = self.workspace().theme();

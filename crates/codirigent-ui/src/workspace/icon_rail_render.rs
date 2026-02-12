@@ -10,7 +10,7 @@ use gpui::{
     ParentElement, Styled,
 };
 
-
+impl WorkspaceView {
     pub(super) fn render_icon_rail(&mut self, cx: &mut Context<Self>) -> impl IntoElement {
         let theme = self.workspace().theme();
         let rail_bg: gpui::Hsla = theme.icon_rail_background.into();

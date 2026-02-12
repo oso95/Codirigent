@@ -20,6 +20,7 @@ use gpui::{
 };
 use std::sync::Arc;
 
+impl WorkspaceView {
     /// Render the grid of session panes.
     pub(super) fn render_grid(&mut self) -> impl IntoElement {
         let theme = self.workspace().theme().clone();

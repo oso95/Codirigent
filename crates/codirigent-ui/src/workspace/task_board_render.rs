@@ -13,6 +13,7 @@ use gpui::{
     div, px, ClickEvent, Context, FontWeight, IntoElement, ParentElement, SharedString, Styled,
 };
 
+impl WorkspaceView {
     /// Convert core Task to UI TaskItem with status mapping.
     fn core_task_to_ui_item(&self, task: &codirigent_core::Task) -> crate::task_board::TaskItem {
         use crate::task_board::{TaskItem, TaskPriority as UIPriority, TaskStatus as UIStatus};
