@@ -683,18 +683,18 @@ mod tests {
     #[test]
     fn test_task_created_event() {
         let event = CodirigentEvent::TaskCreated {
-            id: TaskId("task-001".to_string()),
+            id: TaskId::from("task-001"),
         };
         let CodirigentEvent::TaskCreated { id } = event else {
             panic!("Expected TaskCreated, got {event:?}");
         };
-        assert_eq!(id, TaskId("task-001".to_string()));
+        assert_eq!(id, TaskId::from("task-001"));
     }
 
     #[test]
     fn test_task_assigned_event() {
         let event = CodirigentEvent::TaskAssigned {
-            task_id: TaskId("task-001".to_string()),
+            task_id: TaskId::from("task-001"),
             session_id: SessionId(1),
         };
         let CodirigentEvent::TaskAssigned {
@@ -704,27 +704,27 @@ mod tests {
         else {
             panic!("Expected TaskAssigned, got {event:?}");
         };
-        assert_eq!(task_id, TaskId("task-001".to_string()));
+        assert_eq!(task_id, TaskId::from("task-001"));
         assert_eq!(session_id, SessionId(1));
     }
 
     #[test]
     fn test_task_completed_event_success() {
         let event = CodirigentEvent::TaskCompleted {
-            task_id: TaskId("task-001".to_string()),
+            task_id: TaskId::from("task-001"),
             success: true,
         };
         let CodirigentEvent::TaskCompleted { task_id, success } = event else {
             panic!("Expected TaskCompleted, got {event:?}");
         };
-        assert_eq!(task_id, TaskId("task-001".to_string()));
+        assert_eq!(task_id, TaskId::from("task-001"));
         assert!(success);
     }
 
     #[test]
     fn test_task_completed_event_failure() {
         let event = CodirigentEvent::TaskCompleted {
-            task_id: TaskId("task-001".to_string()),
+            task_id: TaskId::from("task-001"),
             success: false,
         };
         let CodirigentEvent::TaskCompleted { success, .. } = event else {
@@ -736,7 +736,7 @@ mod tests {
     #[test]
     fn test_task_status_changed_event() {
         let event = CodirigentEvent::TaskStatusChanged {
-            task_id: TaskId("task-001".to_string()),
+            task_id: TaskId::from("task-001"),
             old: TaskStatus::Assigned,
             new: TaskStatus::Working,
             reason: Some("Session started working".to_string()),
@@ -750,7 +750,7 @@ mod tests {
         else {
             panic!("Expected TaskStatusChanged, got {event:?}");
         };
-        assert_eq!(task_id, TaskId("task-001".to_string()));
+        assert_eq!(task_id, TaskId::from("task-001"));
         assert_eq!(old, TaskStatus::Assigned);
         assert_eq!(new, TaskStatus::Working);
         assert_eq!(reason, Some("Session started working".to_string()));
@@ -1153,18 +1153,18 @@ mod tests {
             },
             CodirigentEvent::SessionFocused { id: SessionId(1) },
             CodirigentEvent::TaskCreated {
-                id: TaskId("t".to_string()),
+                id: TaskId::from("t"),
             },
             CodirigentEvent::TaskAssigned {
-                task_id: TaskId("t".to_string()),
+                task_id: TaskId::from("t"),
                 session_id: SessionId(1),
             },
             CodirigentEvent::TaskCompleted {
-                task_id: TaskId("t".to_string()),
+                task_id: TaskId::from("t"),
                 success: true,
             },
             CodirigentEvent::TaskStatusChanged {
-                task_id: TaskId("t".to_string()),
+                task_id: TaskId::from("t"),
                 old: TaskStatus::Assigned,
                 new: TaskStatus::Working,
                 reason: None,

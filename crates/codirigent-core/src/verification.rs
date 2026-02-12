@@ -355,7 +355,7 @@ impl VerificationCommands {
 /// use codirigent_core::{TaskId, SessionId};
 ///
 /// let status = VerificationStatus {
-///     task_id: TaskId("task-001".to_string()),
+///     task_id: TaskId::from("task-001"),
 ///     session_id: SessionId(1),
 ///     state: VerificationState::Running,
 ///     retry_count: 0,
@@ -1676,7 +1676,7 @@ mod tests {
     #[test]
     fn test_verification_status_creation() {
         let status = VerificationStatus {
-            task_id: TaskId("task-001".to_string()),
+            task_id: TaskId::from("task-001"),
             session_id: SessionId(1),
             state: VerificationState::Running,
             retry_count: 0,
@@ -1690,7 +1690,7 @@ mod tests {
 
     #[test]
     fn test_verification_status_new() {
-        let status = VerificationStatus::new(TaskId("task-001".to_string()), SessionId(1));
+        let status = VerificationStatus::new(TaskId::from("task-001"), SessionId(1));
         assert_eq!(status.state, VerificationState::Pending);
         assert_eq!(status.retry_count, 0);
         assert!(status.results.is_empty());
@@ -1698,7 +1698,7 @@ mod tests {
 
     #[test]
     fn test_verification_status_all_passed() {
-        let mut status = VerificationStatus::new(TaskId("task-001".to_string()), SessionId(1));
+        let mut status = VerificationStatus::new(TaskId::from("task-001"), SessionId(1));
         assert!(!status.all_passed()); // No results
 
         status.results.push(VerificationResult::passed(
@@ -1721,7 +1721,7 @@ mod tests {
 
     #[test]
     fn test_verification_status_all_failures() {
-        let mut status = VerificationStatus::new(TaskId("task-001".to_string()), SessionId(1));
+        let mut status = VerificationStatus::new(TaskId::from("task-001"), SessionId(1));
 
         status
             .results
@@ -1750,7 +1750,7 @@ mod tests {
 
     #[test]
     fn test_verification_status_total_duration() {
-        let mut status = VerificationStatus::new(TaskId("task-001".to_string()), SessionId(1));
+        let mut status = VerificationStatus::new(TaskId::from("task-001"), SessionId(1));
         status.results.push(VerificationResult::passed(
             VerificationCheckType::UnitTest,
             100,
@@ -1768,7 +1768,7 @@ mod tests {
 
     #[test]
     fn test_verification_status_complete() {
-        let mut status = VerificationStatus::new(TaskId("task-001".to_string()), SessionId(1));
+        let mut status = VerificationStatus::new(TaskId::from("task-001"), SessionId(1));
         assert!(status.completed_at.is_none());
 
         status.complete(VerificationState::Passed);
@@ -1779,7 +1779,7 @@ mod tests {
     #[test]
     fn test_verification_status_serialization() {
         let status = VerificationStatus {
-            task_id: TaskId("task-001".to_string()),
+            task_id: TaskId::from("task-001"),
             session_id: SessionId(1),
             state: VerificationState::Passed,
             retry_count: 1,
@@ -1798,7 +1798,7 @@ mod tests {
     #[test]
     fn test_verification_event_started() {
         let event = VerificationEvent::Started {
-            task_id: TaskId("task-001".to_string()),
+            task_id: TaskId::from("task-001"),
             session_id: SessionId(1),
         };
         assert!(matches!(event, VerificationEvent::Started { .. }));
@@ -1808,7 +1808,7 @@ mod tests {
     fn test_verification_event_check_completed() {
         let result = VerificationResult::passed(VerificationCheckType::UnitTest, 100);
         let event = VerificationEvent::CheckCompleted {
-            task_id: TaskId("task-001".to_string()),
+            task_id: TaskId::from("task-001"),
             result,
         };
         assert!(matches!(event, VerificationEvent::CheckCompleted { .. }));
@@ -1817,7 +1817,7 @@ mod tests {
     #[test]
     fn test_verification_event_passed() {
         let event = VerificationEvent::Passed {
-            task_id: TaskId("task-001".to_string()),
+            task_id: TaskId::from("task-001"),
         };
         assert!(matches!(event, VerificationEvent::Passed { .. }));
     }
@@ -1825,7 +1825,7 @@ mod tests {
     #[test]
     fn test_verification_event_failed_retrying() {
         let event = VerificationEvent::FailedRetrying {
-            task_id: TaskId("task-001".to_string()),
+            task_id: TaskId::from("task-001"),
             retry_count: 2,
             failures: vec![],
         };
@@ -1840,7 +1840,7 @@ mod tests {
     fn test_verification_event_failed_blocked() {
         let failures = vec![VerificationFailure::new("test", "failed")];
         let event = VerificationEvent::FailedBlocked {
-            task_id: TaskId("task-001".to_string()),
+            task_id: TaskId::from("task-001"),
             failures,
         };
         if let VerificationEvent::FailedBlocked { failures, .. } = event {
@@ -1853,7 +1853,7 @@ mod tests {
     #[test]
     fn test_verification_event_clone() {
         let event = VerificationEvent::Passed {
-            task_id: TaskId("task-001".to_string()),
+            task_id: TaskId::from("task-001"),
         };
         let cloned = event.clone();
         assert!(matches!(cloned, VerificationEvent::Passed { .. }));

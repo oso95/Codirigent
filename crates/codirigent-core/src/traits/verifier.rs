@@ -374,7 +374,7 @@ mod tests {
         let formatter = MockFailureFormatter;
 
         let status =
-            VerificationStatus::new(TaskId("task-001".to_string()), crate::types::SessionId(1));
+            VerificationStatus::new(TaskId::from("task-001"), crate::types::SessionId(1));
         assert_eq!(formatter.format(&status), "No failures");
 
         let failure = VerificationFailure::new("test_auth", "assertion failed");
@@ -389,7 +389,7 @@ mod tests {
         let formatter = MockFailureFormatter;
 
         let mut status =
-            VerificationStatus::new(TaskId("task-001".to_string()), crate::types::SessionId(1));
+            VerificationStatus::new(TaskId::from("task-001"), crate::types::SessionId(1));
         let failures = vec![
             VerificationFailure::new("test1", "failed"),
             VerificationFailure::new("test2", "failed"),

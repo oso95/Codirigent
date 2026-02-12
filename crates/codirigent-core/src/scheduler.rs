@@ -27,7 +27,7 @@
 //!
 //! // Add a task
 //! let task = Task::new(
-//!     TaskId("task-001".to_string()),
+//!     TaskId::from("task-001"),
 //!     "Implement feature".to_string(),
 //!     "Add new feature X".to_string(),
 //! );
@@ -195,14 +195,14 @@ impl Default for SchedulerConfig {
 ///
 /// // Create and enqueue tasks with different priorities
 /// let mut high_task = Task::new(
-///     TaskId("high".to_string()),
+///     TaskId::from("high"),
 ///     "High priority".to_string(),
 ///     "".to_string(),
 /// );
 /// high_task.priority = TaskPriority::High;
 ///
 /// let low_task = Task::new(
-///     TaskId("low".to_string()),
+///     TaskId::from("low"),
 ///     "Low priority".to_string(),
 ///     "".to_string(),
 /// );
@@ -212,7 +212,7 @@ impl Default for SchedulerConfig {
 ///
 /// // High priority task should be selected first
 /// let next = queue.next_task(&[]).unwrap();
-/// assert_eq!(next.id, TaskId("high".to_string()));
+/// assert_eq!(next.id, TaskId::from("high"));
 /// ```
 pub struct TaskQueue {
     /// Queue state (order, blocked tasks).
@@ -342,11 +342,11 @@ impl TaskQueue {
     /// let event_bus = Arc::new(DefaultEventBus::new(16));
     /// let mut queue = TaskQueue::new(SchedulerConfig::default(), event_bus);
     ///
-    /// let task = Task::new(TaskId("test".to_string()), "Test".to_string(), "".to_string());
+    /// let task = Task::new(TaskId::from("test"), "Test".to_string(), "".to_string());
     /// queue.enqueue(task).unwrap();
     ///
-    /// assert!(queue.get_task(&TaskId("test".to_string())).is_some());
-    /// assert!(queue.get_task(&TaskId("nonexistent".to_string())).is_none());
+    /// assert!(queue.get_task(&TaskId::from("test")).is_some());
+    /// assert!(queue.get_task(&TaskId::from("nonexistent")).is_none());
     /// ```
     pub fn get_task(&self, id: &TaskId) -> Option<&Task> {
         self.tasks.get(id)
@@ -383,7 +383,7 @@ impl TaskQueue {
     /// let mut queue = TaskQueue::new(SchedulerConfig::default(), event_bus);
     ///
     /// let task = Task::new(
-    ///     TaskId("task-001".to_string()),
+    ///     TaskId::from("task-001"),
     ///     "Test Task".to_string(),
     ///     "Description".to_string(),
     /// );
@@ -438,10 +438,10 @@ impl TaskQueue {
     /// let event_bus = Arc::new(DefaultEventBus::new(16));
     /// let mut queue = TaskQueue::new(SchedulerConfig::default(), event_bus);
     ///
-    /// let task = Task::new(TaskId("test".to_string()), "Test".to_string(), "".to_string());
+    /// let task = Task::new(TaskId::from("test"), "Test".to_string(), "".to_string());
     /// queue.enqueue(task).unwrap();
     ///
-    /// let removed = queue.dequeue(&TaskId("test".to_string()));
+    /// let removed = queue.dequeue(&TaskId::from("test"));
     /// assert!(removed.is_some());
     /// assert!(queue.get_state().order.is_empty());
     /// ```
@@ -481,12 +481,12 @@ impl TaskQueue {
     /// let event_bus = Arc::new(DefaultEventBus::new(16));
     /// let mut queue = TaskQueue::new(SchedulerConfig::default(), event_bus);
     ///
-    /// let task = Task::new(TaskId("test".to_string()), "Test".to_string(), "".to_string());
+    /// let task = Task::new(TaskId::from("test"), "Test".to_string(), "".to_string());
     /// queue.enqueue(task).unwrap();
     ///
     /// let next = queue.next_task(&[]);
     /// assert!(next.is_some());
-    /// assert_eq!(next.unwrap().id, TaskId("test".to_string()));
+    /// assert_eq!(next.unwrap().id, TaskId::from("test"));
     /// ```
     pub fn next_task(&self, completed_tasks: &[TaskId]) -> Option<&Task> {
         self.state
@@ -534,7 +534,7 @@ impl TaskQueue {
     /// let event_bus = Arc::new(DefaultEventBus::new(16));
     /// let mut queue = TaskQueue::new(SchedulerConfig::default(), event_bus);
     ///
-    /// let mut task = Task::new(TaskId("backend".to_string()), "Backend".to_string(), "".to_string());
+    /// let mut task = Task::new(TaskId::from("backend"), "Backend".to_string(), "".to_string());
     /// task.tags = vec!["backend".to_string()];
     /// queue.enqueue(task).unwrap();
     ///
@@ -596,12 +596,12 @@ impl TaskQueue {
     /// let event_bus = Arc::new(DefaultEventBus::new(16));
     /// let mut queue = TaskQueue::new(SchedulerConfig::default(), event_bus);
     ///
-    /// let task = Task::new(TaskId("test".to_string()), "Test".to_string(), "".to_string());
+    /// let task = Task::new(TaskId::from("test"), "Test".to_string(), "".to_string());
     /// queue.enqueue(task).unwrap();
     ///
-    /// queue.assign_task(&TaskId("test".to_string()), SessionId(1)).unwrap();
+    /// queue.assign_task(&TaskId::from("test"), SessionId(1)).unwrap();
     ///
-    /// let task = queue.get_task(&TaskId("test".to_string())).unwrap();
+    /// let task = queue.get_task(&TaskId::from("test")).unwrap();
     /// assert_eq!(task.status, TaskStatus::Assigned);
     /// assert_eq!(task.assigned_session, Some(SessionId(1)));
     /// ```
@@ -665,13 +665,13 @@ impl TaskQueue {
     /// let event_bus = Arc::new(DefaultEventBus::new(16));
     /// let mut queue = TaskQueue::new(SchedulerConfig::default(), event_bus);
     ///
-    /// let task = Task::new(TaskId("test".to_string()), "Test".to_string(), "".to_string());
+    /// let task = Task::new(TaskId::from("test"), "Test".to_string(), "".to_string());
     /// queue.enqueue(task).unwrap();
-    /// queue.assign_task(&TaskId("test".to_string()), SessionId(1)).unwrap();
+    /// queue.assign_task(&TaskId::from("test"), SessionId(1)).unwrap();
     ///
-    /// queue.complete_task(&TaskId("test".to_string()), true).unwrap();
+    /// queue.complete_task(&TaskId::from("test"), true).unwrap();
     ///
-    /// let task = queue.get_task(&TaskId("test".to_string())).unwrap();
+    /// let task = queue.get_task(&TaskId::from("test")).unwrap();
     /// assert_eq!(task.status, TaskStatus::Done);
     /// assert!(task.completed_at.is_some());
     /// ```
@@ -724,13 +724,13 @@ impl TaskQueue {
     /// let event_bus = Arc::new(DefaultEventBus::new(16));
     /// let mut queue = TaskQueue::new(SchedulerConfig::default(), event_bus);
     ///
-    /// let task = Task::new(TaskId("test".to_string()), "Test".to_string(), "".to_string());
+    /// let task = Task::new(TaskId::from("test"), "Test".to_string(), "".to_string());
     /// queue.enqueue(task).unwrap();
-    /// queue.assign_task(&TaskId("test".to_string()), SessionId(1)).unwrap();
+    /// queue.assign_task(&TaskId::from("test"), SessionId(1)).unwrap();
     ///
-    /// queue.requeue_task(&TaskId("test".to_string())).unwrap();
+    /// queue.requeue_task(&TaskId::from("test")).unwrap();
     ///
-    /// let task = queue.get_task(&TaskId("test".to_string())).unwrap();
+    /// let task = queue.get_task(&TaskId::from("test")).unwrap();
     /// assert_eq!(task.status, TaskStatus::Queued);
     /// assert_eq!(task.retry.retry_count, 1);
     /// ```
@@ -776,18 +776,18 @@ impl TaskQueue {
     /// let event_bus = Arc::new(DefaultEventBus::new(16));
     /// let mut queue = TaskQueue::new(SchedulerConfig::default(), event_bus);
     ///
-    /// let task1 = Task::new(TaskId("first".to_string()), "First".to_string(), "".to_string());
-    /// let mut task2 = Task::new(TaskId("second".to_string()), "Second".to_string(), "".to_string());
-    /// task2.dependencies = vec![TaskId("first".to_string())];
+    /// let task1 = Task::new(TaskId::from("first"), "First".to_string(), "".to_string());
+    /// let mut task2 = Task::new(TaskId::from("second"), "Second".to_string(), "".to_string());
+    /// task2.dependencies = vec![TaskId::from("first")];
     ///
     /// queue.enqueue(task1).unwrap();
     /// queue.enqueue(task2).unwrap();
     ///
     /// // task2 is initially blocked
-    /// assert!(queue.blocked_tasks().iter().any(|t| t.id == TaskId("second".to_string())));
+    /// assert!(queue.blocked_tasks().iter().any(|t| t.id == TaskId::from("second")));
     ///
     /// // After marking task1 as complete, update blocked status
-    /// queue.update_blocked_status(&[TaskId("first".to_string())]);
+    /// queue.update_blocked_status(&[TaskId::from("first")]);
     /// ```
     pub fn update_blocked_status(&mut self, completed_tasks: &[TaskId]) {
         let task_ids: Vec<TaskId> = self.tasks.keys().cloned().collect();
@@ -821,7 +821,7 @@ impl TaskQueue {
     /// let event_bus = Arc::new(DefaultEventBus::new(16));
     /// let mut queue = TaskQueue::new(SchedulerConfig::default(), event_bus);
     ///
-    /// let task = Task::new(TaskId("test".to_string()), "Test".to_string(), "".to_string());
+    /// let task = Task::new(TaskId::from("test"), "Test".to_string(), "".to_string());
     /// queue.enqueue(task).unwrap();
     ///
     /// let queued = queue.queued_tasks();
@@ -849,8 +849,8 @@ impl TaskQueue {
     /// let event_bus = Arc::new(DefaultEventBus::new(16));
     /// let mut queue = TaskQueue::new(SchedulerConfig::default(), event_bus);
     ///
-    /// let mut task = Task::new(TaskId("test".to_string()), "Test".to_string(), "".to_string());
-    /// task.dependencies = vec![TaskId("nonexistent".to_string())];
+    /// let mut task = Task::new(TaskId::from("test"), "Test".to_string(), "".to_string());
+    /// task.dependencies = vec![TaskId::from("nonexistent")];
     /// queue.enqueue(task).unwrap();
     ///
     /// // Note: Only tasks with existing dependencies in the queue are marked blocked
@@ -877,7 +877,7 @@ impl TaskQueue {
     /// let event_bus = Arc::new(DefaultEventBus::new(16));
     /// let mut queue = TaskQueue::new(SchedulerConfig::default(), event_bus);
     ///
-    /// let task = Task::new(TaskId("test".to_string()), "Test".to_string(), "".to_string());
+    /// let task = Task::new(TaskId::from("test"), "Test".to_string(), "".to_string());
     /// queue.enqueue(task).unwrap();
     ///
     /// assert_eq!(queue.all_tasks().len(), 1);
@@ -1244,10 +1244,10 @@ mod tests {
     fn test_task_queue_load_state() {
         let mut queue = create_queue();
         let mut state = QueueState::default();
-        state.order.push(TaskId("task-001".to_string()));
+        state.order.push(TaskId::from("task-001"));
 
         let task = Task::new(
-            TaskId("task-001".to_string()),
+            TaskId::from("task-001"),
             "Test".to_string(),
             "".to_string(),
         );
@@ -1255,7 +1255,7 @@ mod tests {
         queue.load_state(state, vec![task]);
 
         assert_eq!(queue.get_state().order.len(), 1);
-        assert!(queue.get_task(&TaskId("task-001".to_string())).is_some());
+        assert!(queue.get_task(&TaskId::from("task-001")).is_some());
     }
 
     #[test]
@@ -1272,7 +1272,7 @@ mod tests {
     fn test_enqueue_task() {
         let mut queue = create_queue();
         let task = Task::new(
-            TaskId("task-001".to_string()),
+            TaskId::from("task-001"),
             "Test".to_string(),
             "".to_string(),
         );
@@ -1280,19 +1280,19 @@ mod tests {
         queue.enqueue(task).unwrap();
 
         assert_eq!(queue.get_state().order.len(), 1);
-        assert!(queue.get_task(&TaskId("task-001".to_string())).is_some());
+        assert!(queue.get_task(&TaskId::from("task-001")).is_some());
     }
 
     #[test]
     fn test_enqueue_duplicate_fails() {
         let mut queue = create_queue();
         let task1 = Task::new(
-            TaskId("task-001".to_string()),
+            TaskId::from("task-001"),
             "Test".to_string(),
             "".to_string(),
         );
         let task2 = Task::new(
-            TaskId("task-001".to_string()),
+            TaskId::from("task-001"),
             "Duplicate".to_string(),
             "".to_string(),
         );
@@ -1309,7 +1309,7 @@ mod tests {
         assert!(queue.get_state().updated_at.is_none());
 
         let task = Task::new(
-            TaskId("task-001".to_string()),
+            TaskId::from("task-001"),
             "Test".to_string(),
             "".to_string(),
         );
@@ -1324,24 +1324,24 @@ mod tests {
     fn test_dequeue_task() {
         let mut queue = create_queue();
         let task = Task::new(
-            TaskId("task-001".to_string()),
+            TaskId::from("task-001"),
             "Test".to_string(),
             "".to_string(),
         );
 
         queue.enqueue(task).unwrap();
-        let removed = queue.dequeue(&TaskId("task-001".to_string()));
+        let removed = queue.dequeue(&TaskId::from("task-001"));
 
         assert!(removed.is_some());
-        assert_eq!(removed.unwrap().id, TaskId("task-001".to_string()));
+        assert_eq!(removed.unwrap().id, TaskId::from("task-001"));
         assert!(queue.get_state().order.is_empty());
-        assert!(queue.get_task(&TaskId("task-001".to_string())).is_none());
+        assert!(queue.get_task(&TaskId::from("task-001")).is_none());
     }
 
     #[test]
     fn test_dequeue_nonexistent() {
         let mut queue = create_queue();
-        let removed = queue.dequeue(&TaskId("nonexistent".to_string()));
+        let removed = queue.dequeue(&TaskId::from("nonexistent"));
         assert!(removed.is_none());
     }
 
@@ -1350,26 +1350,26 @@ mod tests {
         let mut queue = create_queue();
 
         let task1 = Task::new(
-            TaskId("task-001".to_string()),
+            TaskId::from("task-001"),
             "First".to_string(),
             "".to_string(),
         );
         let mut task2 = Task::new(
-            TaskId("task-002".to_string()),
+            TaskId::from("task-002"),
             "Second".to_string(),
             "".to_string(),
         );
-        task2.dependencies = vec![TaskId("task-001".to_string())];
+        task2.dependencies = vec![TaskId::from("task-001")];
 
         queue.enqueue(task1).unwrap();
         queue.enqueue(task2).unwrap();
 
         // task-002 should be blocked
-        assert!(queue.is_blocked(&TaskId("task-002".to_string())));
+        assert!(queue.is_blocked(&TaskId::from("task-002")));
 
         // Dequeue task-002 should remove it from blocked
-        queue.dequeue(&TaskId("task-002".to_string()));
-        assert!(!queue.is_blocked(&TaskId("task-002".to_string())));
+        queue.dequeue(&TaskId::from("task-002"));
+        assert!(!queue.is_blocked(&TaskId::from("task-002")));
     }
 
     // ========== Next Task Tests ==========
@@ -1384,7 +1384,7 @@ mod tests {
     fn test_next_task_single() {
         let mut queue = create_queue();
         let task = Task::new(
-            TaskId("task-001".to_string()),
+            TaskId::from("task-001"),
             "Test".to_string(),
             "".to_string(),
         );
@@ -1392,18 +1392,18 @@ mod tests {
 
         let next = queue.next_task(&[]);
         assert!(next.is_some());
-        assert_eq!(next.unwrap().id, TaskId("task-001".to_string()));
+        assert_eq!(next.unwrap().id, TaskId::from("task-001"));
     }
 
     #[test]
     fn test_next_task_priority_order() {
         let mut queue = create_queue();
 
-        let mut low_task = Task::new(TaskId("low".to_string()), "Low".to_string(), "".to_string());
+        let mut low_task = Task::new(TaskId::from("low"), "Low".to_string(), "".to_string());
         low_task.priority = TaskPriority::Low;
 
         let mut high_task = Task::new(
-            TaskId("high".to_string()),
+            TaskId::from("high"),
             "High".to_string(),
             "".to_string(),
         );
@@ -1413,7 +1413,7 @@ mod tests {
         queue.enqueue(high_task).unwrap();
 
         let next = queue.next_task(&[]);
-        assert_eq!(next.unwrap().id, TaskId("high".to_string()));
+        assert_eq!(next.unwrap().id, TaskId::from("high"));
     }
 
     #[test]
@@ -1421,14 +1421,14 @@ mod tests {
         let mut queue = create_queue();
 
         let mut high_task = Task::new(
-            TaskId("high".to_string()),
+            TaskId::from("high"),
             "High".to_string(),
             "".to_string(),
         );
         high_task.priority = TaskPriority::High;
 
         let mut critical_task = Task::new(
-            TaskId("critical".to_string()),
+            TaskId::from("critical"),
             "Critical".to_string(),
             "".to_string(),
         );
@@ -1438,7 +1438,7 @@ mod tests {
         queue.enqueue(critical_task).unwrap();
 
         let next = queue.next_task(&[]);
-        assert_eq!(next.unwrap().id, TaskId("critical".to_string()));
+        assert_eq!(next.unwrap().id, TaskId::from("critical"));
     }
 
     #[test]
@@ -1446,36 +1446,36 @@ mod tests {
         let mut queue = create_queue();
 
         let task1 = Task::new(
-            TaskId("task-1".to_string()),
+            TaskId::from("task-1"),
             "First".to_string(),
             "".to_string(),
         );
 
         let mut task2 = Task::new(
-            TaskId("task-2".to_string()),
+            TaskId::from("task-2"),
             "Second".to_string(),
             "".to_string(),
         );
-        task2.dependencies = vec![TaskId("task-1".to_string())];
+        task2.dependencies = vec![TaskId::from("task-1")];
 
         queue.enqueue(task1).unwrap();
         queue.enqueue(task2).unwrap();
 
         // task-2 should be blocked, so next should return task-1
         let next = queue.next_task(&[]);
-        assert_eq!(next.unwrap().id, TaskId("task-1".to_string()));
+        assert_eq!(next.unwrap().id, TaskId::from("task-1"));
 
         // Assign and complete task-1
         queue
-            .assign_task(&TaskId("task-1".to_string()), SessionId(1))
+            .assign_task(&TaskId::from("task-1"), SessionId(1))
             .unwrap();
         queue
-            .complete_task(&TaskId("task-1".to_string()), true)
+            .complete_task(&TaskId::from("task-1"), true)
             .unwrap();
 
         // After task-1 completes, task-2 is unblocked
-        let next = queue.next_task(&[TaskId("task-1".to_string())]);
-        assert_eq!(next.unwrap().id, TaskId("task-2".to_string()));
+        let next = queue.next_task(&[TaskId::from("task-1")]);
+        assert_eq!(next.unwrap().id, TaskId::from("task-2"));
     }
 
     #[test]
@@ -1483,12 +1483,12 @@ mod tests {
         let mut queue = create_queue();
 
         let task1 = Task::new(
-            TaskId("task-1".to_string()),
+            TaskId::from("task-1"),
             "First".to_string(),
             "".to_string(),
         );
         let task2 = Task::new(
-            TaskId("task-2".to_string()),
+            TaskId::from("task-2"),
             "Second".to_string(),
             "".to_string(),
         );
@@ -1498,12 +1498,12 @@ mod tests {
 
         // Assign first task
         queue
-            .assign_task(&TaskId("task-1".to_string()), SessionId(1))
+            .assign_task(&TaskId::from("task-1"), SessionId(1))
             .unwrap();
 
         // Next should return second task
         let next = queue.next_task(&[]);
-        assert_eq!(next.unwrap().id, TaskId("task-2".to_string()));
+        assert_eq!(next.unwrap().id, TaskId::from("task-2"));
     }
 
     // ========== Next Task for Session Tests ==========
@@ -1513,14 +1513,14 @@ mod tests {
         let mut queue = create_queue();
 
         let mut backend_task = Task::new(
-            TaskId("backend".to_string()),
+            TaskId::from("backend"),
             "Backend Task".to_string(),
             "".to_string(),
         );
         backend_task.tags = vec!["backend".to_string()];
 
         let mut frontend_task = Task::new(
-            TaskId("frontend".to_string()),
+            TaskId::from("frontend"),
             "Frontend Task".to_string(),
             "".to_string(),
         );
@@ -1534,7 +1534,7 @@ mod tests {
         session.group = Some("backend".to_string());
 
         let next = queue.next_task_for_session(&session, &[]);
-        assert_eq!(next.unwrap().id, TaskId("backend".to_string()));
+        assert_eq!(next.unwrap().id, TaskId::from("backend"));
     }
 
     #[test]
@@ -1542,7 +1542,7 @@ mod tests {
         let mut queue = create_queue();
 
         let task = Task::new(
-            TaskId("task-1".to_string()),
+            TaskId::from("task-1"),
             "Task".to_string(),
             "".to_string(),
         );
@@ -1561,17 +1561,17 @@ mod tests {
     fn test_assign_task() {
         let mut queue = create_queue();
         let task = Task::new(
-            TaskId("task-001".to_string()),
+            TaskId::from("task-001"),
             "Test".to_string(),
             "".to_string(),
         );
         queue.enqueue(task).unwrap();
 
         queue
-            .assign_task(&TaskId("task-001".to_string()), SessionId(1))
+            .assign_task(&TaskId::from("task-001"), SessionId(1))
             .unwrap();
 
-        let task = queue.get_task(&TaskId("task-001".to_string())).unwrap();
+        let task = queue.get_task(&TaskId::from("task-001")).unwrap();
         assert_eq!(task.status, TaskStatus::Assigned);
         assert_eq!(task.assigned_session, Some(SessionId(1)));
         assert!(task.assigned_at.is_some());
@@ -1581,7 +1581,7 @@ mod tests {
     fn test_assign_task_removes_from_order() {
         let mut queue = create_queue();
         let task = Task::new(
-            TaskId("task-001".to_string()),
+            TaskId::from("task-001"),
             "Test".to_string(),
             "".to_string(),
         );
@@ -1590,7 +1590,7 @@ mod tests {
         assert_eq!(queue.get_state().order.len(), 1);
 
         queue
-            .assign_task(&TaskId("task-001".to_string()), SessionId(1))
+            .assign_task(&TaskId::from("task-001"), SessionId(1))
             .unwrap();
 
         assert!(queue.get_state().order.is_empty());
@@ -1599,7 +1599,7 @@ mod tests {
     #[test]
     fn test_assign_task_not_found() {
         let mut queue = create_queue();
-        let result = queue.assign_task(&TaskId("nonexistent".to_string()), SessionId(1));
+        let result = queue.assign_task(&TaskId::from("nonexistent"), SessionId(1));
         assert!(result.is_err());
         assert!(result.unwrap_err().to_string().contains("not found"));
     }
@@ -1608,7 +1608,7 @@ mod tests {
     fn test_assign_task_not_queued() {
         let mut queue = create_queue();
         let task = Task::new(
-            TaskId("task-001".to_string()),
+            TaskId::from("task-001"),
             "Test".to_string(),
             "".to_string(),
         );
@@ -1616,11 +1616,11 @@ mod tests {
 
         // Assign once
         queue
-            .assign_task(&TaskId("task-001".to_string()), SessionId(1))
+            .assign_task(&TaskId::from("task-001"), SessionId(1))
             .unwrap();
 
         // Try to assign again
-        let result = queue.assign_task(&TaskId("task-001".to_string()), SessionId(2));
+        let result = queue.assign_task(&TaskId::from("task-001"), SessionId(2));
         assert!(result.is_err());
         assert!(result.unwrap_err().to_string().contains("not queued"));
     }
@@ -1631,20 +1631,20 @@ mod tests {
     fn test_complete_task() {
         let mut queue = create_queue();
         let task = Task::new(
-            TaskId("task-001".to_string()),
+            TaskId::from("task-001"),
             "Test".to_string(),
             "".to_string(),
         );
         queue.enqueue(task).unwrap();
         queue
-            .assign_task(&TaskId("task-001".to_string()), SessionId(1))
+            .assign_task(&TaskId::from("task-001"), SessionId(1))
             .unwrap();
 
         queue
-            .complete_task(&TaskId("task-001".to_string()), true)
+            .complete_task(&TaskId::from("task-001"), true)
             .unwrap();
 
-        let task = queue.get_task(&TaskId("task-001".to_string())).unwrap();
+        let task = queue.get_task(&TaskId::from("task-001")).unwrap();
         assert_eq!(task.status, TaskStatus::Done);
         assert!(task.completed_at.is_some());
     }
@@ -1654,40 +1654,40 @@ mod tests {
         let mut queue = create_queue();
 
         let task1 = Task::new(
-            TaskId("task-1".to_string()),
+            TaskId::from("task-1"),
             "First".to_string(),
             "".to_string(),
         );
 
         let mut task2 = Task::new(
-            TaskId("task-2".to_string()),
+            TaskId::from("task-2"),
             "Second".to_string(),
             "".to_string(),
         );
-        task2.dependencies = vec![TaskId("task-1".to_string())];
+        task2.dependencies = vec![TaskId::from("task-1")];
 
         queue.enqueue(task1).unwrap();
         queue.enqueue(task2).unwrap();
 
         // task-2 should be blocked
-        assert!(queue.is_blocked(&TaskId("task-2".to_string())));
+        assert!(queue.is_blocked(&TaskId::from("task-2")));
 
         // Complete task-1
         queue
-            .assign_task(&TaskId("task-1".to_string()), SessionId(1))
+            .assign_task(&TaskId::from("task-1"), SessionId(1))
             .unwrap();
         queue
-            .complete_task(&TaskId("task-1".to_string()), true)
+            .complete_task(&TaskId::from("task-1"), true)
             .unwrap();
 
         // task-2 should no longer be blocked
-        assert!(!queue.is_blocked(&TaskId("task-2".to_string())));
+        assert!(!queue.is_blocked(&TaskId::from("task-2")));
     }
 
     #[test]
     fn test_complete_task_not_found() {
         let mut queue = create_queue();
-        let result = queue.complete_task(&TaskId("nonexistent".to_string()), true);
+        let result = queue.complete_task(&TaskId::from("nonexistent"), true);
         assert!(result.is_err());
     }
 
@@ -1697,18 +1697,18 @@ mod tests {
     fn test_requeue_task() {
         let mut queue = create_queue();
         let task = Task::new(
-            TaskId("task-001".to_string()),
+            TaskId::from("task-001"),
             "Test".to_string(),
             "".to_string(),
         );
         queue.enqueue(task).unwrap();
         queue
-            .assign_task(&TaskId("task-001".to_string()), SessionId(1))
+            .assign_task(&TaskId::from("task-001"), SessionId(1))
             .unwrap();
 
-        queue.requeue_task(&TaskId("task-001".to_string())).unwrap();
+        queue.requeue_task(&TaskId::from("task-001")).unwrap();
 
-        let task = queue.get_task(&TaskId("task-001".to_string())).unwrap();
+        let task = queue.get_task(&TaskId::from("task-001")).unwrap();
         assert_eq!(task.status, TaskStatus::Queued);
         assert_eq!(task.retry.retry_count, 1);
         assert!(task.assigned_session.is_none());
@@ -1719,17 +1719,17 @@ mod tests {
     fn test_requeue_task_max_retries() {
         let mut queue = create_queue();
         let mut task = Task::new(
-            TaskId("task-001".to_string()),
+            TaskId::from("task-001"),
             "Test".to_string(),
             "".to_string(),
         );
         task.retry.retry_count = 3; // Already at max
         queue.enqueue(task).unwrap();
         queue
-            .assign_task(&TaskId("task-001".to_string()), SessionId(1))
+            .assign_task(&TaskId::from("task-001"), SessionId(1))
             .unwrap();
 
-        let result = queue.requeue_task(&TaskId("task-001".to_string()));
+        let result = queue.requeue_task(&TaskId::from("task-001"));
         assert!(result.is_err());
         assert!(result.unwrap_err().to_string().contains("max retries"));
     }
@@ -1737,7 +1737,7 @@ mod tests {
     #[test]
     fn test_requeue_task_not_found() {
         let mut queue = create_queue();
-        let result = queue.requeue_task(&TaskId("nonexistent".to_string()));
+        let result = queue.requeue_task(&TaskId::from("nonexistent"));
         assert!(result.is_err());
     }
 
@@ -1748,29 +1748,29 @@ mod tests {
         let mut queue = create_queue();
 
         let task1 = Task::new(
-            TaskId("task-1".to_string()),
+            TaskId::from("task-1"),
             "First".to_string(),
             "".to_string(),
         );
 
         let mut task2 = Task::new(
-            TaskId("task-2".to_string()),
+            TaskId::from("task-2"),
             "Second".to_string(),
             "".to_string(),
         );
-        task2.dependencies = vec![TaskId("task-1".to_string())];
+        task2.dependencies = vec![TaskId::from("task-1")];
 
         queue.enqueue(task1).unwrap();
         queue.enqueue(task2).unwrap();
 
         // Initially blocked
-        assert!(queue.is_blocked(&TaskId("task-2".to_string())));
+        assert!(queue.is_blocked(&TaskId::from("task-2")));
 
         // Update with completed task
-        queue.update_blocked_status(&[TaskId("task-1".to_string())]);
+        queue.update_blocked_status(&[TaskId::from("task-1")]);
 
         // No longer blocked
-        assert!(!queue.is_blocked(&TaskId("task-2".to_string())));
+        assert!(!queue.is_blocked(&TaskId::from("task-2")));
     }
 
     // ========== Queued Tasks Tests ==========
@@ -1780,12 +1780,12 @@ mod tests {
         let mut queue = create_queue();
 
         let task1 = Task::new(
-            TaskId("task-1".to_string()),
+            TaskId::from("task-1"),
             "First".to_string(),
             "".to_string(),
         );
         let task2 = Task::new(
-            TaskId("task-2".to_string()),
+            TaskId::from("task-2"),
             "Second".to_string(),
             "".to_string(),
         );
@@ -1798,12 +1798,12 @@ mod tests {
 
         // Assign one
         queue
-            .assign_task(&TaskId("task-1".to_string()), SessionId(1))
+            .assign_task(&TaskId::from("task-1"), SessionId(1))
             .unwrap();
 
         let queued = queue.queued_tasks();
         assert_eq!(queued.len(), 1);
-        assert_eq!(queued[0].id, TaskId("task-2".to_string()));
+        assert_eq!(queued[0].id, TaskId::from("task-2"));
     }
 
     // ========== Blocked Tasks Tests ==========
@@ -1813,24 +1813,24 @@ mod tests {
         let mut queue = create_queue();
 
         let task1 = Task::new(
-            TaskId("task-1".to_string()),
+            TaskId::from("task-1"),
             "First".to_string(),
             "".to_string(),
         );
 
         let mut task2 = Task::new(
-            TaskId("task-2".to_string()),
+            TaskId::from("task-2"),
             "Second".to_string(),
             "".to_string(),
         );
-        task2.dependencies = vec![TaskId("task-1".to_string())];
+        task2.dependencies = vec![TaskId::from("task-1")];
 
         queue.enqueue(task1).unwrap();
         queue.enqueue(task2).unwrap();
 
         let blocked = queue.blocked_tasks();
         assert_eq!(blocked.len(), 1);
-        assert_eq!(blocked[0].id, TaskId("task-2".to_string()));
+        assert_eq!(blocked[0].id, TaskId::from("task-2"));
     }
 
     // ========== FIFO Mode Tests ==========
@@ -1840,13 +1840,13 @@ mod tests {
         let mut queue = create_queue_with_mode(SchedulerMode::Fifo);
 
         let mut high_task = Task::new(
-            TaskId("high".to_string()),
+            TaskId::from("high"),
             "High".to_string(),
             "".to_string(),
         );
         high_task.priority = TaskPriority::High;
 
-        let low_task = Task::new(TaskId("low".to_string()), "Low".to_string(), "".to_string());
+        let low_task = Task::new(TaskId::from("low"), "Low".to_string(), "".to_string());
 
         // Add low first, then high
         queue.enqueue(low_task).unwrap();
@@ -1854,7 +1854,7 @@ mod tests {
 
         // In FIFO mode, low should come first (despite lower priority)
         let next = queue.next_task(&[]);
-        assert_eq!(next.unwrap().id, TaskId("low".to_string()));
+        assert_eq!(next.unwrap().id, TaskId::from("low"));
     }
 
     // ========== Dependency Mode Tests ==========
@@ -1864,19 +1864,19 @@ mod tests {
         let mut queue = create_queue_with_mode(SchedulerMode::Dependency);
 
         let task1 = Task::new(
-            TaskId("no-deps".to_string()),
+            TaskId::from("no-deps"),
             "No deps".to_string(),
             "".to_string(),
         );
 
         let mut task2 = Task::new(
-            TaskId("has-deps".to_string()),
+            TaskId::from("has-deps"),
             "Has deps".to_string(),
             "".to_string(),
         );
         task2.dependencies = vec![
-            TaskId("external-1".to_string()),
-            TaskId("external-2".to_string()),
+            TaskId::from("external-1"),
+            TaskId::from("external-2"),
         ];
 
         queue.enqueue(task2).unwrap();
@@ -1904,7 +1904,7 @@ mod tests {
     fn test_task_queue_service_enqueue() {
         let mut queue = create_queue();
         let task = Task::new(
-            TaskId("task-001".to_string()),
+            TaskId::from("task-001"),
             "Test".to_string(),
             "".to_string(),
         );
@@ -1917,7 +1917,7 @@ mod tests {
     fn test_task_queue_service_next_task() {
         let mut queue = create_queue();
         let task = Task::new(
-            TaskId("task-001".to_string()),
+            TaskId::from("task-001"),
             "Test".to_string(),
             "".to_string(),
         );
@@ -1931,16 +1931,16 @@ mod tests {
     fn test_task_queue_service_assign() {
         let mut queue = create_queue();
         let task = Task::new(
-            TaskId("task-001".to_string()),
+            TaskId::from("task-001"),
             "Test".to_string(),
             "".to_string(),
         );
         queue.enqueue(task).unwrap();
 
-        TaskQueueService::assign(&mut queue, &TaskId("task-001".to_string()), SessionId(1))
+        TaskQueueService::assign(&mut queue, &TaskId::from("task-001"), SessionId(1))
             .unwrap();
 
-        let task = queue.get_task(&TaskId("task-001".to_string())).unwrap();
+        let task = queue.get_task(&TaskId::from("task-001")).unwrap();
         assert_eq!(task.status, TaskStatus::Assigned);
     }
 
@@ -1948,18 +1948,18 @@ mod tests {
     fn test_task_queue_service_complete() {
         let mut queue = create_queue();
         let task = Task::new(
-            TaskId("task-001".to_string()),
+            TaskId::from("task-001"),
             "Test".to_string(),
             "".to_string(),
         );
         queue.enqueue(task).unwrap();
         queue
-            .assign_task(&TaskId("task-001".to_string()), SessionId(1))
+            .assign_task(&TaskId::from("task-001"), SessionId(1))
             .unwrap();
 
-        TaskQueueService::complete(&mut queue, &TaskId("task-001".to_string()), true).unwrap();
+        TaskQueueService::complete(&mut queue, &TaskId::from("task-001"), true).unwrap();
 
-        let task = queue.get_task(&TaskId("task-001".to_string())).unwrap();
+        let task = queue.get_task(&TaskId::from("task-001")).unwrap();
         assert_eq!(task.status, TaskStatus::Done);
     }
 
@@ -1967,18 +1967,18 @@ mod tests {
     fn test_task_queue_service_requeue() {
         let mut queue = create_queue();
         let task = Task::new(
-            TaskId("task-001".to_string()),
+            TaskId::from("task-001"),
             "Test".to_string(),
             "".to_string(),
         );
         queue.enqueue(task).unwrap();
         queue
-            .assign_task(&TaskId("task-001".to_string()), SessionId(1))
+            .assign_task(&TaskId::from("task-001"), SessionId(1))
             .unwrap();
 
-        TaskQueueService::requeue(&mut queue, &TaskId("task-001".to_string())).unwrap();
+        TaskQueueService::requeue(&mut queue, &TaskId::from("task-001")).unwrap();
 
-        let task = queue.get_task(&TaskId("task-001".to_string())).unwrap();
+        let task = queue.get_task(&TaskId::from("task-001")).unwrap();
         assert_eq!(task.status, TaskStatus::Queued);
     }
 
@@ -1989,12 +1989,12 @@ mod tests {
         let mut queue = create_queue();
 
         let task1 = Task::new(
-            TaskId("task-1".to_string()),
+            TaskId::from("task-1"),
             "First".to_string(),
             "".to_string(),
         );
         let task2 = Task::new(
-            TaskId("task-2".to_string()),
+            TaskId::from("task-2"),
             "Second".to_string(),
             "".to_string(),
         );
@@ -2004,8 +2004,8 @@ mod tests {
 
         let all = queue.all_tasks();
         assert_eq!(all.len(), 2);
-        assert!(all.contains_key(&TaskId("task-1".to_string())));
-        assert!(all.contains_key(&TaskId("task-2".to_string())));
+        assert!(all.contains_key(&TaskId::from("task-1")));
+        assert!(all.contains_key(&TaskId::from("task-2")));
     }
 
     // ========== Edge Cases Tests ==========
@@ -2015,50 +2015,50 @@ mod tests {
         let mut queue = create_queue();
 
         let task1 = Task::new(
-            TaskId("task-1".to_string()),
+            TaskId::from("task-1"),
             "First".to_string(),
             "".to_string(),
         );
         let task2 = Task::new(
-            TaskId("task-2".to_string()),
+            TaskId::from("task-2"),
             "Second".to_string(),
             "".to_string(),
         );
         let mut task3 = Task::new(
-            TaskId("task-3".to_string()),
+            TaskId::from("task-3"),
             "Third".to_string(),
             "".to_string(),
         );
-        task3.dependencies = vec![TaskId("task-1".to_string()), TaskId("task-2".to_string())];
+        task3.dependencies = vec![TaskId::from("task-1"), TaskId::from("task-2")];
 
         queue.enqueue(task1).unwrap();
         queue.enqueue(task2).unwrap();
         queue.enqueue(task3).unwrap();
 
         // task-3 should be blocked
-        assert!(queue.is_blocked(&TaskId("task-3".to_string())));
+        assert!(queue.is_blocked(&TaskId::from("task-3")));
 
         // Complete task-1
         queue
-            .assign_task(&TaskId("task-1".to_string()), SessionId(1))
+            .assign_task(&TaskId::from("task-1"), SessionId(1))
             .unwrap();
         queue
-            .complete_task(&TaskId("task-1".to_string()), true)
+            .complete_task(&TaskId::from("task-1"), true)
             .unwrap();
 
         // task-3 should still be blocked (waiting for task-2)
-        assert!(queue.is_blocked(&TaskId("task-3".to_string())));
+        assert!(queue.is_blocked(&TaskId::from("task-3")));
 
         // Complete task-2
         queue
-            .assign_task(&TaskId("task-2".to_string()), SessionId(1))
+            .assign_task(&TaskId::from("task-2"), SessionId(1))
             .unwrap();
         queue
-            .complete_task(&TaskId("task-2".to_string()), true)
+            .complete_task(&TaskId::from("task-2"), true)
             .unwrap();
 
         // task-3 should no longer be blocked
-        assert!(!queue.is_blocked(&TaskId("task-3".to_string())));
+        assert!(!queue.is_blocked(&TaskId::from("task-3")));
     }
 
     #[test]
@@ -2066,24 +2066,24 @@ mod tests {
         let mut queue = create_queue();
 
         let mut task = Task::new(
-            TaskId("task-1".to_string()),
+            TaskId::from("task-1"),
             "Task".to_string(),
             "".to_string(),
         );
         // External dependency (not in queue)
-        task.dependencies = vec![TaskId("external".to_string())];
+        task.dependencies = vec![TaskId::from("external")];
 
         queue.enqueue(task).unwrap();
 
         // Should not be blocked since dependency doesn't exist in queue
-        assert!(!queue.is_blocked(&TaskId("task-1".to_string())));
+        assert!(!queue.is_blocked(&TaskId::from("task-1")));
 
         // But should not be selectable without completed_tasks
         let next = queue.next_task(&[]);
         assert!(next.is_none());
 
         // With external dependency marked complete
-        let next = queue.next_task(&[TaskId("external".to_string())]);
+        let next = queue.next_task(&[TaskId::from("external")]);
         assert!(next.is_some());
     }
 
@@ -2115,14 +2115,14 @@ mod tests {
         let mut queue = create_queue();
 
         let mut task_a = Task::new(
-            TaskId("task-a".to_string()),
+            TaskId::from("task-a"),
             "Task A".to_string(),
             "".to_string(),
         );
         task_a.project_dir = Some(PathBuf::from("/project-a"));
 
         let mut task_b = Task::new(
-            TaskId("task-b".to_string()),
+            TaskId::from("task-b"),
             "Task B".to_string(),
             "".to_string(),
         );
@@ -2138,7 +2138,7 @@ mod tests {
             PathBuf::from("/project-a"),
         );
         let next = queue.next_task_for_session(&session_a, &[]);
-        assert_eq!(next.unwrap().id, TaskId("task-a".to_string()));
+        assert_eq!(next.unwrap().id, TaskId::from("task-a"));
 
         // Session in /project-b should only get task-b
         let session_b = Session::new(
@@ -2147,7 +2147,7 @@ mod tests {
             PathBuf::from("/project-b"),
         );
         let next = queue.next_task_for_session(&session_b, &[]);
-        assert_eq!(next.unwrap().id, TaskId("task-b".to_string()));
+        assert_eq!(next.unwrap().id, TaskId::from("task-b"));
     }
 
     #[test]
@@ -2155,7 +2155,7 @@ mod tests {
         let mut queue = create_queue();
 
         let mut task = Task::new(
-            TaskId("task-1".to_string()),
+            TaskId::from("task-1"),
             "Task".to_string(),
             "".to_string(),
         );
@@ -2178,7 +2178,7 @@ mod tests {
         let mut queue = create_queue();
 
         let task = Task::new(
-            TaskId("task-1".to_string()),
+            TaskId::from("task-1"),
             "Task".to_string(),
             "".to_string(),
         );
@@ -2200,7 +2200,7 @@ mod tests {
         let mut queue = create_queue();
 
         let mut task = Task::new(
-            TaskId("task-1".to_string()),
+            TaskId::from("task-1"),
             "Task".to_string(),
             "".to_string(),
         );

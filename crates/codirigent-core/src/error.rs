@@ -141,7 +141,7 @@ mod tests {
 
     #[test]
     fn test_task_not_found_error() {
-        let err = CodirigentError::TaskNotFound(TaskId("task-001".to_string()));
+        let err = CodirigentError::TaskNotFound(TaskId::from("task-001"));
         let msg = format!("{}", err);
         assert!(msg.contains("task not found"));
         assert!(msg.contains("task-001"));
@@ -198,7 +198,7 @@ mod tests {
 
     #[test]
     fn test_task_exists_error() {
-        let err = CodirigentError::TaskExists(TaskId("task-001".to_string()));
+        let err = CodirigentError::TaskExists(TaskId::from("task-001"));
         let msg = format!("{}", err);
         assert!(msg.contains("task already exists"));
     }
@@ -227,7 +227,7 @@ mod tests {
     #[test]
     fn test_is_not_found() {
         assert!(CodirigentError::SessionNotFound(SessionId(1)).is_not_found());
-        assert!(CodirigentError::TaskNotFound(TaskId("t".to_string())).is_not_found());
+        assert!(CodirigentError::TaskNotFound(TaskId::from("t")).is_not_found());
         assert!(!CodirigentError::storage("err").is_not_found());
     }
 
@@ -264,13 +264,13 @@ mod tests {
     fn test_all_error_variants_debug() {
         let errors: Vec<CodirigentError> = vec![
             CodirigentError::SessionNotFound(SessionId(1)),
-            CodirigentError::TaskNotFound(TaskId("t".to_string())),
+            CodirigentError::TaskNotFound(TaskId::from("t")),
             CodirigentError::Pty("err".to_string()),
             CodirigentError::Io(std::io::Error::other("err")),
             CodirigentError::Storage("err".to_string()),
             CodirigentError::Config("err".to_string()),
             CodirigentError::SessionExists(SessionId(1)),
-            CodirigentError::TaskExists(TaskId("t".to_string())),
+            CodirigentError::TaskExists(TaskId::from("t")),
             CodirigentError::InvalidSessionState("err".to_string()),
             CodirigentError::ProcessMonitor("err".to_string()),
             CodirigentError::Layout("err".to_string()),

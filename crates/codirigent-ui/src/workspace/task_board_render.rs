@@ -61,7 +61,7 @@ impl WorkspaceView {
             }
         };
 
-        TaskItem::new(task.id.0.clone(), task.title.clone())
+        TaskItem::new(task.id.0.to_string(), task.title.clone())
             .with_priority(ui_priority)
             .with_status(ui_status)
             .with_estimated_time(estimated_time.unwrap_or_else(|| "?".to_string()))

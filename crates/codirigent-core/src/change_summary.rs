@@ -50,7 +50,7 @@ use std::path::{Path, PathBuf};
 /// use std::path::PathBuf;
 ///
 /// let summary = ChangeSummary {
-///     task_id: TaskId("task-001".to_string()),
+///     task_id: TaskId::from("task-001"),
 ///     session_id: SessionId(1),
 ///     changes: vec![
 ///         FileChange {
@@ -790,7 +790,7 @@ mod tests {
     #[test]
     fn test_change_summary_creation() {
         let summary = ChangeSummary {
-            task_id: TaskId("task-001".to_string()),
+            task_id: TaskId::from("task-001"),
             session_id: SessionId(1),
             changes: vec![FileChange {
                 path: PathBuf::from("src/lib.rs"),
@@ -803,7 +803,7 @@ mod tests {
             risk_assessment: RiskAssessment::default(),
             generated_at: chrono::Utc::now(),
         };
-        assert_eq!(summary.task_id, TaskId("task-001".to_string()));
+        assert_eq!(summary.task_id, TaskId::from("task-001"));
         assert_eq!(summary.session_id, SessionId(1));
         assert_eq!(summary.changes.len(), 1);
     }
@@ -811,7 +811,7 @@ mod tests {
     #[test]
     fn test_change_summary_serialization() {
         let summary = ChangeSummary {
-            task_id: TaskId("task-002".to_string()),
+            task_id: TaskId::from("task-002"),
             session_id: SessionId(42),
             changes: vec![
                 FileChange {
@@ -853,7 +853,7 @@ mod tests {
     #[test]
     fn test_change_summary_empty_changes() {
         let summary = ChangeSummary {
-            task_id: TaskId("task-empty".to_string()),
+            task_id: TaskId::from("task-empty"),
             session_id: SessionId(1),
             changes: vec![],
             risk_assessment: RiskAssessment::default(),
@@ -866,7 +866,7 @@ mod tests {
     #[test]
     fn test_change_summary_clone() {
         let summary = ChangeSummary {
-            task_id: TaskId("task-clone".to_string()),
+            task_id: TaskId::from("task-clone"),
             session_id: SessionId(1),
             changes: vec![],
             risk_assessment: RiskAssessment::default(),
@@ -880,7 +880,7 @@ mod tests {
     #[test]
     fn test_change_summary_debug() {
         let summary = ChangeSummary {
-            task_id: TaskId("task-debug".to_string()),
+            task_id: TaskId::from("task-debug"),
             session_id: SessionId(1),
             changes: vec![],
             risk_assessment: RiskAssessment::default(),

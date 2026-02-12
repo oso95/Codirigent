@@ -33,7 +33,7 @@
 //!
 //! // Add a task
 //! let task = Task::new(
-//!     TaskId("task-001".to_string()),
+//!     TaskId::from("task-001"),
 //!     "Implement feature".to_string(),
 //!     "Add new feature X".to_string(),
 //! );
@@ -166,7 +166,7 @@ impl Default for AssignmentConfig {
 /// use codirigent_core::{PendingAssignment, TaskId, SessionId};
 ///
 /// let pending = PendingAssignment {
-///     task_id: TaskId("task-001".to_string()),
+///     task_id: TaskId::from("task-001"),
 ///     session_id: SessionId(1),
 ///     prompt: "Task prompt here".to_string(),
 ///     proposed_at: chrono::Utc::now(),
@@ -195,7 +195,7 @@ pub struct PendingAssignment {
 ///
 /// // Immediate assignment
 /// let action = AssignmentAction::AssignNow {
-///     task_id: TaskId("task-001".to_string()),
+///     task_id: TaskId::from("task-001"),
 ///     session_id: SessionId(1),
 ///     prompt: "Do the task".to_string(),
 /// };
@@ -252,7 +252,7 @@ pub enum AssignmentAction {
 ///
 /// // Generate a prompt for a task
 /// let task = Task::new(
-///     TaskId("task-001".to_string()),
+///     TaskId::from("task-001"),
 ///     "Fix Bug".to_string(),
 ///     "The login page crashes".to_string(),
 /// );
@@ -378,7 +378,7 @@ impl AssignmentManager {
     /// let manager = AssignmentManager::new(AssignmentConfig::default(), event_bus);
     ///
     /// let mut task = Task::new(
-    ///     TaskId("task-001".to_string()),
+    ///     TaskId::from("task-001"),
     ///     "Fix Auth Bug".to_string(),
     ///     "Login returns 500".to_string(),
     /// );
@@ -501,7 +501,7 @@ impl AssignmentManager {
     /// let mut queue = TaskQueue::new(SchedulerConfig::default(), event_bus);
     ///
     /// // Add a task
-    /// let task = Task::new(TaskId("task-001".to_string()), "Task".to_string(), "Desc".to_string());
+    /// let task = Task::new(TaskId::from("task-001"), "Task".to_string(), "Desc".to_string());
     /// queue.enqueue(task).unwrap();
     ///
     /// // Session becomes idle
@@ -612,7 +612,7 @@ impl AssignmentManager {
     /// let mut manager = AssignmentManager::new(config, event_bus);
     ///
     /// // Try to confirm non-existent assignment
-    /// let result = manager.confirm_assignment(&TaskId("nonexistent".to_string()));
+    /// let result = manager.confirm_assignment(&TaskId::from("nonexistent"));
     /// assert!(result.is_err());
     /// ```
     pub fn confirm_assignment(&mut self, task_id: &TaskId) -> Result<PendingAssignment> {
@@ -654,7 +654,7 @@ impl AssignmentManager {
     /// let mut manager = AssignmentManager::new(AssignmentConfig::default(), event_bus);
     ///
     /// // Reject a non-existent assignment (no error, just no-op)
-    /// manager.reject_assignment(&TaskId("nonexistent".to_string()));
+    /// manager.reject_assignment(&TaskId::from("nonexistent"));
     /// ```
     pub fn reject_assignment(&mut self, task_id: &TaskId) {
         if let Some(idx) = self.pending.iter().position(|p| &p.task_id == task_id) {
@@ -684,7 +684,7 @@ impl AssignmentManager {
     /// let event_bus = Arc::new(DefaultEventBus::new(16));
     /// let manager = AssignmentManager::new(AssignmentConfig::default(), event_bus);
     ///
-    /// assert!(manager.find_pending(&TaskId("nonexistent".to_string())).is_none());
+    /// assert!(manager.find_pending(&TaskId::from("nonexistent")).is_none());
     /// ```
     pub fn find_pending(&self, task_id: &TaskId) -> Option<&PendingAssignment> {
         self.pending.iter().find(|p| &p.task_id == task_id)
@@ -915,7 +915,7 @@ mod tests {
         let manager = create_manager();
 
         let mut task = Task::new(
-            TaskId("task-001".to_string()),
+            TaskId::from("task-001"),
             "Fix Auth Bug".to_string(),
             "The login endpoint returns 500 when password is empty.".to_string(),
         );
@@ -939,7 +939,7 @@ mod tests {
         let manager = create_manager();
 
         let task = Task::new(
-            TaskId("task-002".to_string()),
+            TaskId::from("task-002"),
             "Simple Task".to_string(),
             "Do something".to_string(),
         );
@@ -961,7 +961,7 @@ mod tests {
 
         for priority in priorities {
             let mut task = Task::new(
-                TaskId("task".to_string()),
+                TaskId::from("task"),
                 "Task".to_string(),
                 "".to_string(),
             );
@@ -977,7 +977,7 @@ mod tests {
         let manager = create_manager();
 
         let mut task = Task::new(
-            TaskId("task-001".to_string()),
+            TaskId::from("task-001"),
             "Task".to_string(),
             "Desc".to_string(),
         );
@@ -996,7 +996,7 @@ mod tests {
         let manager = create_manager();
 
         let mut task = Task::new(
-            TaskId("task-001".to_string()),
+            TaskId::from("task-001"),
             "Task".to_string(),
             "Desc".to_string(),
         );
@@ -1011,7 +1011,7 @@ mod tests {
         let manager = create_manager();
 
         let task = Task::new(
-            TaskId("task-001".to_string()),
+            TaskId::from("task-001"),
             "Task".to_string(),
             "Desc".to_string(),
         );
@@ -1030,7 +1030,7 @@ mod tests {
         let manager = AssignmentManager::new(config, event_bus);
 
         let task = Task::new(
-            TaskId("test-id".to_string()),
+            TaskId::from("test-id"),
             "Test Title".to_string(),
             "Description".to_string(),
         );
@@ -1055,7 +1055,7 @@ mod tests {
 
         // Add a task
         let task = Task::new(
-            TaskId("task-001".to_string()),
+            TaskId::from("task-001"),
             "Test Task".to_string(),
             "Description".to_string(),
         );
@@ -1069,7 +1069,7 @@ mod tests {
                 session_id,
                 prompt,
             }) => {
-                assert_eq!(task_id, TaskId("task-001".to_string()));
+                assert_eq!(task_id, TaskId::from("task-001"));
                 assert_eq!(session_id, SessionId(1));
                 assert!(prompt.contains("Test Task"));
             }
@@ -1091,7 +1091,7 @@ mod tests {
         let session = Session::new(SessionId(1), "Test".to_string(), PathBuf::from("/test"));
 
         let task = Task::new(
-            TaskId("task-001".to_string()),
+            TaskId::from("task-001"),
             "Test".to_string(),
             "".to_string(),
         );
@@ -1120,7 +1120,7 @@ mod tests {
         let session = Session::new(SessionId(1), "Test".to_string(), PathBuf::from("/test"));
 
         let task = Task::new(
-            TaskId("task-001".to_string()),
+            TaskId::from("task-001"),
             "Test".to_string(),
             "".to_string(),
         );
@@ -1136,11 +1136,11 @@ mod tests {
         let (mut manager, mut queue, mut session) = create_test_setup();
 
         // Session already has a task
-        session.current_task = Some(TaskId("existing".to_string()));
+        session.current_task = Some(TaskId::from("existing"));
 
         // Add a task to the queue
         let task = Task::new(
-            TaskId("task-001".to_string()),
+            TaskId::from("task-001"),
             "Test".to_string(),
             "".to_string(),
         );
@@ -1160,16 +1160,16 @@ mod tests {
 
         // Add a pending assignment manually
         manager.pending.push(PendingAssignment {
-            task_id: TaskId("task-001".to_string()),
+            task_id: TaskId::from("task-001"),
             session_id: SessionId(1),
             prompt: "Test prompt".to_string(),
             proposed_at: chrono::Utc::now(),
         });
 
         let assignment = manager
-            .confirm_assignment(&TaskId("task-001".to_string()))
+            .confirm_assignment(&TaskId::from("task-001"))
             .unwrap();
-        assert_eq!(assignment.task_id, TaskId("task-001".to_string()));
+        assert_eq!(assignment.task_id, TaskId::from("task-001"));
         assert!(manager.pending.is_empty());
     }
 
@@ -1177,7 +1177,7 @@ mod tests {
     fn test_confirm_nonexistent_fails() {
         let mut manager = create_manager();
 
-        let result = manager.confirm_assignment(&TaskId("nonexistent".to_string()));
+        let result = manager.confirm_assignment(&TaskId::from("nonexistent"));
         assert!(result.is_err());
         assert!(result
             .unwrap_err()
@@ -1192,13 +1192,13 @@ mod tests {
         let mut manager = create_manager();
 
         manager.pending.push(PendingAssignment {
-            task_id: TaskId("task-001".to_string()),
+            task_id: TaskId::from("task-001"),
             session_id: SessionId(1),
             prompt: "Test".to_string(),
             proposed_at: chrono::Utc::now(),
         });
 
-        manager.reject_assignment(&TaskId("task-001".to_string()));
+        manager.reject_assignment(&TaskId::from("task-001"));
         assert!(manager.pending.is_empty());
     }
 
@@ -1207,7 +1207,7 @@ mod tests {
         let mut manager = create_manager();
 
         // Should not panic
-        manager.reject_assignment(&TaskId("nonexistent".to_string()));
+        manager.reject_assignment(&TaskId::from("nonexistent"));
         assert!(manager.pending.is_empty());
     }
 
@@ -1218,17 +1218,17 @@ mod tests {
         let mut manager = create_manager();
 
         manager.pending.push(PendingAssignment {
-            task_id: TaskId("task-001".to_string()),
+            task_id: TaskId::from("task-001"),
             session_id: SessionId(1),
             prompt: "Test".to_string(),
             proposed_at: chrono::Utc::now(),
         });
 
-        let found = manager.find_pending(&TaskId("task-001".to_string()));
+        let found = manager.find_pending(&TaskId::from("task-001"));
         assert!(found.is_some());
-        assert_eq!(found.unwrap().task_id, TaskId("task-001".to_string()));
+        assert_eq!(found.unwrap().task_id, TaskId::from("task-001"));
 
-        let not_found = manager.find_pending(&TaskId("nonexistent".to_string()));
+        let not_found = manager.find_pending(&TaskId::from("nonexistent"));
         assert!(not_found.is_none());
     }
 
@@ -1240,7 +1240,7 @@ mod tests {
 
         // Add an old assignment
         manager.pending.push(PendingAssignment {
-            task_id: TaskId("old-task".to_string()),
+            task_id: TaskId::from("old-task"),
             session_id: SessionId(1),
             prompt: "Old".to_string(),
             proposed_at: chrono::Utc::now() - chrono::Duration::seconds(120),
@@ -1248,7 +1248,7 @@ mod tests {
 
         // Add a new assignment
         manager.pending.push(PendingAssignment {
-            task_id: TaskId("new-task".to_string()),
+            task_id: TaskId::from("new-task"),
             session_id: SessionId(2),
             prompt: "New".to_string(),
             proposed_at: chrono::Utc::now(),
@@ -1258,7 +1258,7 @@ mod tests {
         manager.clear_expired(60);
 
         assert_eq!(manager.pending.len(), 1);
-        assert_eq!(manager.pending[0].task_id, TaskId("new-task".to_string()));
+        assert_eq!(manager.pending[0].task_id, TaskId::from("new-task"));
     }
 
     #[test]
@@ -1266,14 +1266,14 @@ mod tests {
         let mut manager = create_manager();
 
         manager.pending.push(PendingAssignment {
-            task_id: TaskId("task-1".to_string()),
+            task_id: TaskId::from("task-1"),
             session_id: SessionId(1),
             prompt: "1".to_string(),
             proposed_at: chrono::Utc::now(),
         });
 
         manager.pending.push(PendingAssignment {
-            task_id: TaskId("task-2".to_string()),
+            task_id: TaskId::from("task-2"),
             session_id: SessionId(2),
             prompt: "2".to_string(),
             proposed_at: chrono::Utc::now(),
@@ -1291,14 +1291,14 @@ mod tests {
         let old_time = chrono::Utc::now() - chrono::Duration::seconds(120);
 
         manager.pending.push(PendingAssignment {
-            task_id: TaskId("task-1".to_string()),
+            task_id: TaskId::from("task-1"),
             session_id: SessionId(1),
             prompt: "1".to_string(),
             proposed_at: old_time,
         });
 
         manager.pending.push(PendingAssignment {
-            task_id: TaskId("task-2".to_string()),
+            task_id: TaskId::from("task-2"),
             session_id: SessionId(2),
             prompt: "2".to_string(),
             proposed_at: old_time,
@@ -1314,7 +1314,7 @@ mod tests {
     #[test]
     fn test_pending_assignment_clone() {
         let pending = PendingAssignment {
-            task_id: TaskId("task-001".to_string()),
+            task_id: TaskId::from("task-001"),
             session_id: SessionId(1),
             prompt: "Test".to_string(),
             proposed_at: chrono::Utc::now(),
@@ -1329,7 +1329,7 @@ mod tests {
     #[test]
     fn test_pending_assignment_debug() {
         let pending = PendingAssignment {
-            task_id: TaskId("task-001".to_string()),
+            task_id: TaskId::from("task-001"),
             session_id: SessionId(1),
             prompt: "Test".to_string(),
             proposed_at: chrono::Utc::now(),
@@ -1345,7 +1345,7 @@ mod tests {
     #[test]
     fn test_assignment_action_assign_now() {
         let action = AssignmentAction::AssignNow {
-            task_id: TaskId("task-001".to_string()),
+            task_id: TaskId::from("task-001"),
             session_id: SessionId(1),
             prompt: "Test prompt".to_string(),
         };
@@ -1356,7 +1356,7 @@ mod tests {
             prompt,
         } = action
         {
-            assert_eq!(task_id, TaskId("task-001".to_string()));
+            assert_eq!(task_id, TaskId::from("task-001"));
             assert_eq!(session_id, SessionId(1));
             assert_eq!(prompt, "Test prompt");
         } else {
@@ -1367,7 +1367,7 @@ mod tests {
     #[test]
     fn test_assignment_action_await_confirmation() {
         let action = AssignmentAction::AwaitConfirmation {
-            task_id: TaskId("task-001".to_string()),
+            task_id: TaskId::from("task-001"),
             session_id: SessionId(1),
         };
 
@@ -1383,7 +1383,7 @@ mod tests {
     #[test]
     fn test_assignment_action_clone() {
         let action = AssignmentAction::AssignNow {
-            task_id: TaskId("task-001".to_string()),
+            task_id: TaskId::from("task-001"),
             session_id: SessionId(1),
             prompt: "Test".to_string(),
         };
@@ -1406,7 +1406,7 @@ mod tests {
         let (mut manager, mut queue, session) = create_test_setup();
 
         let task = Task::new(
-            TaskId("task-001".to_string()),
+            TaskId::from("task-001"),
             "Test".to_string(),
             "".to_string(),
         );
@@ -1421,14 +1421,14 @@ mod tests {
         let mut manager = create_manager_with_confirmation();
 
         manager.pending.push(PendingAssignment {
-            task_id: TaskId("task-001".to_string()),
+            task_id: TaskId::from("task-001"),
             session_id: SessionId(1),
             prompt: "Test prompt".to_string(),
             proposed_at: chrono::Utc::now(),
         });
 
         let prompt =
-            AssignmentService::confirm(&mut manager, &TaskId("task-001".to_string())).unwrap();
+            AssignmentService::confirm(&mut manager, &TaskId::from("task-001")).unwrap();
         assert_eq!(prompt, "Test prompt");
     }
 
@@ -1437,13 +1437,13 @@ mod tests {
         let mut manager = create_manager();
 
         manager.pending.push(PendingAssignment {
-            task_id: TaskId("task-001".to_string()),
+            task_id: TaskId::from("task-001"),
             session_id: SessionId(1),
             prompt: "Test".to_string(),
             proposed_at: chrono::Utc::now(),
         });
 
-        AssignmentService::reject(&mut manager, &TaskId("task-001".to_string()));
+        AssignmentService::reject(&mut manager, &TaskId::from("task-001"));
         assert_eq!(AssignmentService::pending_count(&manager), 0);
     }
 
@@ -1453,7 +1453,7 @@ mod tests {
         assert_eq!(AssignmentService::pending_count(&manager), 0);
 
         manager.pending.push(PendingAssignment {
-            task_id: TaskId("task-001".to_string()),
+            task_id: TaskId::from("task-001"),
             session_id: SessionId(1),
             prompt: "Test".to_string(),
             proposed_at: chrono::Utc::now(),
@@ -1472,7 +1472,7 @@ mod tests {
 
         // Create a task
         let mut task = Task::new(
-            TaskId("task-001".to_string()),
+            TaskId::from("task-001"),
             "Implement Feature X".to_string(),
             "Add the X feature to the system".to_string(),
         );
@@ -1500,7 +1500,7 @@ mod tests {
                 session_id,
                 prompt,
             }) => {
-                assert_eq!(task_id, TaskId("task-001".to_string()));
+                assert_eq!(task_id, TaskId::from("task-001"));
                 assert_eq!(session_id, SessionId(1));
                 assert!(prompt.contains("Implement Feature X"));
                 assert!(prompt.contains("cargo test"));
@@ -1522,7 +1522,7 @@ mod tests {
 
         // Create a task
         let task = Task::new(
-            TaskId("task-001".to_string()),
+            TaskId::from("task-001"),
             "Task".to_string(),
             "Description".to_string(),
         );
@@ -1541,9 +1541,9 @@ mod tests {
 
         // Confirm the assignment
         let assignment = manager
-            .confirm_assignment(&TaskId("task-001".to_string()))
+            .confirm_assignment(&TaskId::from("task-001"))
             .unwrap();
-        assert_eq!(assignment.task_id, TaskId("task-001".to_string()));
+        assert_eq!(assignment.task_id, TaskId::from("task-001"));
         assert!(manager.pending.is_empty());
     }
 
@@ -1565,12 +1565,12 @@ mod tests {
 
         // Confirm one
         manager
-            .confirm_assignment(&TaskId("task-003".to_string()))
+            .confirm_assignment(&TaskId::from("task-003"))
             .unwrap();
         assert_eq!(manager.pending.len(), 4);
 
         // Reject one
-        manager.reject_assignment(&TaskId("task-001".to_string()));
+        manager.reject_assignment(&TaskId::from("task-001"));
         assert_eq!(manager.pending.len(), 3);
 
         // Remaining should be 002, 004, 005

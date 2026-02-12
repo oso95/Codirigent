@@ -169,7 +169,7 @@ impl std::fmt::Display for CompletionStatus {
 /// use codirigent_core::{SessionId, TaskId};
 ///
 /// let note = SessionNote {
-///     task_id: TaskId("task-001".to_string()),
+///     task_id: TaskId::from("task-001"),
 ///     title: "Refactor Auth Module".to_string(),
 ///     session_id: SessionId(1),
 ///     duration_minutes: 45,
@@ -224,7 +224,7 @@ impl SessionNote {
     /// use codirigent_core::{SessionId, TaskId};
     ///
     /// let note = SessionNote::new(
-    ///     TaskId("task-001".to_string()),
+    ///     TaskId::from("task-001"),
     ///     "Test Task".to_string(),
     ///     SessionId(1),
     ///     30,
@@ -380,7 +380,7 @@ impl std::fmt::Display for LearningCategory {
 /// use codirigent_core::{SessionId, TaskId};
 ///
 /// let params = GenerateNoteParams {
-///     task_id: TaskId("task-001".to_string()),
+///     task_id: TaskId::from("task-001"),
 ///     session_id: SessionId(1),
 ///     title: "Fix authentication bug".to_string(),
 ///     duration_minutes: 45,
@@ -425,7 +425,7 @@ pub struct GenerateNoteParams {
 /// // Trait is typically implemented by dirigent-verification crate
 /// fn example_usage<T: NotesGenerator>(generator: &T) {
 ///     let params = GenerateNoteParams {
-///         task_id: TaskId("task-001".to_string()),
+///         task_id: TaskId::from("task-001"),
 ///         session_id: SessionId(1),
 ///         title: "Test Task".to_string(),
 ///         duration_minutes: 30,
@@ -771,7 +771,7 @@ mod tests {
     #[test]
     fn test_session_note_creation() {
         let note = SessionNote {
-            task_id: TaskId("task-001".to_string()),
+            task_id: TaskId::from("task-001"),
             title: "Refactor Auth Module".to_string(),
             session_id: SessionId(1),
             duration_minutes: 45,
@@ -783,14 +783,14 @@ mod tests {
             generated_at: chrono::Utc::now(),
         };
         assert_eq!(note.duration_minutes, 45);
-        assert_eq!(note.task_id, TaskId("task-001".to_string()));
+        assert_eq!(note.task_id, TaskId::from("task-001"));
         assert_eq!(note.completion_status, CompletionStatus::Completed);
     }
 
     #[test]
     fn test_session_note_new() {
         let note = SessionNote::new(
-            TaskId("task-001".to_string()),
+            TaskId::from("task-001"),
             "Test Task".to_string(),
             SessionId(1),
             30,
@@ -806,7 +806,7 @@ mod tests {
     #[test]
     fn test_session_note_with_summary() {
         let note = SessionNote::new(
-            TaskId("task-001".to_string()),
+            TaskId::from("task-001"),
             "Test".to_string(),
             SessionId(1),
             30,
@@ -827,7 +827,7 @@ mod tests {
             Learning::new(LearningCategory::Gotcha, "Watch out for Z", false),
         ];
         let note = SessionNote::new(
-            TaskId("task-001".to_string()),
+            TaskId::from("task-001"),
             "Test".to_string(),
             SessionId(1),
             30,
@@ -841,7 +841,7 @@ mod tests {
     #[test]
     fn test_session_note_serialization() {
         let note = SessionNote {
-            task_id: TaskId("task-001".to_string()),
+            task_id: TaskId::from("task-001"),
             title: "Test Task".to_string(),
             session_id: SessionId(1),
             duration_minutes: 30,
@@ -871,7 +871,7 @@ mod tests {
     #[test]
     fn test_session_note_clone() {
         let note = SessionNote::new(
-            TaskId("task-001".to_string()),
+            TaskId::from("task-001"),
             "Test".to_string(),
             SessionId(1),
             30,
@@ -885,7 +885,7 @@ mod tests {
     #[test]
     fn test_session_note_debug() {
         let note = SessionNote::new(
-            TaskId("task-001".to_string()),
+            TaskId::from("task-001"),
             "Test".to_string(),
             SessionId(1),
             30,
@@ -906,7 +906,7 @@ mod tests {
         ];
         for status in statuses {
             let note = SessionNote::new(
-                TaskId("task".to_string()),
+                TaskId::from("task"),
                 "Test".to_string(),
                 SessionId(1),
                 10,

@@ -6,6 +6,7 @@
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::path::PathBuf;
+use std::sync::Arc;
 use std::time::Duration;
 
 /// Unique identifier for a session.
@@ -24,12 +25,51 @@ impl std::fmt::Display for SessionId {
 /// Unique identifier for a task.
 ///
 /// Tasks are work items that can be assigned to sessions.
-#[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
-pub struct TaskId(pub String);
+/// Uses Arc<str> internally for cheap cloning across threads.
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+pub struct TaskId(pub Arc<str>);
 
 impl std::fmt::Display for TaskId {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(f, "{}", self.0)
+    }
+}
+
+// Convenience conversions
+impl From<String> for TaskId {
+    fn from(s: String) -> Self {
+        TaskId(Arc::from(s))
+    }
+}
+
+impl From<&str> for TaskId {
+    fn from(s: &str) -> Self {
+        TaskId(Arc::from(s))
+    }
+}
+
+impl From<Arc<str>> for TaskId {
+    fn from(arc: Arc<str>) -> Self {
+        TaskId(arc)
+    }
+}
+
+impl serde::Serialize for TaskId {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: serde::Serializer,
+    {
+        self.0.as_ref().serialize(serializer)
+    }
+}
+
+impl<'de> serde::Deserialize<'de> for TaskId {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: serde::Deserializer<'de>,
+    {
+        let s = String::deserialize(deserializer)?;
+        Ok(TaskId(Arc::from(s)))
     }
 }
 
@@ -677,7 +717,7 @@ impl Session {
 /// use codirigent_core::{Task, TaskId, VerificationConfig, RetryConfig};
 ///
 /// let mut task = Task::new(
-///     TaskId("task-001".to_string()),
+///     TaskId::from("task-001"),
 ///     "Implement login".to_string(),
 ///     "Add user authentication".to_string(),
 /// );
@@ -752,7 +792,7 @@ impl Task {
     /// use codirigent_core::{Task, TaskId, TaskStatus};
     ///
     /// let task = Task::new(
-    ///     TaskId("task-001".to_string()),
+    ///     TaskId::from("task-001"),
     ///     "Test Task".to_string(),
     ///     "Do something".to_string(),
     /// );
@@ -797,14 +837,14 @@ impl Task {
     /// use codirigent_core::{Task, TaskId};
     ///
     /// let mut task = Task::new(
-    ///     TaskId("task-002".to_string()),
+    ///     TaskId::from("task-002"),
     ///     "Has deps".to_string(),
     ///     "".to_string(),
     /// );
-    /// task.dependencies = vec![TaskId("task-001".to_string())];
+    /// task.dependencies = vec![TaskId::from("task-001")];
     ///
     /// assert!(!task.dependencies_satisfied(&[]));
-    /// assert!(task.dependencies_satisfied(&[TaskId("task-001".to_string())]));
+    /// assert!(task.dependencies_satisfied(&[TaskId::from("task-001")]));
     /// ```
     pub fn dependencies_satisfied(&self, completed_tasks: &[TaskId]) -> bool {
         self.dependencies
@@ -823,7 +863,7 @@ impl Task {
     /// use codirigent_core::{Task, TaskId};
     ///
     /// let mut task = Task::new(
-    ///     TaskId("task-001".to_string()),
+    ///     TaskId::from("task-001"),
     ///     "Retry Task".to_string(),
     ///     "".to_string(),
     /// );
@@ -846,7 +886,7 @@ impl Task {
     /// use codirigent_core::{Task, TaskId};
     ///
     /// let mut task = Task::new(
-    ///     TaskId("task-001".to_string()),
+    ///     TaskId::from("task-001"),
     ///     "Retry Task".to_string(),
     ///     "".to_string(),
     /// );
@@ -883,13 +923,13 @@ pub struct AppState {
 /// use codirigent_core::{QueueState, TaskId};
 ///
 /// let mut state = QueueState::default();
-/// state.order.push(TaskId("task-001".to_string()));
-/// state.order.push(TaskId("task-002".to_string()));
+/// state.order.push(TaskId::from("task-001"));
+/// state.order.push(TaskId::from("task-002"));
 ///
 /// // task-003 is blocked by task-001
 /// state.blocked.insert(
-///     TaskId("task-003".to_string()),
-///     vec![TaskId("task-001".to_string())],
+///     TaskId::from("task-003"),
+///     vec![TaskId::from("task-001")],
 /// );
 /// ```
 #[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq)]
@@ -1204,15 +1244,15 @@ mod tests {
     // TaskId tests
     #[test]
     fn test_task_id_display() {
-        let id = TaskId("task-001".to_string());
+        let id = TaskId::from("task-001");
         assert_eq!(format!("{}", id), "task-001");
     }
 
     #[test]
     fn test_task_id_equality() {
-        let id1 = TaskId("task-001".to_string());
-        let id2 = TaskId("task-001".to_string());
-        let id3 = TaskId("task-002".to_string());
+        let id1 = TaskId::from("task-001");
+        let id2 = TaskId::from("task-001");
+        let id3 = TaskId::from("task-002");
         assert_eq!(id1, id2);
         assert_ne!(id1, id3);
     }
@@ -1221,17 +1261,39 @@ mod tests {
     fn test_task_id_hash() {
         use std::collections::HashSet;
         let mut set = HashSet::new();
-        set.insert(TaskId("task-001".to_string()));
-        assert!(set.contains(&TaskId("task-001".to_string())));
-        assert!(!set.contains(&TaskId("task-002".to_string())));
+        set.insert(TaskId::from("task-001"));
+        assert!(set.contains(&TaskId::from("task-001")));
+        assert!(!set.contains(&TaskId::from("task-002")));
     }
 
     #[test]
     fn test_task_id_serialization() {
-        let id = TaskId("task-001".to_string());
+        let id = TaskId::from("task-001");
         let json = serde_json::to_string(&id).unwrap();
         let parsed: TaskId = serde_json::from_str(&json).unwrap();
         assert_eq!(id, parsed);
+    }
+
+    #[test]
+    fn test_task_id_cheap_clone() {
+        use std::sync::Arc;
+        let id1 = TaskId(Arc::from("task-001"));
+        let id2 = id1.clone();
+        // Arc clones should point to same allocation
+        assert!(Arc::ptr_eq(&id1.0, &id2.0));
+    }
+
+    #[test]
+    fn test_task_id_from_string() {
+        let id = TaskId::from("task-001");
+        assert_eq!(id.to_string(), "task-001");
+    }
+
+    #[test]
+    fn test_task_id_from_str_slice() {
+        let s = "task-002";
+        let id = TaskId::from(s);
+        assert_eq!(id.to_string(), "task-002");
     }
 
     // SessionStatus tests
@@ -1439,14 +1501,14 @@ mod tests {
     fn test_queue_state_serialization() {
         let state = QueueState {
             order: vec![
-                TaskId("task-001".to_string()),
-                TaskId("task-002".to_string()),
+                TaskId::from("task-001"),
+                TaskId::from("task-002"),
             ],
             blocked: {
                 let mut m = HashMap::new();
                 m.insert(
-                    TaskId("task-003".to_string()),
-                    vec![TaskId("task-001".to_string())],
+                    TaskId::from("task-003"),
+                    vec![TaskId::from("task-001")],
                 );
                 m
             },
@@ -1456,7 +1518,7 @@ mod tests {
         let json = serde_json::to_string_pretty(&state).unwrap();
         let parsed: QueueState = serde_json::from_str(&json).unwrap();
         assert_eq!(parsed.order.len(), 2);
-        assert!(parsed.blocked.contains_key(&TaskId("task-003".to_string())));
+        assert!(parsed.blocked.contains_key(&TaskId::from("task-003")));
         assert!(parsed.updated_at.is_some());
     }
 
@@ -1465,7 +1527,7 @@ mod tests {
         let state1 = QueueState::default();
         let state2 = QueueState::default();
         let mut state3 = QueueState::default();
-        state3.order.push(TaskId("task-001".to_string()));
+        state3.order.push(TaskId::from("task-001"));
         assert_eq!(state1, state2);
         assert_ne!(state1, state3);
     }
@@ -1696,7 +1758,7 @@ mod tests {
             PathBuf::from("/home/user"),
         );
         session.status = SessionStatus::Working;
-        session.current_task = Some(TaskId("task-001".to_string()));
+        session.current_task = Some(TaskId::from("task-001"));
         session.context_usage = Some(0.75);
         session.group = Some("backend".to_string());
         session.color = Some("#FF5733".to_string());
@@ -1705,7 +1767,7 @@ mod tests {
         let parsed: Session = serde_json::from_str(&json).unwrap();
 
         assert_eq!(parsed.status, SessionStatus::Working);
-        assert_eq!(parsed.current_task, Some(TaskId("task-001".to_string())));
+        assert_eq!(parsed.current_task, Some(TaskId::from("task-001")));
         assert_eq!(parsed.context_usage, Some(0.75));
         assert_eq!(parsed.group, Some("backend".to_string()));
         assert_eq!(parsed.color, Some("#FF5733".to_string()));
@@ -1715,11 +1777,11 @@ mod tests {
     #[test]
     fn test_task_new() {
         let task = Task::new(
-            TaskId("task-001".to_string()),
+            TaskId::from("task-001"),
             "Test Task".to_string(),
             "A test task description".to_string(),
         );
-        assert_eq!(task.id, TaskId("task-001".to_string()));
+        assert_eq!(task.id, TaskId::from("task-001"));
         assert_eq!(task.title, "Test Task");
         assert_eq!(task.description, "A test task description");
         assert_eq!(task.priority, TaskPriority::Medium);
@@ -1738,7 +1800,7 @@ mod tests {
     #[test]
     fn test_task_serialization() {
         let task = Task::new(
-            TaskId("task-001".to_string()),
+            TaskId::from("task-001"),
             "Test".to_string(),
             "Description".to_string(),
         );
@@ -1751,13 +1813,13 @@ mod tests {
     #[test]
     fn test_task_with_all_fields() {
         let mut task = Task::new(
-            TaskId("task-001".to_string()),
+            TaskId::from("task-001"),
             "Full Task".to_string(),
             "Full description".to_string(),
         );
         task.priority = TaskPriority::High;
         task.status = TaskStatus::Working;
-        task.dependencies = vec![TaskId("task-000".to_string())];
+        task.dependencies = vec![TaskId::from("task-000")];
         task.tags = vec!["backend".to_string(), "urgent".to_string()];
         task.assigned_session = Some(SessionId(1));
         task.assigned_at = Some(chrono::Utc::now());
@@ -1780,7 +1842,7 @@ mod tests {
     #[test]
     fn test_task_with_verification() {
         let mut task = Task::new(
-            TaskId("task-002".to_string()),
+            TaskId::from("task-002"),
             "Verified Task".to_string(),
             "Run with tests".to_string(),
         );
@@ -1799,7 +1861,7 @@ mod tests {
     #[test]
     fn test_task_retry_logic() {
         let mut task = Task::new(
-            TaskId("task-003".to_string()),
+            TaskId::from("task-003"),
             "Retry Task".to_string(),
             "May fail".to_string(),
         );
@@ -1819,7 +1881,7 @@ mod tests {
     #[test]
     fn test_task_project_dir_and_plan_file() {
         let mut task = Task::new(
-            TaskId("task-001".to_string()),
+            TaskId::from("task-001"),
             "Project Task".to_string(),
             "Description".to_string(),
         );
@@ -1866,7 +1928,7 @@ mod tests {
     #[test]
     fn test_task_project_dir_skip_serializing_if_none() {
         let task = Task::new(
-            TaskId("task-001".to_string()),
+            TaskId::from("task-001"),
             "Task".to_string(),
             "Desc".to_string(),
         );
@@ -1878,41 +1940,41 @@ mod tests {
     #[test]
     fn test_task_dependencies_satisfied_empty() {
         let task = Task::new(
-            TaskId("task-001".to_string()),
+            TaskId::from("task-001"),
             "No deps".to_string(),
             "".to_string(),
         );
         assert!(task.dependencies_satisfied(&[]));
-        assert!(task.dependencies_satisfied(&[TaskId("task-other".to_string())]));
+        assert!(task.dependencies_satisfied(&[TaskId::from("task-other")]));
     }
 
     #[test]
     fn test_task_dependencies_satisfied_with_deps() {
         let mut task = Task::new(
-            TaskId("task-002".to_string()),
+            TaskId::from("task-002"),
             "Has deps".to_string(),
             "".to_string(),
         );
         task.dependencies = vec![
-            TaskId("task-001".to_string()),
-            TaskId("task-000".to_string()),
+            TaskId::from("task-001"),
+            TaskId::from("task-000"),
         ];
 
         // Not satisfied
         assert!(!task.dependencies_satisfied(&[]));
-        assert!(!task.dependencies_satisfied(&[TaskId("task-001".to_string())]));
+        assert!(!task.dependencies_satisfied(&[TaskId::from("task-001")]));
 
         // Satisfied
         assert!(task.dependencies_satisfied(&[
-            TaskId("task-001".to_string()),
-            TaskId("task-000".to_string()),
+            TaskId::from("task-001"),
+            TaskId::from("task-000"),
         ]));
 
         // Satisfied with extra tasks
         assert!(task.dependencies_satisfied(&[
-            TaskId("task-001".to_string()),
-            TaskId("task-000".to_string()),
-            TaskId("task-extra".to_string()),
+            TaskId::from("task-001"),
+            TaskId::from("task-000"),
+            TaskId::from("task-extra"),
         ]));
     }
 

@@ -157,7 +157,7 @@ impl std::fmt::Display for ReviewDecision {
 /// use std::path::PathBuf;
 ///
 /// let state = PipelineState::new(
-///     TaskId("task-001".to_string()),
+///     TaskId::from("task-001"),
 ///     SessionId(1),
 ///     PathBuf::from("/project"),
 /// );
@@ -206,7 +206,7 @@ impl PipelineState {
     /// use std::path::PathBuf;
     ///
     /// let state = PipelineState::new(
-    ///     TaskId("task-001".to_string()),
+    ///     TaskId::from("task-001"),
     ///     SessionId(1),
     ///     PathBuf::from("/project"),
     /// );
@@ -240,7 +240,7 @@ impl PipelineState {
     /// use std::path::PathBuf;
     ///
     /// let mut state = PipelineState::new(
-    ///     TaskId("task-001".to_string()),
+    ///     TaskId::from("task-001"),
     ///     SessionId(1),
     ///     PathBuf::from("/project"),
     /// );
@@ -266,7 +266,7 @@ impl PipelineState {
     /// use std::path::PathBuf;
     ///
     /// let mut state = PipelineState::new(
-    ///     TaskId("task-001".to_string()),
+    ///     TaskId::from("task-001"),
     ///     SessionId(1),
     ///     PathBuf::from("/project"),
     /// );
@@ -290,7 +290,7 @@ impl PipelineState {
     /// use std::path::PathBuf;
     ///
     /// let mut state = PipelineState::new(
-    ///     TaskId("task-001".to_string()),
+    ///     TaskId::from("task-001"),
     ///     SessionId(1),
     ///     PathBuf::from("/project"),
     /// );
@@ -316,7 +316,7 @@ impl PipelineState {
     /// use std::path::PathBuf;
     ///
     /// let mut state = PipelineState::new(
-    ///     TaskId("task-001".to_string()),
+    ///     TaskId::from("task-001"),
     ///     SessionId(1),
     ///     PathBuf::from("/project"),
     /// );
@@ -351,7 +351,7 @@ impl PipelineState {
 /// use codirigent_core::{SessionId, TaskId};
 ///
 /// let event = PipelineEvent::StageChanged {
-///     task_id: TaskId("task-001".to_string()),
+///     task_id: TaskId::from("task-001"),
 ///     stage: PipelineStage::Verifying,
 /// };
 /// assert!(matches!(event, PipelineEvent::StageChanged { .. }));
@@ -450,14 +450,14 @@ pub enum PipelineEvent {
 /// async fn example<P: VerificationPipeline>(pipeline: &P) -> anyhow::Result<()> {
 ///     // Start pipeline for a completed task
 ///     pipeline.start(
-///         TaskId("task-001".to_string()),
+///         TaskId::from("task-001"),
 ///         SessionId(1),
 ///         PathBuf::from("/project"),
 ///     ).await?;
 ///
 ///     // Later, submit review
 ///     pipeline.submit_review(
-///         &TaskId("task-001".to_string()),
+///         &TaskId::from("task-001"),
 ///         ReviewDecision::Approve,
 ///     ).await?;
 ///
@@ -770,11 +770,11 @@ mod tests {
     #[test]
     fn test_pipeline_state_new() {
         let state = PipelineState::new(
-            TaskId("task-001".to_string()),
+            TaskId::from("task-001"),
             SessionId(1),
             PathBuf::from("/tmp/project"),
         );
-        assert_eq!(state.task_id, TaskId("task-001".to_string()));
+        assert_eq!(state.task_id, TaskId::from("task-001"));
         assert_eq!(state.session_id, SessionId(1));
         assert_eq!(state.working_dir, PathBuf::from("/tmp/project"));
         assert_eq!(state.stage, PipelineStage::TaskCompleted);
@@ -789,7 +789,7 @@ mod tests {
     #[test]
     fn test_pipeline_state_is_terminal() {
         let mut state = PipelineState::new(
-            TaskId("task-001".to_string()),
+            TaskId::from("task-001"),
             SessionId(1),
             PathBuf::from("/tmp"),
         );
@@ -815,7 +815,7 @@ mod tests {
     #[test]
     fn test_pipeline_state_is_awaiting_human() {
         let mut state = PipelineState::new(
-            TaskId("task-001".to_string()),
+            TaskId::from("task-001"),
             SessionId(1),
             PathBuf::from("/tmp"),
         );
@@ -835,7 +835,7 @@ mod tests {
     #[test]
     fn test_pipeline_state_complete() {
         let mut state = PipelineState::new(
-            TaskId("task-001".to_string()),
+            TaskId::from("task-001"),
             SessionId(1),
             PathBuf::from("/tmp"),
         );
@@ -849,7 +849,7 @@ mod tests {
     #[test]
     fn test_pipeline_state_block() {
         let mut state = PipelineState::new(
-            TaskId("task-001".to_string()),
+            TaskId::from("task-001"),
             SessionId(1),
             PathBuf::from("/tmp"),
         );
@@ -862,7 +862,7 @@ mod tests {
     #[test]
     fn test_pipeline_state_duration() {
         let state = PipelineState::new(
-            TaskId("task-001".to_string()),
+            TaskId::from("task-001"),
             SessionId(1),
             PathBuf::from("/tmp"),
         );
@@ -873,7 +873,7 @@ mod tests {
     #[test]
     fn test_pipeline_state_serialization() {
         let mut state = PipelineState::new(
-            TaskId("task-001".to_string()),
+            TaskId::from("task-001"),
             SessionId(1),
             PathBuf::from("/tmp/project"),
         );
@@ -893,7 +893,7 @@ mod tests {
     #[test]
     fn test_pipeline_state_clone() {
         let state = PipelineState::new(
-            TaskId("task-001".to_string()),
+            TaskId::from("task-001"),
             SessionId(1),
             PathBuf::from("/tmp"),
         );
@@ -905,7 +905,7 @@ mod tests {
     #[test]
     fn test_pipeline_state_debug() {
         let state = PipelineState::new(
-            TaskId("task-001".to_string()),
+            TaskId::from("task-001"),
             SessionId(1),
             PathBuf::from("/tmp"),
         );
@@ -919,7 +919,7 @@ mod tests {
     #[test]
     fn test_pipeline_event_started() {
         let event = PipelineEvent::Started {
-            task_id: TaskId("task-001".to_string()),
+            task_id: TaskId::from("task-001"),
             session_id: SessionId(1),
         };
         assert!(matches!(event, PipelineEvent::Started { .. }));
@@ -928,7 +928,7 @@ mod tests {
     #[test]
     fn test_pipeline_event_stage_changed() {
         let event = PipelineEvent::StageChanged {
-            task_id: TaskId("task-001".to_string()),
+            task_id: TaskId::from("task-001"),
             stage: PipelineStage::AwaitingReview,
         };
         if let PipelineEvent::StageChanged { stage, .. } = event {
@@ -941,7 +941,7 @@ mod tests {
     #[test]
     fn test_pipeline_event_verification_completed() {
         let event = PipelineEvent::VerificationCompleted {
-            task_id: TaskId("task-001".to_string()),
+            task_id: TaskId::from("task-001"),
             passed: true,
         };
         if let PipelineEvent::VerificationCompleted { passed, .. } = event {
@@ -954,7 +954,7 @@ mod tests {
     #[test]
     fn test_pipeline_event_awaiting_review() {
         let event = PipelineEvent::AwaitingReview {
-            task_id: TaskId("task-001".to_string()),
+            task_id: TaskId::from("task-001"),
         };
         assert!(matches!(event, PipelineEvent::AwaitingReview { .. }));
     }
@@ -962,7 +962,7 @@ mod tests {
     #[test]
     fn test_pipeline_event_reviewed() {
         let event = PipelineEvent::Reviewed {
-            task_id: TaskId("task-001".to_string()),
+            task_id: TaskId::from("task-001"),
             decision: ReviewDecision::Approve,
         };
         if let PipelineEvent::Reviewed { decision, .. } = event {
@@ -975,7 +975,7 @@ mod tests {
     #[test]
     fn test_pipeline_event_note_generated() {
         let event = PipelineEvent::NoteGenerated {
-            task_id: TaskId("task-001".to_string()),
+            task_id: TaskId::from("task-001"),
             note_path: PathBuf::from("/notes/task-001.md"),
         };
         if let PipelineEvent::NoteGenerated { note_path, .. } = event {
@@ -988,7 +988,7 @@ mod tests {
     #[test]
     fn test_pipeline_event_completed() {
         let event = PipelineEvent::Completed {
-            task_id: TaskId("task-001".to_string()),
+            task_id: TaskId::from("task-001"),
         };
         assert!(matches!(event, PipelineEvent::Completed { .. }));
     }
@@ -996,7 +996,7 @@ mod tests {
     #[test]
     fn test_pipeline_event_failed() {
         let event = PipelineEvent::Failed {
-            task_id: TaskId("task-001".to_string()),
+            task_id: TaskId::from("task-001"),
             error: "Verification timeout".to_string(),
         };
         if let PipelineEvent::Failed { error, .. } = event {
@@ -1009,7 +1009,7 @@ mod tests {
     #[test]
     fn test_pipeline_event_sent_to_session() {
         let event = PipelineEvent::SentToSession {
-            task_id: TaskId("task-001".to_string()),
+            task_id: TaskId::from("task-001"),
             feedback: "Please fix the tests".to_string(),
         };
         if let PipelineEvent::SentToSession { feedback, .. } = event {
@@ -1022,7 +1022,7 @@ mod tests {
     #[test]
     fn test_pipeline_event_clone() {
         let event = PipelineEvent::Completed {
-            task_id: TaskId("task-001".to_string()),
+            task_id: TaskId::from("task-001"),
         };
         let cloned = event.clone();
         assert!(matches!(cloned, PipelineEvent::Completed { .. }));
@@ -1031,7 +1031,7 @@ mod tests {
     #[test]
     fn test_pipeline_event_debug() {
         let event = PipelineEvent::Started {
-            task_id: TaskId("task-001".to_string()),
+            task_id: TaskId::from("task-001"),
             session_id: SessionId(1),
         };
         let debug_str = format!("{:?}", event);
@@ -1060,7 +1060,7 @@ mod tests {
     #[test]
     fn test_failure_formatter_verification() {
         let formatter = MockFormatter;
-        let status = VerificationStatus::new(TaskId("task-001".to_string()), SessionId(1));
+        let status = VerificationStatus::new(TaskId::from("task-001"), SessionId(1));
         let message = formatter.format_verification_failure(&status);
         assert!(message.contains("0 results"));
         assert!(message.contains("retry 0"));

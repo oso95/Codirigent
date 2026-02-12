@@ -43,7 +43,7 @@ impl WorkspaceView {
             crate::task_board::TaskBoardEvent::TaskAction { task_id, action } => {
                 info!(%task_id, ?action, "Task action triggered");
 
-                let task_id = TaskId(task_id);
+                let task_id = TaskId::from(task_id);
 
                 // Handle Edit outside the lock — it only needs to open a modal
                 if matches!(action, TaskAction::Edit) {
@@ -214,7 +214,7 @@ impl WorkspaceView {
             }
             crate::task_board::TaskBoardEvent::ConfirmAssignment { task_id } => {
                 info!(%task_id, "Confirming pending assignment");
-                let task_id = TaskId(task_id);
+                let task_id = TaskId::from(task_id);
 
                 // Confirm the pending assignment and get the prompt
                 let (prompt, session_id) = {
@@ -274,7 +274,7 @@ impl WorkspaceView {
             }
             crate::task_board::TaskBoardEvent::RejectAssignment { task_id } => {
                 info!(%task_id, "Rejecting pending assignment");
-                let task_id = TaskId(task_id);
+                let task_id = TaskId::from(task_id);
                 if let Ok(mut manager) = self.task_manager.lock() {
                     manager.assignment_mut().reject_assignment(&task_id);
                 }

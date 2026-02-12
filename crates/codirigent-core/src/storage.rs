@@ -357,7 +357,7 @@ impl StorageService for FileStorageService {
             if path.extension().is_some_and(|e| e == "json") {
                 if let Some(stem) = path.file_stem() {
                     if let Some(name) = stem.to_str() {
-                        ids.push(TaskId(name.to_string()));
+                        ids.push(TaskId::from(name));
                     }
                 }
             }
@@ -498,7 +498,7 @@ mod tests {
         let temp = TempDir::new().unwrap();
         let storage = FileStorageService::new(temp.path()).unwrap();
 
-        let task_id = TaskId("task-001".to_string());
+        let task_id = TaskId::from("task-001");
         let expected = temp
             .path()
             .join(".codirigent")
@@ -513,7 +513,7 @@ mod tests {
         let storage = FileStorageService::new(temp.path()).unwrap();
 
         // Task IDs with path traversal attempts should be sanitized
-        let dangerous_id = TaskId("../../../etc/passwd".to_string());
+        let dangerous_id = TaskId::from("../../../etc/passwd");
         let path = storage.task_path(&dangerous_id);
 
         // Should not contain path traversal - dots and slashes replaced with underscores
@@ -566,7 +566,7 @@ mod tests {
         let storage = FileStorageService::new(temp.path()).unwrap();
 
         // Valid task IDs should be preserved exactly
-        let valid_id = TaskId("task-001_feature_ABC123".to_string());
+        let valid_id = TaskId::from("task-001_feature_ABC123");
         let path = storage.task_path(&valid_id);
         let filename = path.file_name().unwrap().to_str().unwrap();
 
@@ -703,7 +703,7 @@ mod tests {
             PathBuf::from("/home/user/project"),
         );
         session.status = SessionStatus::Working;
-        session.current_task = Some(TaskId("task-001".to_string()));
+        session.current_task = Some(TaskId::from("task-001"));
         session.context_usage = Some(0.75);
         session.group = Some("backend".to_string());
         session.color = Some("#FF5733".to_string());
@@ -718,7 +718,7 @@ mod tests {
         assert_eq!(loaded_session.status, SessionStatus::Working);
         assert_eq!(
             loaded_session.current_task,
-            Some(TaskId("task-001".to_string()))
+            Some(TaskId::from("task-001"))
         );
         assert_eq!(loaded_session.context_usage, Some(0.75));
         assert_eq!(loaded_session.group, Some("backend".to_string()));
@@ -738,7 +738,7 @@ mod tests {
         let loaded = storage.load_task(&task.id).unwrap();
         assert!(loaded.is_some());
         let loaded = loaded.unwrap();
-        assert_eq!(loaded.id, TaskId("task-001".to_string()));
+        assert_eq!(loaded.id, TaskId::from("task-001"));
         assert_eq!(loaded.title, "Test Task");
     }
 
@@ -748,7 +748,7 @@ mod tests {
         let storage = FileStorageService::new(temp.path()).unwrap();
 
         let result = storage
-            .load_task(&TaskId("nonexistent".to_string()))
+            .load_task(&TaskId::from("nonexistent"))
             .unwrap();
         assert!(result.is_none());
     }
@@ -790,7 +790,7 @@ mod tests {
         let mut task = create_test_task("task-001", "Full Task");
         task.priority = TaskPriority::Critical;
         task.status = TaskStatus::Working;
-        task.dependencies = vec![TaskId("task-000".to_string())];
+        task.dependencies = vec![TaskId::from("task-000")];
         task.tags = vec!["backend".to_string(), "urgent".to_string()];
         task.assigned_session = Some(SessionId(1));
         task.assigned_at = Some(chrono::Utc::now());
@@ -895,7 +895,7 @@ mod tests {
         let storage = FileStorageService::new(temp.path()).unwrap();
 
         // Deleting a non-existent task should not error
-        let result = storage.delete_task(&TaskId("nonexistent".to_string()));
+        let result = storage.delete_task(&TaskId::from("nonexistent"));
         assert!(result.is_ok());
     }
 
@@ -1031,7 +1031,7 @@ mod tests {
         let storage = FileStorageService::new(temp.path()).unwrap();
 
         // Write invalid JSON to task file
-        let task_id = TaskId("corrupted".to_string());
+        let task_id = TaskId::from("corrupted");
         fs::write(storage.task_path(&task_id), "not valid json").unwrap();
 
         let result = storage.load_task(&task_id);
@@ -1048,7 +1048,7 @@ mod tests {
         let task = create_test_task("", "Empty ID Task");
         storage.save_task(&task).unwrap();
 
-        let loaded = storage.load_task(&TaskId("".to_string())).unwrap();
+        let loaded = storage.load_task(&TaskId::from("")).unwrap();
         assert!(loaded.is_some());
     }
 
@@ -1068,7 +1068,7 @@ mod tests {
 
         // Loading with original ID works because both use same sanitization
         let loaded = storage
-            .load_task(&TaskId("task with spaces".to_string()))
+            .load_task(&TaskId::from("task with spaces"))
             .unwrap();
         assert!(loaded.is_some());
         assert_eq!(loaded.unwrap().title, "Spaced Task");

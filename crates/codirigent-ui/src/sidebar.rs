@@ -304,7 +304,7 @@ impl SessionSidebar {
         indent_level: u8,
     ) -> SidebarItem {
         // Get task description from current_task if present
-        let task = session.current_task.as_ref().map(|t| t.0.clone());
+        let task = session.current_task.as_ref().map(|t| t.0.to_string());
 
         SidebarItem::Session {
             id: session.id,

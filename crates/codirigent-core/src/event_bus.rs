@@ -229,14 +229,14 @@ mod tests {
             },
             CodirigentEvent::SessionFocused { id: SessionId(1) },
             CodirigentEvent::TaskCreated {
-                id: TaskId("t".to_string()),
+                id: TaskId::from("t"),
             },
             CodirigentEvent::TaskAssigned {
-                task_id: TaskId("t".to_string()),
+                task_id: TaskId::from("t"),
                 session_id: SessionId(1),
             },
             CodirigentEvent::TaskCompleted {
-                task_id: TaskId("t".to_string()),
+                task_id: TaskId::from("t"),
                 success: true,
             },
             CodirigentEvent::PathDraggedToSession {

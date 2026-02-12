@@ -31,7 +31,7 @@
 //!
 //! // Create a task
 //! let task = Task::new(
-//!     TaskId("task-001".to_string()),
+//!     TaskId::from("task-001"),
 //!     "Implement feature".to_string(),
 //!     "Add new feature X".to_string(),
 //! );
@@ -109,7 +109,7 @@ pub struct TaskManagerConfig {
 /// let mut manager = TaskManager::new(TaskManagerConfig::default(), storage, event_bus);
 ///
 /// // Create and manage tasks
-/// let task = Task::new(TaskId("task-001".to_string()), "Test".to_string(), "".to_string());
+/// let task = Task::new(TaskId::from("task-001"), "Test".to_string(), "".to_string());
 /// manager.create_task(task).unwrap();
 /// ```
 pub struct TaskManager {
@@ -237,7 +237,7 @@ impl TaskManager {
     ///
     /// ```ignore
     /// let task = Task::new(
-    ///     TaskId("task-001".to_string()),
+    ///     TaskId::from("task-001"),
     ///     "Test Task".to_string(),
     ///     "Description".to_string(),
     /// );
@@ -1039,7 +1039,7 @@ mod tests {
         let (mut manager, _temp) = create_task_manager();
 
         let task = Task::new(
-            TaskId("task-001".to_string()),
+            TaskId::from("task-001"),
             "Test Task".to_string(),
             "Description".to_string(),
         );
@@ -1053,13 +1053,13 @@ mod tests {
         let (mut manager, _temp) = create_task_manager();
 
         let task = Task::new(
-            TaskId("task-001".to_string()),
+            TaskId::from("task-001"),
             "Test".to_string(),
             "".to_string(),
         );
         manager.create_task(task).unwrap();
 
-        let retrieved = manager.get_task(&TaskId("task-001".to_string()));
+        let retrieved = manager.get_task(&TaskId::from("task-001"));
         assert!(retrieved.is_some());
         assert_eq!(retrieved.unwrap().title, "Test");
     }
@@ -1067,7 +1067,7 @@ mod tests {
     #[test]
     fn test_get_task_not_found() {
         let (manager, _temp) = create_task_manager();
-        let retrieved = manager.get_task(&TaskId("nonexistent".to_string()));
+        let retrieved = manager.get_task(&TaskId::from("nonexistent"));
         assert!(retrieved.is_none());
     }
 
@@ -1076,12 +1076,12 @@ mod tests {
         let (mut manager, _temp) = create_task_manager();
 
         let task1 = Task::new(
-            TaskId("task-001".to_string()),
+            TaskId::from("task-001"),
             "Task 1".to_string(),
             "".to_string(),
         );
         let task2 = Task::new(
-            TaskId("task-002".to_string()),
+            TaskId::from("task-002"),
             "Task 2".to_string(),
             "".to_string(),
         );
@@ -1097,7 +1097,7 @@ mod tests {
         let (mut manager, _temp) = create_task_manager();
 
         let task = Task::new(
-            TaskId("task-001".to_string()),
+            TaskId::from("task-001"),
             "Test".to_string(),
             "".to_string(),
         );
@@ -1105,7 +1105,7 @@ mod tests {
         assert_eq!(manager.queued_tasks().len(), 1);
 
         manager
-            .delete_task(&TaskId("task-001".to_string()))
+            .delete_task(&TaskId::from("task-001"))
             .unwrap();
         assert!(manager.queued_tasks().is_empty());
     }
@@ -1115,7 +1115,7 @@ mod tests {
         let (mut manager, _temp) = create_task_manager();
 
         let task = Task::new(
-            TaskId("task-001".to_string()),
+            TaskId::from("task-001"),
             "Test".to_string(),
             "".to_string(),
         );
@@ -1140,7 +1140,7 @@ mod tests {
         let (mut manager, _temp) = create_task_manager();
 
         let task = Task::new(
-            TaskId("task-001".to_string()),
+            TaskId::from("task-001"),
             "Test".to_string(),
             "".to_string(),
         );
@@ -1175,7 +1175,7 @@ mod tests {
         let (mut manager, _temp) = create_task_manager();
 
         // Should not panic even if no pending assignment
-        manager.reject_assignment(&TaskId("nonexistent".to_string()));
+        manager.reject_assignment(&TaskId::from("nonexistent"));
     }
 
     // ========== Lifecycle Tests ==========
@@ -1185,13 +1185,13 @@ mod tests {
         let (mut manager, _temp) = create_task_manager();
 
         let task = Task::new(
-            TaskId("task-001".to_string()),
+            TaskId::from("task-001"),
             "Test".to_string(),
             "".to_string(),
         );
         manager.create_task(task).unwrap();
 
-        let result = manager.start_task(&TaskId("task-001".to_string()));
+        let result = manager.start_task(&TaskId::from("task-001"));
         assert!(result.is_ok());
     }
 
@@ -1200,7 +1200,7 @@ mod tests {
         let (mut manager, _temp) = create_task_manager();
 
         let task = Task::new(
-            TaskId("task-001".to_string()),
+            TaskId::from("task-001"),
             "Test".to_string(),
             "".to_string(),
         );
@@ -1215,12 +1215,12 @@ mod tests {
 
         // Approve
         manager
-            .approve_task(&TaskId("task-001".to_string()))
+            .approve_task(&TaskId::from("task-001"))
             .unwrap();
 
         assert!(manager
             .completed_task_ids()
-            .contains(&TaskId("task-001".to_string())));
+            .contains(&TaskId::from("task-001")));
     }
 
     #[test]
@@ -1228,13 +1228,13 @@ mod tests {
         let (mut manager, _temp) = create_task_manager();
 
         let task = Task::new(
-            TaskId("task-001".to_string()),
+            TaskId::from("task-001"),
             "Test Task".to_string(),
             "Task description".to_string(),
         );
         manager.create_task(task).unwrap();
 
-        let prompt = manager.retry_task(&TaskId("task-001".to_string())).unwrap();
+        let prompt = manager.retry_task(&TaskId::from("task-001")).unwrap();
         assert!(prompt.contains("Test Task"));
     }
 
@@ -1242,7 +1242,7 @@ mod tests {
     fn test_retry_task_not_found() {
         let (mut manager, _temp) = create_task_manager();
 
-        let result = manager.retry_task(&TaskId("nonexistent".to_string()));
+        let result = manager.retry_task(&TaskId::from("nonexistent"));
         assert!(result.is_err());
     }
 
@@ -1319,7 +1319,7 @@ mod tests {
         let (mut manager, _temp) = create_task_manager();
 
         let task = Task::new(
-            TaskId("task-001".to_string()),
+            TaskId::from("task-001"),
             "Test".to_string(),
             "".to_string(),
         );
@@ -1333,7 +1333,7 @@ mod tests {
         let (mut manager, _temp) = create_task_manager();
 
         let task = Task::new(
-            TaskId("task-001".to_string()),
+            TaskId::from("task-001"),
             "Test".to_string(),
             "".to_string(),
         );
@@ -1350,7 +1350,7 @@ mod tests {
         let (mut manager, _temp) = create_task_manager();
 
         let task = Task::new(
-            TaskId("task-001".to_string()),
+            TaskId::from("task-001"),
             "Test".to_string(),
             "".to_string(),
         );
@@ -1359,13 +1359,13 @@ mod tests {
         // Assign first
         manager
             .queue
-            .assign_task(&TaskId("task-001".to_string()), SessionId(1))
+            .assign_task(&TaskId::from("task-001"), SessionId(1))
             .unwrap();
 
-        TaskManagementService::approve(&mut manager, &TaskId("task-001".to_string())).unwrap();
+        TaskManagementService::approve(&mut manager, &TaskId::from("task-001")).unwrap();
         assert!(manager
             .completed_task_ids()
-            .contains(&TaskId("task-001".to_string())));
+            .contains(&TaskId::from("task-001")));
     }
 
     #[test]
@@ -1373,7 +1373,7 @@ mod tests {
         let (mut manager, _temp) = create_task_manager();
 
         let task = Task::new(
-            TaskId("task-001".to_string()),
+            TaskId::from("task-001"),
             "Test".to_string(),
             "".to_string(),
         );
@@ -1391,7 +1391,7 @@ mod tests {
     #[test]
     fn test_task_completion_result_ready_for_review() {
         let result = TaskCompletionResult::ReadyForReview {
-            task_id: TaskId("task-001".to_string()),
+            task_id: TaskId::from("task-001"),
             result: crate::verification::VerificationResult::passed(
                 crate::verification::VerificationCheckType::UnitTest,
                 1000,
@@ -1406,7 +1406,7 @@ mod tests {
     #[test]
     fn test_task_completion_result_needs_retry() {
         let result = TaskCompletionResult::NeedsRetry {
-            task_id: TaskId("task-001".to_string()),
+            task_id: TaskId::from("task-001"),
             message: "Test failed".to_string(),
             retry_count: 1,
         };
@@ -1420,7 +1420,7 @@ mod tests {
     #[test]
     fn test_task_completion_result_blocked() {
         let result = TaskCompletionResult::Blocked {
-            task_id: TaskId("task-001".to_string()),
+            task_id: TaskId::from("task-001"),
             message: "Max retries exceeded".to_string(),
         };
         assert!(matches!(result, TaskCompletionResult::Blocked { .. }));
@@ -1429,7 +1429,7 @@ mod tests {
     #[test]
     fn test_task_completion_result_no_verification() {
         let result = TaskCompletionResult::NoVerification {
-            task_id: TaskId("task-001".to_string()),
+            task_id: TaskId::from("task-001"),
         };
         assert!(matches!(
             result,
@@ -1440,7 +1440,7 @@ mod tests {
     #[test]
     fn test_task_completion_result_debug() {
         let result = TaskCompletionResult::NoVerification {
-            task_id: TaskId("task-001".to_string()),
+            task_id: TaskId::from("task-001"),
         };
         let debug_str = format!("{:?}", result);
         assert!(debug_str.contains("NoVerification"));
@@ -1474,7 +1474,7 @@ mod tests {
 
         // Create and save a task
         let task = Task::new(
-            TaskId("task-001".to_string()),
+            TaskId::from("task-001"),
             "Test".to_string(),
             "".to_string(),
         );
@@ -1501,14 +1501,14 @@ mod tests {
 
         // Task without verification
         let task = Task::new(
-            TaskId("task-001".to_string()),
+            TaskId::from("task-001"),
             "Test".to_string(),
             "".to_string(),
         );
         manager.create_task(task).unwrap();
 
         let result = manager
-            .on_task_complete(&TaskId("task-001".to_string()), temp.path())
+            .on_task_complete(&TaskId::from("task-001"), temp.path())
             .await;
         assert!(result.is_ok());
         assert!(matches!(
@@ -1522,7 +1522,7 @@ mod tests {
         let (mut manager, temp) = create_task_manager();
 
         let result = manager
-            .on_task_complete(&TaskId("nonexistent".to_string()), temp.path())
+            .on_task_complete(&TaskId::from("nonexistent"), temp.path())
             .await;
         assert!(result.is_err());
     }
@@ -1534,7 +1534,7 @@ mod tests {
         let (mut manager, _temp) = create_task_manager();
 
         let task = Task::new(
-            TaskId("task-001".to_string()),
+            TaskId::from("task-001"),
             "Test".to_string(),
             "".to_string(),
         );
@@ -1543,14 +1543,14 @@ mod tests {
         // Assign to session
         manager
             .queue
-            .assign_task(&TaskId("task-001".to_string()), SessionId(42))
+            .assign_task(&TaskId::from("task-001"), SessionId(42))
             .unwrap();
 
         // Find by session
         let result = manager.find_task_by_session(SessionId(42));
         assert!(result.is_some());
         let (task_id, _task) = result.unwrap();
-        assert_eq!(task_id, TaskId("task-001".to_string()));
+        assert_eq!(task_id, TaskId::from("task-001"));
 
         // Not found for different session
         assert!(manager.find_task_by_session(SessionId(99)).is_none());
@@ -1562,14 +1562,14 @@ mod tests {
 
         // Create and assign task
         let task = Task::new(
-            TaskId("task-001".to_string()),
+            TaskId::from("task-001"),
             "Test".to_string(),
             "".to_string(),
         );
         manager.create_task(task).unwrap();
         manager
             .queue
-            .assign_task(&TaskId("task-001".to_string()), SessionId(1))
+            .assign_task(&TaskId::from("task-001"), SessionId(1))
             .unwrap();
 
         // Simulate session starting work
@@ -1580,10 +1580,10 @@ mod tests {
         );
 
         assert!(result.is_some());
-        assert_eq!(result.unwrap(), TaskId("task-001".to_string()));
+        assert_eq!(result.unwrap(), TaskId::from("task-001"));
 
         // Verify task status changed
-        let task = manager.get_task(&TaskId("task-001".to_string())).unwrap();
+        let task = manager.get_task(&TaskId::from("task-001")).unwrap();
         assert_eq!(task.status, TaskStatus::Working);
         assert!(task.started_at.is_some());
     }
@@ -1594,7 +1594,7 @@ mod tests {
 
         // Create and assign task
         let task = Task::new(
-            TaskId("task-001".to_string()),
+            TaskId::from("task-001"),
             "Test".to_string(),
             "".to_string(),
         );
@@ -1602,13 +1602,13 @@ mod tests {
         manager.create_task(task).unwrap();
         manager
             .queue
-            .assign_task(&TaskId("task-001".to_string()), SessionId(1))
+            .assign_task(&TaskId::from("task-001"), SessionId(1))
             .unwrap();
 
         // Update task status to Working via queue
         let task_mut = manager
             .queue
-            .get_task_mut(&TaskId("task-001".to_string()))
+            .get_task_mut(&TaskId::from("task-001"))
             .unwrap();
         task_mut.status = TaskStatus::Working;
 
@@ -1620,10 +1620,10 @@ mod tests {
         );
 
         assert!(result.is_some());
-        assert_eq!(result.unwrap(), TaskId("task-001".to_string()));
+        assert_eq!(result.unwrap(), TaskId::from("task-001"));
 
         // Verify task status changed
-        let task = manager.get_task(&TaskId("task-001".to_string())).unwrap();
+        let task = manager.get_task(&TaskId::from("task-001")).unwrap();
         assert_eq!(task.status, TaskStatus::Review);
     }
 
@@ -1633,20 +1633,20 @@ mod tests {
 
         // Create and assign task
         let task = Task::new(
-            TaskId("task-001".to_string()),
+            TaskId::from("task-001"),
             "Test".to_string(),
             "".to_string(),
         );
         manager.create_task(task).unwrap();
         manager
             .queue
-            .assign_task(&TaskId("task-001".to_string()), SessionId(1))
+            .assign_task(&TaskId::from("task-001"), SessionId(1))
             .unwrap();
 
         // Update task status to Working
         let task_mut = manager
             .queue
-            .get_task_mut(&TaskId("task-001".to_string()))
+            .get_task_mut(&TaskId::from("task-001"))
             .unwrap();
         task_mut.status = TaskStatus::Working;
 
@@ -1658,10 +1658,10 @@ mod tests {
         );
 
         assert!(result.is_some());
-        assert_eq!(result.unwrap(), TaskId("task-001".to_string()));
+        assert_eq!(result.unwrap(), TaskId::from("task-001"));
 
         // Verify task status changed
-        let task = manager.get_task(&TaskId("task-001".to_string())).unwrap();
+        let task = manager.get_task(&TaskId::from("task-001")).unwrap();
         assert_eq!(task.status, TaskStatus::Blocked);
         assert!(task.completed_at.is_some());
     }
@@ -1686,14 +1686,14 @@ mod tests {
 
         // Create and assign task
         let task = Task::new(
-            TaskId("task-001".to_string()),
+            TaskId::from("task-001"),
             "Test".to_string(),
             "".to_string(),
         );
         manager.create_task(task).unwrap();
         manager
             .queue
-            .assign_task(&TaskId("task-001".to_string()), SessionId(1))
+            .assign_task(&TaskId::from("task-001"), SessionId(1))
             .unwrap();
 
         // Simulate session needing attention
@@ -1712,7 +1712,7 @@ mod tests {
         let (mut manager, _temp) = create_task_manager();
 
         let task = Task::new(
-            TaskId("task-001".to_string()),
+            TaskId::from("task-001"),
             "Test".to_string(),
             "".to_string(),
         );
@@ -1720,7 +1720,7 @@ mod tests {
 
         // Transition to same status should be no-op
         let result = manager.transition_task_status(
-            &TaskId("task-001".to_string()),
+            &TaskId::from("task-001"),
             TaskStatus::Queued,
             None,
         );

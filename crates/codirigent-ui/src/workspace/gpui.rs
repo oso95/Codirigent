@@ -432,7 +432,7 @@ impl WorkspaceView {
                         .lock()
                         .ok()
                         .and_then(|mgr| mgr.get_task(task_id).map(|t| t.title.clone()));
-                    header.task = Some(title.unwrap_or_else(|| task_id.0.clone()));
+                    header.task = Some(title.unwrap_or_else(|| task_id.0.to_string()));
                 } else {
                     header.task = None;
                 }

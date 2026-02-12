@@ -181,7 +181,7 @@ impl WorkspaceView {
             }
         } else {
             // Create new task
-            let task_id = TaskId(format!("task-{}", self.next_session_id));
+            let task_id = TaskId::from(format!("task-{}", self.next_session_id));
             self.next_session_id += 1;
 
             let mut task = Task::new(task_id.clone(), title, description);
