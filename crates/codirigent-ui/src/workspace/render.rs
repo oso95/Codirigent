@@ -1621,7 +1621,7 @@ impl WorkspaceView {
         }
 
         // Worktrees section
-        let worktrees = self.worktree_panel.worktrees();
+        let worktrees = self.project.worktree_panel.worktrees();
         if !worktrees.is_empty() {
             // Section divider + header
             content = content.child(
@@ -1712,9 +1712,9 @@ impl WorkspaceView {
         }
 
         // Branches section — show branches not already in a worktree
-        let available_branches = self.worktree_panel.available_branches();
+        let available_branches = self.project.worktree_panel.available_branches();
         let worktree_branches: Vec<&str> = self
-            .worktree_panel
+            .project.worktree_panel
             .worktrees()
             .iter()
             .map(|wt| wt.branch.as_str())
@@ -1754,7 +1754,7 @@ impl WorkspaceView {
         }
 
         // Footer — summary counts
-        let wt_count = self.worktree_panel.worktrees().len();
+        let wt_count = self.project.worktree_panel.worktrees().len();
         let branch_count = available_branches.len();
         if wt_count > 0 || branch_count > 0 {
             content = content.child(
@@ -1832,19 +1832,19 @@ impl WorkspaceView {
 
         // Project root name for sub-header
         let root_name = self
-            .project_root
+            .project.project_root
             .as_ref()
             .and_then(|p| p.file_name())
             .and_then(|n| n.to_str())
             .unwrap_or("Project")
             .to_string();
 
-        let show_hidden = self.file_tree.show_hidden();
-        let item_count = self.file_tree.visible_count();
+        let show_hidden = self.project.file_tree.show_hidden();
+        let item_count = self.project.file_tree.visible_count();
 
         // Collect items into owned vec for the closure
         let items: Vec<crate::sidebar::FileTreeRenderItem> =
-            self.file_tree.visible_items().to_vec();
+            self.project.file_tree.visible_items().to_vec();
 
         // Build scrollable tree rows
         let mut tree_content = div()
@@ -1908,9 +1908,9 @@ impl WorkspaceView {
                                     .on_mouse_down(
                                         MouseButton::Left,
                                         cx.listener(|this, _, _, cx| {
-                                            let new_val = !this.file_tree.show_hidden();
-                                            this.file_tree.set_show_hidden(new_val);
-                                            if let Some(tree) = this.file_tree_model.as_mut() {
+                                            let new_val = !this.project.file_tree.show_hidden();
+                                            this.project.file_tree.set_show_hidden(new_val);
+                                            if let Some(tree) = this.project.file_tree_model.as_mut() {
                                                 tree.set_show_hidden(new_val);
                                                 if let Err(e) = tree.refresh() {
                                                     tracing::warn!(
@@ -1943,7 +1943,7 @@ impl WorkspaceView {
                                     .on_mouse_down(
                                         MouseButton::Left,
                                         cx.listener(|this, _, _, cx| {
-                                            if let Some(tree) = this.file_tree_model.as_mut() {
+                                            if let Some(tree) = this.project.file_tree_model.as_mut() {
                                                 if let Err(e) = tree.refresh() {
                                                     tracing::warn!(
                                                         "Failed to refresh file tree: {}",

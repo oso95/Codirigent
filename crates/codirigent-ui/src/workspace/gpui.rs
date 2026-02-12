@@ -98,36 +98,14 @@ pub struct WorkspaceView {
     pub(super) empty_cells: EmptySessionPool,
     /// Terminal headers by session ID.
     pub(super) terminal_headers: Vec<(SessionId, TerminalHeader)>,
-    /// File tree panel for sidebar.
-    pub(super) file_tree: FileTreePanel,
-    /// File tree model for filesystem-backed rendering.
-    pub(super) file_tree_model: Option<FileTree>,
-    /// Current project root path.
-    pub(super) project_root: Option<PathBuf>,
-    /// Worktree panel for git worktree management.
-    pub(super) worktree_panel: WorktreePanel,
-    /// Worktree manager for git worktree operations.
-    pub(super) worktree_manager: Option<Arc<Mutex<codirigent_session::WorktreeManager>>>,
-    /// Current git branch name (if in a git repository).
-    pub(super) _current_branch: Option<String>,
-    /// Smart clipboard provider for paste/copy operations.
-    pub(super) smart_clipboard: Box<dyn SmartClipboardProvider>,
-    /// Clipboard service for image save/format operations.
-    pub(super) clipboard_service: DefaultClipboardService,
-    /// Clipboard preview tooltip component.
-    pub(super) clipboard_preview: ClipboardPreview,
-    /// When the clipboard preview was shown (for auto-dismiss after timeout).
-    pub(super) clipboard_preview_shown_at: Option<std::time::Instant>,
-    /// Settings page state (persists between open/close).
-    pub(super) settings_page: Option<SettingsPage>,
-    /// Whether the settings overlay is visible.
-    pub(super) settings_open: bool,
-    /// Config service for loading/saving settings to disk.
-    pub(super) config_service: Option<DefaultConfigService>,
-    /// Storage service for persisting sessions across restarts.
-    pub(super) storage: Arc<dyn codirigent_core::StorageService>,
-    /// Compaction service for auto-compacting before verification.
-    pub(super) compaction: Arc<Mutex<CompactionService>>,
+    /// Project and file tree state (file_tree, file_tree_model, project_root, worktree_panel, worktree_manager, current_branch).
+    pub(super) project: super::project_state::ProjectState,
+    /// Clipboard state (smart_clipboard, clipboard_service, clipboard_preview, clipboard_preview_shown_at).
+    pub(super) clipboard: super::clipboard_state::ClipboardState,
+    /// Settings state (page, open, config_service).
+    pub(super) settings: super::settings_state::SettingsState,
+    /// Persistence services (storage, compaction).
+    pub(super) persistence: super::persistence_state::PersistenceServices,
 
     // --- Grouped sub-state ---
 
@@ -190,28 +168,32 @@ impl WorkspaceView {
             task_board: TaskBoardPanel::new(),
             empty_cells: EmptySessionPool::new(),
             terminal_headers: Vec::new(),
-            file_tree,
-            file_tree_model,
-            project_root: project_root.clone(),
-            worktree_panel: WorktreePanel::new(),
-            worktree_manager: Self::init_worktree_manager(),
-            _current_branch: Self::detect_git_branch(),
-            smart_clipboard: crate::platform::create_clipboard(),
-            clipboard_service: DefaultClipboardService::new(
-                project_root
-                    .as_deref()
-                    .unwrap_or_else(|| std::path::Path::new("."))
-                    .join(".codirigent"),
-            ),
-            clipboard_preview: ClipboardPreview::new(theme_for_clipboard),
-            clipboard_preview_shown_at: None,
-            settings_page: None,
-            settings_open: false,
-            config_service: DefaultConfigService::new().ok(),
-            storage: storage.clone(),
-            compaction: Arc::new(Mutex::new(CompactionService::new(
-                CompactionConfig::default(),
-            ))),
+            project: super::project_state::ProjectState {
+                file_tree,
+                file_tree_model,
+                project_root: project_root.clone(),
+                worktree_panel: WorktreePanel::new(),
+                worktree_manager: Self::init_worktree_manager(),
+                current_branch: Self::detect_git_branch(),
+            },
+            clipboard: super::clipboard_state::ClipboardState {
+                smart_clipboard: crate::platform::create_clipboard(),
+                clipboard_service: DefaultClipboardService::new(
+                    project_root
+                        .as_deref()
+                        .unwrap_or_else(|| std::path::Path::new("."))
+                        .join(".codirigent"),
+                ),
+                clipboard_preview: ClipboardPreview::new(theme_for_clipboard),
+                clipboard_preview_shown_at: None,
+            },
+            settings: super::settings_state::SettingsState::new(),
+            persistence: super::persistence_state::PersistenceServices {
+                storage: storage.clone(),
+                compaction: Arc::new(Mutex::new(CompactionService::new(
+                    CompactionConfig::default(),
+                ))),
+            },
             modals: ModalState::new(),
             selection: SelectionState::new(),
             polling: PollingState::new(),
@@ -226,7 +208,7 @@ impl WorkspaceView {
         view.refresh_worktree_panel();
 
         // Load saved layout profiles from user settings
-        if let Some(ref config_service) = view.config_service {
+        if let Some(ref config_service) = view.settings.config_service {
             if let Ok(user_settings) = config_service.load_user_settings() {
                 view.top_bar
                     .load_saved_profiles(user_settings.saved_layouts);
@@ -383,7 +365,7 @@ impl WorkspaceView {
             },
             updated_at: Some(chrono::Utc::now()),
         };
-        if let Err(e) = self.storage.save_state(&state) {
+        if let Err(e) = self.persistence.storage.save_state(&state) {
             warn!("Failed to save state: {}", e);
         }
     }
@@ -853,7 +835,7 @@ impl WorkspaceView {
         cx: &mut Context<Self>,
     ) {
         // Escape closes settings page if open
-        if self.settings_open && event.keystroke.key == "escape" {
+        if self.settings.open && event.keystroke.key == "escape" {
             self.close_settings();
             cx.notify();
             return;
@@ -973,9 +955,9 @@ impl WorkspaceView {
         container = container.child(self.render_title_bar(window, cx));
 
         // Settings page overlay (replaces all content below title bar)
-        if self.settings_open && self.settings_page.is_some() {
+        if self.settings.open && self.settings.page.is_some() {
             let should_flush = self
-                .settings_page
+                .settings.page
                 .as_ref()
                 .map(|p| p.user_save_pending || p.project_save_pending)
                 .unwrap_or(false);
@@ -1062,8 +1044,8 @@ impl WorkspaceView {
         cx: &mut Context<Self>,
     ) -> gpui::Stateful<gpui::Div> {
         // Clipboard preview tooltip
-        if self.clipboard_preview.is_visible() {
-            if let Some(preview) = self.clipboard_preview.preview() {
+        if self.clipboard.clipboard_preview.is_visible() {
+            if let Some(preview) = self.clipboard.clipboard_preview.preview() {
                 let theme = self.workspace.theme();
                 let panel_bg: gpui::Hsla = theme.panel_background.into();
                 let border_color: gpui::Hsla = theme.border.into();

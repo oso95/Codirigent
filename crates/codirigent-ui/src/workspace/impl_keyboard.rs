@@ -13,7 +13,7 @@ use tracing::warn;
 
 impl WorkspaceView {
     pub(super) fn save_layout_profiles_to_settings(&self) {
-        if let Some(ref config_service) = self.config_service {
+        if let Some(ref config_service) = self.settings.config_service {
             // Load current user settings
             let mut user_settings = config_service.load_user_settings().unwrap_or_default();
 

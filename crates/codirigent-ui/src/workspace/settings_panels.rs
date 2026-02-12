@@ -16,7 +16,7 @@ use super::types::DROPDOWN_TRIGGER_HEIGHT;
 impl super::gpui::WorkspaceView {
     /// Render the full settings overlay (sidebar + content area).
     pub(super) fn render_settings_overlay(&mut self, cx: &mut Context<Self>) -> impl IntoElement {
-        let page = self.settings_page.as_ref().unwrap();
+        let page = self.settings.page.as_ref().unwrap();
         let theme = self.workspace.theme();
         let bg: Hsla = theme.background.into();
         let panel_bg: Hsla = theme.panel_background.into();
@@ -84,7 +84,7 @@ impl super::gpui::WorkspaceView {
                     .bg(item_bg)
                     .cursor_pointer()
                     .on_click(cx.listener(move |this, _, _, cx| {
-                        if let Some(ref mut page) = this.settings_page {
+                        if let Some(ref mut page) = this.settings.page {
                             page.set_category(cat);
                             page.open_dropdown = None;
                         }
@@ -128,7 +128,7 @@ impl super::gpui::WorkspaceView {
 
     /// Dispatch to the active category's render method.
     fn render_settings_content(&mut self, cx: &mut Context<Self>) -> AnyElement {
-        let cat = self.settings_page.as_ref().unwrap().active_category();
+        let cat = self.settings.page.as_ref().unwrap().active_category();
         match cat {
             SettingsCategory::General => self.render_general_settings(cx),
             SettingsCategory::Appearance => self.render_appearance_settings(cx),
@@ -162,7 +162,7 @@ impl super::gpui::WorkspaceView {
         let accent: Hsla = theme.primary.into();
 
         let is_open = self
-            .settings_page
+            .settings.page
             .as_ref()
             .and_then(|p| p.open_dropdown.as_deref())
             == Some(dropdown_id);
@@ -191,7 +191,7 @@ impl super::gpui::WorkspaceView {
                 cx.listener({
                     let dd_id = dd_id.clone();
                     move |this, event: &MouseDownEvent, _, cx| {
-                        if let Some(page) = this.settings_page.as_mut() {
+                        if let Some(page) = this.settings.page.as_mut() {
                             if page.open_dropdown.as_deref() == Some(&dd_id) {
                                 page.open_dropdown = None;
                             } else {
@@ -219,7 +219,7 @@ impl super::gpui::WorkspaceView {
         if is_open {
             let on_select = Arc::new(on_select);
             let (click_x, click_y) = self
-                .settings_page
+                .settings.page
                 .as_ref()
                 .map(|p| p.dropdown_click_pos)
                 .unwrap_or((0.0, 0.0));
@@ -258,7 +258,7 @@ impl super::gpui::WorkspaceView {
                             MouseButton::Left,
                             cx.listener(move |this, _, window, cx| {
                                 cb(this, opt_str.clone(), window, cx);
-                                if let Some(page) = this.settings_page.as_mut() {
+                                if let Some(page) = this.settings.page.as_mut() {
                                     page.open_dropdown = None;
                                 }
                                 cx.notify();
@@ -279,7 +279,7 @@ impl super::gpui::WorkspaceView {
                 .on_mouse_down(
                     MouseButton::Left,
                     cx.listener(|this, _, _, cx| {
-                        if let Some(page) = this.settings_page.as_mut() {
+                        if let Some(page) = this.settings.page.as_mut() {
                             page.open_dropdown = None;
                         }
                         cx.notify();
@@ -307,7 +307,7 @@ impl super::gpui::WorkspaceView {
     // ── General ──────────────────────────────────────────────────────
 
     fn render_general_settings(&mut self, cx: &mut Context<Self>) -> AnyElement {
-        let page = self.settings_page.as_ref().unwrap();
+        let page = self.settings.page.as_ref().unwrap();
         let editor = page.user_settings.general.editor_command.clone();
         let shell = page.user_settings.general.default_shell.clone();
         let working_dir = page.user_settings.general.default_working_dir.clone();
@@ -358,7 +358,7 @@ impl super::gpui::WorkspaceView {
                     &editor,
                     cx,
                     |this, val, _, _| {
-                        if let Some(page) = this.settings_page.as_mut() {
+                        if let Some(page) = this.settings.page.as_mut() {
                             page.user_settings.general.editor_command = val;
                             page.user_save_pending = true;
                         }
@@ -376,7 +376,7 @@ impl super::gpui::WorkspaceView {
                     &shell_display,
                     cx,
                     |this, val, _, _| {
-                        if let Some(page) = this.settings_page.as_mut() {
+                        if let Some(page) = this.settings.page.as_mut() {
                             // Map "(Auto-detect)" back to empty string
                             let stored = if val == "(Auto-detect)" {
                                 String::new()
@@ -405,7 +405,7 @@ impl super::gpui::WorkspaceView {
                     .on_mouse_down(
                         MouseButton::Left,
                         cx.listener(|this, _, _, cx| {
-                            if let Some(page) = this.settings_page.as_mut() {
+                            if let Some(page) = this.settings.page.as_mut() {
                                 page.user_settings.general.show_splash =
                                     !page.user_settings.general.show_splash;
                                 page.user_save_pending = true;
@@ -421,7 +421,7 @@ impl super::gpui::WorkspaceView {
     // ── Appearance ───────────────────────────────────────────────────
 
     fn render_appearance_settings(&mut self, cx: &mut Context<Self>) -> AnyElement {
-        let page = self.settings_page.as_ref().unwrap();
+        let page = self.settings.page.as_ref().unwrap();
         let theme_name = page.user_settings.appearance.theme.clone();
         let font_size = page.user_settings.appearance.font_size;
         let grid_gap = page.user_settings.appearance.grid_gap;
@@ -442,7 +442,7 @@ impl super::gpui::WorkspaceView {
                     &theme_name,
                     cx,
                     |this, val, _, _| {
-                        if let Some(page) = this.settings_page.as_mut() {
+                        if let Some(page) = this.settings.page.as_mut() {
                             page.user_settings.appearance.theme = val.clone();
                             page.user_save_pending = true;
                         }
@@ -453,7 +453,7 @@ impl super::gpui::WorkspaceView {
                         };
                         // Preserve user settings across theme switch
                         let (gap, ui_size, term_size) = this
-                            .settings_page
+                            .settings.page
                             .as_ref()
                             .map(|p| {
                                 (
@@ -483,7 +483,7 @@ impl super::gpui::WorkspaceView {
                     &font_size.to_string(),
                     cx,
                     |this, _, cx| {
-                        if let Some(page) = this.settings_page.as_mut() {
+                        if let Some(page) = this.settings.page.as_mut() {
                             page.user_settings.appearance.font_size = page
                                 .user_settings
                                 .appearance
@@ -497,7 +497,7 @@ impl super::gpui::WorkspaceView {
                         cx.notify();
                     },
                     |this, _, cx| {
-                        if let Some(page) = this.settings_page.as_mut() {
+                        if let Some(page) = this.settings.page.as_mut() {
                             page.user_settings.appearance.font_size =
                                 (page.user_settings.appearance.font_size + 1).min(24);
                             page.user_save_pending = true;
@@ -517,7 +517,7 @@ impl super::gpui::WorkspaceView {
                     &grid_gap.to_string(),
                     cx,
                     |this, _, cx| {
-                        if let Some(page) = this.settings_page.as_mut() {
+                        if let Some(page) = this.settings.page.as_mut() {
                             page.user_settings.appearance.grid_gap =
                                 page.user_settings.appearance.grid_gap.saturating_sub(1);
                             page.user_save_pending = true;
@@ -527,7 +527,7 @@ impl super::gpui::WorkspaceView {
                         cx.notify();
                     },
                     |this, _, cx| {
-                        if let Some(page) = this.settings_page.as_mut() {
+                        if let Some(page) = this.settings.page.as_mut() {
                             page.user_settings.appearance.grid_gap =
                                 (page.user_settings.appearance.grid_gap + 1).min(16);
                             page.user_save_pending = true;
@@ -544,7 +544,7 @@ impl super::gpui::WorkspaceView {
     // ── Terminal ─────────────────────────────────────────────────────
 
     fn render_terminal_settings(&mut self, cx: &mut Context<Self>) -> AnyElement {
-        let page = self.settings_page.as_ref().unwrap();
+        let page = self.settings.page.as_ref().unwrap();
         let font_family = page.user_settings.terminal.font_family.clone();
         let font_size = page.user_settings.terminal.font_size;
         let cursor_style = page.user_settings.terminal.cursor_style.clone();
@@ -567,7 +567,7 @@ impl super::gpui::WorkspaceView {
                     &font_family,
                     cx,
                     |this, val, _, _| {
-                        if let Some(page) = this.settings_page.as_mut() {
+                        if let Some(page) = this.settings.page.as_mut() {
                             page.user_settings.terminal.font_family = val;
                             page.user_save_pending = true;
                         }
@@ -583,7 +583,7 @@ impl super::gpui::WorkspaceView {
                     &font_size.to_string(),
                     cx,
                     |this, window, cx| {
-                        if let Some(page) = this.settings_page.as_mut() {
+                        if let Some(page) = this.settings.page.as_mut() {
                             page.user_settings.terminal.font_size = page
                                 .user_settings
                                 .terminal
@@ -597,7 +597,7 @@ impl super::gpui::WorkspaceView {
                         cx.notify();
                     },
                     |this, window, cx| {
-                        if let Some(page) = this.settings_page.as_mut() {
+                        if let Some(page) = this.settings.page.as_mut() {
                             page.user_settings.terminal.font_size =
                                 (page.user_settings.terminal.font_size + 1).min(24);
                             page.user_save_pending = true;
@@ -619,7 +619,7 @@ impl super::gpui::WorkspaceView {
                     &cursor_style,
                     cx,
                     |this, val, _, _| {
-                        if let Some(page) = this.settings_page.as_mut() {
+                        if let Some(page) = this.settings.page.as_mut() {
                             page.user_settings.terminal.cursor_style = val.clone();
                             page.user_save_pending = true;
                         }
@@ -645,7 +645,7 @@ impl super::gpui::WorkspaceView {
                     &format!("{:.1}", line_height),
                     cx,
                     |this, _, cx| {
-                        if let Some(page) = this.settings_page.as_mut() {
+                        if let Some(page) = this.settings.page.as_mut() {
                             page.user_settings.terminal.line_height =
                                 (page.user_settings.terminal.line_height - 0.1).max(1.0);
                             page.user_settings.terminal.line_height =
@@ -655,7 +655,7 @@ impl super::gpui::WorkspaceView {
                         cx.notify();
                     },
                     |this, _, cx| {
-                        if let Some(page) = this.settings_page.as_mut() {
+                        if let Some(page) = this.settings.page.as_mut() {
                             page.user_settings.terminal.line_height =
                                 (page.user_settings.terminal.line_height + 0.1).min(2.5);
                             page.user_settings.terminal.line_height =
@@ -672,7 +672,7 @@ impl super::gpui::WorkspaceView {
     // ── Keyboard Shortcuts ───────────────────────────────────────────
 
     fn render_shortcuts_settings(&mut self, cx: &mut Context<Self>) -> AnyElement {
-        let page = self.settings_page.as_ref().unwrap();
+        let page = self.settings.page.as_ref().unwrap();
         let theme = self.workspace.theme();
         let fg: Hsla = theme.foreground.into();
         let muted: Hsla = theme.muted.into();
@@ -740,7 +740,7 @@ impl super::gpui::WorkspaceView {
                     .on_mouse_down(
                         MouseButton::Left,
                         cx.listener(move |this, _, _, cx| {
-                            if let Some(page) = this.settings_page.as_mut() {
+                            if let Some(page) = this.settings.page.as_mut() {
                                 if page.recording_shortcut.as_deref() == Some(&action_name) {
                                     page.recording_shortcut = None;
                                 } else {
@@ -772,7 +772,7 @@ impl super::gpui::WorkspaceView {
     // ── Sessions ─────────────────────────────────────────────────────
 
     fn render_sessions_settings(&mut self, cx: &mut Context<Self>) -> AnyElement {
-        let page = self.settings_page.as_ref().unwrap();
+        let page = self.settings.page.as_ref().unwrap();
         let max_concurrent = page.project_config.sessions.max_concurrent;
         let default_cli = page.project_config.sessions.default_cli.clone();
         let auto_cleanup = page.project_config.sessions.auto_cleanup;
@@ -792,7 +792,7 @@ impl super::gpui::WorkspaceView {
                     &max_concurrent.to_string(),
                     cx,
                     |this, _, cx| {
-                        if let Some(page) = this.settings_page.as_mut() {
+                        if let Some(page) = this.settings.page.as_mut() {
                             page.project_config.sessions.max_concurrent = page
                                 .project_config
                                 .sessions
@@ -804,7 +804,7 @@ impl super::gpui::WorkspaceView {
                         cx.notify();
                     },
                     |this, _, cx| {
-                        if let Some(page) = this.settings_page.as_mut() {
+                        if let Some(page) = this.settings.page.as_mut() {
                             page.project_config.sessions.max_concurrent =
                                 (page.project_config.sessions.max_concurrent + 1).min(16);
                             page.project_save_pending = true;
@@ -823,7 +823,7 @@ impl super::gpui::WorkspaceView {
                     &default_cli,
                     cx,
                     |this, val, _, _| {
-                        if let Some(page) = this.settings_page.as_mut() {
+                        if let Some(page) = this.settings.page.as_mut() {
                             page.project_config.sessions.default_cli = val;
                             page.project_save_pending = true;
                         }
@@ -840,7 +840,7 @@ impl super::gpui::WorkspaceView {
                     .on_mouse_down(
                         MouseButton::Left,
                         cx.listener(|this, _, _, cx| {
-                            if let Some(page) = this.settings_page.as_mut() {
+                            if let Some(page) = this.settings.page.as_mut() {
                                 page.project_config.sessions.auto_cleanup =
                                     !page.project_config.sessions.auto_cleanup;
                                 page.project_save_pending = true;
@@ -856,7 +856,7 @@ impl super::gpui::WorkspaceView {
     // ── Advanced ─────────────────────────────────────────────────────
 
     fn render_advanced_settings(&mut self, cx: &mut Context<Self>) -> AnyElement {
-        let page = self.settings_page.as_ref().unwrap();
+        let page = self.settings.page.as_ref().unwrap();
         let scheduler_mode = format!("{:?}", page.project_config.scheduler.mode);
         let auto_assign = page.project_config.scheduler.auto_assign;
         let ver_enabled = page.project_config.verification.enabled;
@@ -882,7 +882,7 @@ impl super::gpui::WorkspaceView {
                     &scheduler_mode,
                     cx,
                     |this, val, _, _| {
-                        if let Some(page) = this.settings_page.as_mut() {
+                        if let Some(page) = this.settings.page.as_mut() {
                             use codirigent_core::config::SchedulerMode;
                             page.project_config.scheduler.mode = match val.as_str() {
                                 "Priority" => SchedulerMode::Priority,
@@ -904,7 +904,7 @@ impl super::gpui::WorkspaceView {
                     .on_mouse_down(
                         MouseButton::Left,
                         cx.listener(|this, _, _, cx| {
-                            if let Some(page) = this.settings_page.as_mut() {
+                            if let Some(page) = this.settings.page.as_mut() {
                                 page.project_config.scheduler.auto_assign =
                                     !page.project_config.scheduler.auto_assign;
                                 page.project_save_pending = true;
@@ -925,7 +925,7 @@ impl super::gpui::WorkspaceView {
                     .on_mouse_down(
                         MouseButton::Left,
                         cx.listener(|this, _, _, cx| {
-                            if let Some(page) = this.settings_page.as_mut() {
+                            if let Some(page) = this.settings.page.as_mut() {
                                 page.project_config.verification.enabled =
                                     !page.project_config.verification.enabled;
                                 page.project_save_pending = true;
@@ -944,7 +944,7 @@ impl super::gpui::WorkspaceView {
                     .on_mouse_down(
                         MouseButton::Left,
                         cx.listener(|this, _, _, cx| {
-                            if let Some(page) = this.settings_page.as_mut() {
+                            if let Some(page) = this.settings.page.as_mut() {
                                 page.project_config.verification.auto_detect =
                                     !page.project_config.verification.auto_detect;
                                 page.project_save_pending = true;
@@ -963,7 +963,7 @@ impl super::gpui::WorkspaceView {
                     &max_retries.to_string(),
                     cx,
                     |this, _, cx| {
-                        if let Some(page) = this.settings_page.as_mut() {
+                        if let Some(page) = this.settings.page.as_mut() {
                             page.project_config.verification.max_retries = page
                                 .project_config
                                 .verification
@@ -975,7 +975,7 @@ impl super::gpui::WorkspaceView {
                         cx.notify();
                     },
                     |this, _, cx| {
-                        if let Some(page) = this.settings_page.as_mut() {
+                        if let Some(page) = this.settings.page.as_mut() {
                             page.project_config.verification.max_retries =
                                 (page.project_config.verification.max_retries + 1).min(10);
                             page.project_save_pending = true;
@@ -995,7 +995,7 @@ impl super::gpui::WorkspaceView {
                     .on_mouse_down(
                         MouseButton::Left,
                         cx.listener(|this, _, _, cx| {
-                            if let Some(page) = this.settings_page.as_mut() {
+                            if let Some(page) = this.settings.page.as_mut() {
                                 page.project_config.git.use_worktrees =
                                     !page.project_config.git.use_worktrees;
                                 page.project_save_pending = true;
@@ -1014,7 +1014,7 @@ impl super::gpui::WorkspaceView {
                     .on_mouse_down(
                         MouseButton::Left,
                         cx.listener(|this, _, _, cx| {
-                            if let Some(page) = this.settings_page.as_mut() {
+                            if let Some(page) = this.settings.page.as_mut() {
                                 page.project_config.git.auto_commit =
                                     !page.project_config.git.auto_commit;
                                 page.project_save_pending = true;
@@ -1092,7 +1092,7 @@ impl super::gpui::WorkspaceView {
                                     if let Some(dir) = paths.into_iter().next() {
                                         let dir_str: String = dir.display().to_string();
                                         let _ = this.update(cx, |this, cx| {
-                                            if let Some(page) = this.settings_page.as_mut() {
+                                            if let Some(page) = this.settings.page.as_mut() {
                                                 page.user_settings.general.default_working_dir =
                                                     Some(dir_str);
                                                 page.user_save_pending = true;

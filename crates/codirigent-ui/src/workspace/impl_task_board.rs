@@ -156,7 +156,7 @@ impl WorkspaceView {
                                     Ok(prompt) => {
                                         // Check CLI type to decide how to send the prompt
                                         let cli_type =
-                                            self.clipboard_service.get_session_cli_type(session.id);
+                                            self.clipboard.clipboard_service.get_session_cli_type(session.id);
 
                                         // Release task_manager before session_manager
                                         drop(manager);
@@ -257,7 +257,7 @@ impl WorkspaceView {
                 }
 
                 // Send prompt to PTY
-                let cli_type = self.clipboard_service.get_session_cli_type(session_id);
+                let cli_type = self.clipboard.clipboard_service.get_session_cli_type(session_id);
                 let input = format_task_input(&prompt, cli_type);
                 if let Ok(mgr) = self.session_manager.lock() {
                     if let Err(e) = mgr.send_input(session_id, input.as_bytes()) {
@@ -292,7 +292,7 @@ impl WorkspaceView {
             .filter(|s| {
                 s.status == codirigent_core::SessionStatus::Idle
                     && s.current_task.is_none()
-                    && self.clipboard_service.get_session_cli_type(s.id)
+                    && self.clipboard.clipboard_service.get_session_cli_type(s.id)
                         != codirigent_core::CliType::GenericShell
                     && task.project_dir.as_ref().map_or(true, |pd| {
                         codirigent_core::session_matches_project(&s.working_directory, pd)

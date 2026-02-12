@@ -77,7 +77,7 @@ impl WorkspaceView {
     /// Open the task creation modal pre-filled with a file's name and path.
     pub(super) fn open_task_creation_modal_for_file(&mut self, path: &Path) {
         let project_dir = self
-            .file_tree_model
+            .project.file_tree_model
             .as_ref()
             .map(|t| t.root().to_path_buf());
 
@@ -394,7 +394,7 @@ impl WorkspaceView {
 
         // Ctrl+V / Cmd+V — paste from system clipboard
         if (event.keystroke.modifiers.control || event.keystroke.modifiers.platform) && key == "v" {
-            if let Ok(content) = self.smart_clipboard.read_content() {
+            if let Ok(content) = self.clipboard.smart_clipboard.read_content() {
                 if let codirigent_core::ClipboardContent::Text(text) = content {
                     match modal.focused_field {
                         0 => modal.title.push_str(&text),

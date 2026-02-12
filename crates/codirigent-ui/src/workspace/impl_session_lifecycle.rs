@@ -57,19 +57,19 @@ impl WorkspaceView {
         self.next_session_id = num + 1;
 
         let working_dir = self
-            .config_service
+            .settings.config_service
             .as_ref()
             .and_then(|cs| cs.load_user_settings().ok())
             .and_then(|s| s.general.default_working_dir)
             .map(PathBuf::from)
             .filter(|p| p.is_dir())
-            .or_else(|| self.project_root.clone())
+            .or_else(|| self.project.project_root.clone())
             .or_else(|| std::env::current_dir().ok())
             .unwrap_or_else(|| PathBuf::from("/tmp"));
 
         // Determine shell from user settings (empty string = auto-detect)
         let shell = self
-            .config_service
+            .settings.config_service
             .as_ref()
             .and_then(|cs| cs.load_user_settings().ok())
             .map(|s| s.general.default_shell)
@@ -155,7 +155,7 @@ impl WorkspaceView {
 
     /// Restore sessions from disk on startup.
     pub(super) fn restore_sessions_from_disk(&mut self, cx: &mut Context<Self>) {
-        let state = match self.storage.load_state() {
+        let state = match self.persistence.storage.load_state() {
             Ok(state) => state,
             Err(e) => {
                 info!("No saved state to restore: {}", e);
@@ -173,7 +173,7 @@ impl WorkspaceView {
             let working_dir = if saved.working_directory.exists() {
                 saved.working_directory.clone()
             } else {
-                self.project_root
+                self.project.project_root
                     .clone()
                     .or_else(|| std::env::current_dir().ok())
                     .unwrap_or_else(|| PathBuf::from("."))
@@ -181,7 +181,7 @@ impl WorkspaceView {
 
             // Determine shell from user settings (empty string = auto-detect)
             let shell = self
-                .config_service
+                .settings.config_service
                 .as_ref()
                 .and_then(|cs| cs.load_user_settings().ok())
                 .map(|s| s.general.default_shell)
@@ -274,7 +274,7 @@ impl WorkspaceView {
             }
 
             // Clean up compaction state
-            if let Ok(mut svc) = self.compaction.lock() {
+            if let Ok(mut svc) = self.persistence.compaction.lock() {
                 svc.end_compaction(id);
             }
             self.cache.compaction_start_times.remove(&id);
@@ -311,7 +311,7 @@ impl WorkspaceView {
         }
 
         // Clean up compaction state
-        if let Ok(mut svc) = self.compaction.lock() {
+        if let Ok(mut svc) = self.persistence.compaction.lock() {
             svc.end_compaction(id);
         }
         self.cache.compaction_start_times.remove(&id);

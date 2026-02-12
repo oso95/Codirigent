@@ -77,9 +77,9 @@ impl WorkspaceView {
 
                 // Detect CLI type from output banners
                 if let Some(cli_type) = detect_cli_from_output(&data) {
-                    let current = self.clipboard_service.get_session_cli_type(session_id);
+                    let current = self.clipboard.clipboard_service.get_session_cli_type(session_id);
                     if current == codirigent_core::CliType::GenericShell {
-                        self.clipboard_service
+                        self.clipboard.clipboard_service
                             .set_session_cli_type(session_id, cli_type);
                         info!(?session_id, ?cli_type, "Detected CLI type from output");
                     }
@@ -155,7 +155,7 @@ impl WorkspaceView {
             if check_jsonl {
                 if let Some(session) = self.workspace.session(session_id) {
                     let working_dir = session.working_directory.clone();
-                    let cli_type = self.clipboard_service.get_session_cli_type(session_id);
+                    let cli_type = self.clipboard.clipboard_service.get_session_cli_type(session_id);
 
                     // Get child PID for PID-based JSONL matching
                     let child_pid = {
@@ -185,7 +185,7 @@ impl WorkspaceView {
                             if let Some(pid) = child_pid {
                                 let detected = self.cli_readers.detector.detect_cli_type(pid);
                                 if detected != codirigent_core::CliType::GenericShell {
-                                    self.clipboard_service
+                                    self.clipboard.clipboard_service
                                         .set_session_cli_type(session_id, detected);
                                     match detected {
                                         codirigent_core::CliType::ClaudeCode => {
@@ -287,9 +287,9 @@ impl WorkspaceView {
                                 session.current_task = None;
                             }
                             // Start context clear — reuse compaction infrastructure
-                            let cli_type = self.clipboard_service.get_session_cli_type(session_id);
+                            let cli_type = self.clipboard.clipboard_service.get_session_cli_type(session_id);
                             let clear_cmd = clear_command(cli_type);
-                            if let Ok(mut svc) = self.compaction.lock() {
+                            if let Ok(mut svc) = self.persistence.compaction.lock() {
                                 if svc.begin_compaction(session_id) {
                                     if let Ok(mgr) = self.session_manager.lock() {
                                         let _ = mgr.send_input(session_id, clear_cmd.as_bytes());
@@ -313,14 +313,14 @@ impl WorkspaceView {
                     && !self.polling.pending_enters.contains_key(&session_id)
                 {
                     let is_compacting = self
-                        .compaction
+                        .persistence.compaction
                         .lock()
                         .map(|svc| svc.is_compacting(session_id))
                         .unwrap_or(false);
 
                     if is_compacting {
                         // Compaction just finished — session returned to Idle
-                        if let Ok(mut svc) = self.compaction.lock() {
+                        if let Ok(mut svc) = self.persistence.compaction.lock() {
                             svc.end_compaction(session_id);
                         }
                         self.cache.compaction_start_times.remove(&session_id);
@@ -350,7 +350,7 @@ impl WorkspaceView {
 
         // Compaction timeout: end compaction for sessions that exceeded the limit
         let timeout_secs = self
-            .compaction
+            .persistence.compaction
             .lock()
             .map(|svc| svc.timeout_secs())
             .unwrap_or(120);
@@ -361,7 +361,7 @@ impl WorkspaceView {
             .map(|(id, _)| *id)
             .collect();
         for session_id in timed_out {
-            if let Ok(mut svc) = self.compaction.lock() {
+            if let Ok(mut svc) = self.persistence.compaction.lock() {
                 svc.end_compaction(session_id);
             }
             self.cache.compaction_start_times.remove(&session_id);
@@ -424,32 +424,32 @@ impl WorkspaceView {
         // Clipboard preview: show for 4 seconds whenever clipboard content changes and has an image.
         // Uses platform clipboard sequence number (has_changed) to detect new content.
         if self.polling.idle_poll_count % 60 == 0 {
-            let changed = self.smart_clipboard.has_changed();
-            if changed && self.smart_clipboard.has_image() {
+            let changed = self.clipboard.smart_clipboard.has_changed();
+            if changed && self.clipboard.smart_clipboard.has_image() {
                 // Clipboard changed and has an image — show preview
-                if let Ok(content) = self.smart_clipboard.read_content() {
+                if let Ok(content) = self.clipboard.smart_clipboard.read_content() {
                     if let codirigent_core::ClipboardContent::Image(ref image_data) = content {
                         let path = self
-                            .clipboard_service
+                            .clipboard.clipboard_service
                             .save_image(image_data)
                             .unwrap_or_default();
                         let file_size = image_data.bytes.len() as u64;
                         let preview = crate::clipboard_preview::ClipboardPreview::create_preview(
                             image_data, path, file_size,
                         );
-                        self.clipboard_preview.show(preview);
-                        self.clipboard_preview_shown_at = Some(std::time::Instant::now());
+                        self.clipboard.clipboard_preview.show(preview);
+                        self.clipboard.clipboard_preview_shown_at = Some(std::time::Instant::now());
                         any_dirty = true;
                     }
                 }
             }
 
             // Auto-dismiss after 4 seconds
-            if self.clipboard_preview.is_visible() {
-                if let Some(shown_at) = self.clipboard_preview_shown_at {
+            if self.clipboard.clipboard_preview.is_visible() {
+                if let Some(shown_at) = self.clipboard.clipboard_preview_shown_at {
                     if shown_at.elapsed() > std::time::Duration::from_secs(4) {
-                        self.clipboard_preview.hide();
-                        self.clipboard_preview_shown_at = None;
+                        self.clipboard.clipboard_preview.hide();
+                        self.clipboard.clipboard_preview_shown_at = None;
                         any_dirty = true;
                     }
                 }
@@ -473,7 +473,7 @@ impl WorkspaceView {
             .and_then(|s| s.context_usage);
 
         let command = {
-            let mut svc = match self.compaction.lock() {
+            let mut svc = match self.persistence.compaction.lock() {
                 Ok(s) => s,
                 Err(_) => return false,
             };
@@ -490,7 +490,7 @@ impl WorkspaceView {
         if let Ok(mgr) = self.session_manager.lock() {
             if let Err(e) = mgr.send_input(session_id, command.as_bytes()) {
                 warn!(?session_id, error = %e, "Failed to send /compact command");
-                if let Ok(mut svc) = self.compaction.lock() {
+                if let Ok(mut svc) = self.persistence.compaction.lock() {
                     svc.end_compaction(session_id);
                 }
                 return false;
@@ -501,7 +501,7 @@ impl WorkspaceView {
             .insert(session_id, Instant::now());
 
         let focus = self
-            .compaction
+            .persistence.compaction
             .lock()
             .ok()
             .and_then(|svc| svc.config().focus_instructions.clone());
@@ -529,7 +529,7 @@ impl WorkspaceView {
         }
 
         // Never auto-assign to bare shell sessions — CLI must be detected first
-        let cli_type = self.clipboard_service.get_session_cli_type(session_id);
+        let cli_type = self.clipboard.clipboard_service.get_session_cli_type(session_id);
         if cli_type == codirigent_core::CliType::GenericShell {
             return;
         }
@@ -579,7 +579,7 @@ impl WorkspaceView {
                 }
 
                 // Send prompt to PTY (format based on CLI type)
-                let cli_type = self.clipboard_service.get_session_cli_type(target_id);
+                let cli_type = self.clipboard.clipboard_service.get_session_cli_type(target_id);
                 let input = format_task_input(&prompt, cli_type);
                 if let Ok(mgr) = self.session_manager.lock() {
                     if let Err(e) = mgr.send_input(target_id, input.as_bytes()) {

@@ -31,7 +31,7 @@ impl WorkspaceView {
             .unwrap_or(false);
 
         // Read clipboard content
-        let content = match self.smart_clipboard.read_content() {
+        let content = match self.clipboard.smart_clipboard.read_content() {
             Ok(c) => c,
             Err(e) => {
                 warn!("Failed to read clipboard: {}", e);
@@ -59,10 +59,10 @@ impl WorkspaceView {
             }
             ClipboardContent::Image(ref _image_data) => {
                 // Get the CLI type for the focused session (defaults to ClaudeCode)
-                let cli_type = self.clipboard_service.get_session_cli_type(session_id);
+                let cli_type = self.clipboard.clipboard_service.get_session_cli_type(session_id);
 
                 // Format for CLI: saves image to temp file and returns path string
-                match self.clipboard_service.format_for_cli(&content, cli_type) {
+                match self.clipboard.clipboard_service.format_for_cli(&content, cli_type) {
                     Ok(formatted_path) => {
                         if formatted_path.is_empty() {
                             return;
@@ -84,8 +84,8 @@ impl WorkspaceView {
                         }
 
                         // Hide clipboard preview on paste
-                        self.clipboard_preview.hide();
-                        self.clipboard_preview_shown_at = None;
+                        self.clipboard.clipboard_preview.hide();
+                        self.clipboard.clipboard_preview_shown_at = None;
                     }
                     Err(e) => {
                         warn!("Failed to format image for CLI: {:?}", e);
@@ -99,7 +99,7 @@ impl WorkspaceView {
                 let text: String = paths
                     .iter()
                     .map(|p| {
-                        if let Some(tree) = &self.file_tree_model {
+                        if let Some(tree) = &self.project.file_tree_model {
                             tree.path_for_terminal(p)
                         } else {
                             p.to_string_lossy().to_string()
@@ -143,7 +143,7 @@ impl WorkspaceView {
 
         if let Some(text) = selected_text {
             // Copy selected text to system clipboard
-            if let Err(e) = self.smart_clipboard.write_text(text) {
+            if let Err(e) = self.clipboard.smart_clipboard.write_text(text) {
                 warn!("Failed to copy selection to clipboard: {}", e);
             }
             // Clear the selection

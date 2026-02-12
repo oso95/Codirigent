@@ -93,6 +93,18 @@ mod grid_render;
 mod settings_panels;
 
 #[cfg(feature = "gpui-full")]
+mod clipboard_state;
+
+#[cfg(feature = "gpui-full")]
+mod settings_state;
+
+#[cfg(feature = "gpui-full")]
+mod project_state;
+
+#[cfg(feature = "gpui-full")]
+mod persistence_state;
+
+#[cfg(feature = "gpui-full")]
 mod ui_primitives;
 
 #[cfg(test)]

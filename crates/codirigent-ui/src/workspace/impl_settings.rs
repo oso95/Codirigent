@@ -10,15 +10,15 @@ use tracing::warn;
 
 impl WorkspaceView {
     pub(super) fn open_settings(&mut self) {
-        if self.settings_page.is_none() {
+        if self.settings.page.is_none() {
             let mut user_settings = self
-                .config_service
+                .settings.config_service
                 .as_ref()
                 .and_then(|cs| cs.load_user_settings().ok())
                 .unwrap_or_default();
 
             let project_config = self
-                .config_service
+                .settings.config_service
                 .as_ref()
                 .and_then(|cs| {
                     std::env::current_dir()
@@ -72,7 +72,7 @@ impl WorkspaceView {
                 detected_fonts.insert(0, current_font.clone());
             }
 
-            self.settings_page = Some(SettingsPage::new(
+            self.settings.page = Some(SettingsPage::new(
                 user_settings,
                 project_config,
                 detected,
@@ -80,19 +80,19 @@ impl WorkspaceView {
                 detected_fonts,
             ));
         }
-        self.settings_open = true;
+        self.settings.open = true;
     }
 
     pub(super) fn close_settings(&mut self) {
         self.flush_settings();
-        if let Some(ref mut page) = self.settings_page {
+        if let Some(ref mut page) = self.settings.page {
             page.open_dropdown = None;
         }
-        self.settings_open = false;
+        self.settings.open = false;
     }
 
     pub(super) fn flush_settings(&mut self) {
-        if let (Some(page), Some(cs)) = (self.settings_page.as_mut(), self.config_service.as_ref())
+        if let (Some(page), Some(cs)) = (self.settings.page.as_mut(), self.settings.config_service.as_ref())
         {
             if page.user_save_pending {
                 if let Err(e) = cs.save_user_settings(&page.user_settings) {
