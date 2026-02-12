@@ -12,7 +12,6 @@ use crate::terminal_view::CursorShape;
 use crate::components::text_input::{text_input, TextInputStyle};
 use crate::empty_session::EmptySessionRenderHints;
 use crate::icons;
-use crate::layout::LayoutProfile;
 use crate::terminal_header::TerminalHeaderRenderHints;
 use crate::theme::CodirigentTheme;
 use crate::title_bar::TitleBar;
