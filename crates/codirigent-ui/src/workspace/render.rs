@@ -4636,6 +4636,7 @@ impl WorkspaceView {
                     let path = path_for_insert.clone();
                     this.insert_path_to_terminal(&path);
                     this.close_file_tree_context_menu(cx);
+                    cx.stop_propagation();
                 }),
             )
             .child(div().text_xs().text_color(fg).child("Insert path"));
@@ -4655,6 +4656,7 @@ impl WorkspaceView {
                     let path = path_for_copy.clone();
                     this.copy_path_to_clipboard(&path);
                     this.close_file_tree_context_menu(cx);
+                    cx.stop_propagation();
                 }),
             )
             .child(div().text_xs().text_color(fg).child("Copy path"));
@@ -4674,6 +4676,7 @@ impl WorkspaceView {
                     let path = path_for_task.clone();
                     this.open_task_creation_modal_for_file(&path);
                     this.close_file_tree_context_menu(cx);
+                    cx.stop_propagation();
                 }),
             )
             .child(div().text_xs().text_color(fg).child("Create task"));
@@ -4689,6 +4692,10 @@ impl WorkspaceView {
             .flex()
             .flex_col()
             .py_1()
+            // Prevent clicks on the menu from propagating to elements behind it
+            .on_mouse_down(MouseButton::Left, cx.listener(|_this, _: &MouseDownEvent, _window, cx| {
+                cx.stop_propagation();
+            }))
             .child(insert_item)
             .child(copy_item)
             .child(create_task_item);
