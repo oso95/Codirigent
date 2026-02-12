@@ -66,6 +66,9 @@ mod impl_action_handlers;
 mod impl_settings;
 
 #[cfg(feature = "gpui-full")]
+mod impl_ui_operations;
+
+#[cfg(feature = "gpui-full")]
 mod render;
 
 #[cfg(feature = "gpui-full")]
