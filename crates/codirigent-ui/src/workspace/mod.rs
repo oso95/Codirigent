@@ -30,6 +30,45 @@ mod core;
 pub mod gpui;
 
 #[cfg(feature = "gpui-full")]
+mod editor_detection;
+
+#[cfg(feature = "gpui-full")]
+mod cli_helpers;
+
+#[cfg(feature = "gpui-full")]
+mod types;
+
+#[cfg(feature = "gpui-full")]
+mod impl_file_tree;
+
+#[cfg(feature = "gpui-full")]
+mod impl_modals;
+
+#[cfg(feature = "gpui-full")]
+mod impl_session_lifecycle;
+
+#[cfg(feature = "gpui-full")]
+mod impl_keyboard;
+
+#[cfg(feature = "gpui-full")]
+mod impl_task_board;
+
+#[cfg(feature = "gpui-full")]
+mod impl_output_polling;
+
+#[cfg(feature = "gpui-full")]
+mod impl_clipboard;
+
+#[cfg(feature = "gpui-full")]
+mod impl_action_handlers;
+
+#[cfg(feature = "gpui-full")]
+mod impl_settings;
+
+#[cfg(feature = "gpui-full")]
+mod impl_ui_operations;
+
+#[cfg(feature = "gpui-full")]
 pub(crate) mod render;
 
 #[cfg(feature = "gpui-full")]
