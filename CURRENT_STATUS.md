@@ -2,11 +2,11 @@
 
 ## Quick Summary
 
-- **Progress**: 21.9% complete (975/4447 lines extracted)
-- **Current Size**: 3,472 lines
+- **Progress**: 28.9% complete (1,284/4447 lines extracted)
+- **Current Size**: 3,163 lines
 - **Target**: < 1,500 lines
-- **Remaining**: 1,972 lines (44%)
-- **Iterations Complete**: 4
+- **Remaining**: 1,663 lines (37%)
+- **Iterations Complete**: 5
 
 ## Modules Extracted
 
@@ -15,6 +15,7 @@
 3. **types.rs** (87 lines) - ✅ Complete
 4. **impl_file_tree.rs** (264 lines) - ✅ Complete (iteration 3)
 5. **impl_modals.rs** (437 lines) - ✅ Complete (iteration 4)
+6. **impl_session_lifecycle.rs** (330 lines) - ✅ Complete (iteration 5)
 
 ## Key Insight Discovered
 
@@ -22,16 +23,21 @@
 
 **Solution**: Extract entire `impl WorkspaceView` blocks to separate files instead of trying to refactor individual methods.
 
-## Iteration 4 Summary
+## Iteration 5 Summary
 
-Successfully extracted modal handlers to `impl_modals.rs`:
-- 11 methods moved (421 lines extracted from gpui.rs)
-- Made `next_session_id` field pub(super)
-- Made `save_state_to_disk`, `next_group_color` methods pub(super)
+Successfully extracted session lifecycle handlers to `impl_session_lifecycle.rs`:
+- 7 methods moved (309 lines extracted from gpui.rs)
+- Made 8 fields pub(super) for access
 - All tests passing (21/21)
 - Build and clippy clean
 
-**Reduction**: 3,893 → 3,472 lines (-421 lines, -10.8%)
+**Reduction**: 3,472 → 3,163 lines (-309 lines, -8.9%)
+
+## Progress Milestone
+
+🎉 **28.9% Complete** - Nearly 30% of the refactoring done!
+
+Only **1,663 lines remaining** to reach the target of <1,500 lines.
 
 ## Next Steps (Ready to Execute)
 
@@ -58,16 +64,15 @@ mod impl_<domain>;
 
 ### Priority Extractions (In Order)
 
-1. **impl_session_lifecycle.rs** (~300-400 lines)
-   - Methods: create_session, create_session_at, create_session_in_slot, create_session_inner
-   - Methods: close_session, close_focused_session
-   - Methods: restore_sessions_from_disk, save_state_to_disk (already pub(super))
-   - Impact: High (core session management)
-
-2. **impl_keyboard.rs** (~200-250 lines)
+1. **impl_keyboard.rs** (~200-250 lines)
    - Methods: handle_custom_layout_key_down
    - Methods: Other keyboard-related handlers
    - Impact: Medium (keyboard input handling)
+
+2. **impl_task_board.rs** (~250-300 lines)
+   - Methods: handle_task_board_event (268-line match statement)
+   - Methods: assign_task_to_session, unassign_task_from_session
+   - Impact: Medium (task board event handling)
 
 3. **impl_settings.rs** (~200-300 lines)
    - Methods: open_settings, close_settings
@@ -75,21 +80,20 @@ mod impl_<domain>;
    - Methods: save_layout_profiles_to_settings
    - Impact: Medium (settings management)
 
-4. **impl_task_board.rs** (~250-300 lines)
-   - Methods: handle_task_board_event (268-line match statement)
-   - Methods: assign_task_to_session, unassign_task_from_session
-   - Impact: Medium (task board event handling)
+4. **impl_output_polling.rs** (~400 lines)
+   - Methods: poll_output (442-line method)
+   - Impact: High (reduce large method)
 
 ### Expected Progress After Next 4 Extractions
 
 | After | Lines Extracted | Remaining | % Complete |
 |-------|----------------|-----------|------------|
-| impl_session_lifecycle | ~1,325 | ~3,122 | 29.8% |
-| impl_keyboard | ~1,550 | ~2,897 | 34.9% |
-| impl_settings | ~1,800 | ~2,647 | 40.5% |
-| impl_task_board | ~2,075 | ~2,372 | 46.7% |
+| impl_keyboard | ~1,509 | ~2,938 | 33.9% |
+| impl_task_board | ~1,784 | ~2,663 | 40.1% |
+| impl_settings | ~2,034 | ~2,413 | 45.8% |
+| impl_output_polling | ~2,434 | ~2,013 | 54.7% |
 
-**Nearly 50% complete after 8 iterations total!**
+**Over 50% complete after 9 iterations total!**
 
 ## Files Structure (Current)
 
@@ -97,17 +101,18 @@ mod impl_<domain>;
 workspace/
 ├── mod.rs
 ├── core.rs (unchanged)
-├── gpui.rs (main, 3,472 lines, target: ~1,500)
+├── gpui.rs (main, 3,163 lines, target: ~1,500)
 ├── render.rs (unchanged)
 ├── editor_detection.rs (✅ 231 lines)
 ├── cli_helpers.rs (✅ 160 lines)
 ├── types.rs (✅ 87 lines)
 ├── impl_file_tree.rs (✅ 264 lines)
 ├── impl_modals.rs (✅ 437 lines)
-├── impl_session_lifecycle.rs (next: ~350 lines)
+├── impl_session_lifecycle.rs (✅ 330 lines)
 ├── impl_keyboard.rs (next: ~225 lines)
-├── impl_settings.rs (next: ~250 lines)
 ├── impl_task_board.rs (next: ~275 lines)
+├── impl_settings.rs (next: ~250 lines)
+├── impl_output_polling.rs (next: ~400 lines)
 └── ... (more as needed)
 ```
 
@@ -133,6 +138,7 @@ Status: Clean, all tests passing
 ✅ Priorities identified
 ✅ All builds passing
 ✅ Clean git history
-✅ Iterations 3-4 complete
+✅ Iterations 3-5 complete
+✅ Nearly 30% complete!
 
-**Next Action**: Start iteration 5 by creating `impl_session_lifecycle.rs`
+**Next Action**: Start iteration 6 by creating `impl_keyboard.rs`
