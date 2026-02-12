@@ -57,6 +57,7 @@ dirs = "5"
 
 # Testing
 tempfile = "3"
+filetime = "0.2"
 
 # GPUI from crates.io with pinned core-text to avoid core-graphics conflict
 # Use default-features = false to let individual crates specify platform features
