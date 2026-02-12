@@ -178,12 +178,6 @@ impl FileStorageService {
         self.codirigent_dir.join("state.json")
     }
 
-    /// Get the path to `config.json`.
-    #[allow(dead_code)]
-    fn config_path(&self) -> PathBuf {
-        self.codirigent_dir.join("config.json")
-    }
-
     /// Get the path to the `tasks` directory.
     fn tasks_dir(&self) -> PathBuf {
         self.codirigent_dir.join("tasks")
@@ -488,15 +482,6 @@ mod tests {
 
         let expected = temp.path().join(".codirigent").join("state.json");
         assert_eq!(storage.state_path(), expected);
-    }
-
-    #[test]
-    fn test_config_path() {
-        let temp = TempDir::new().unwrap();
-        let storage = FileStorageService::new(temp.path()).unwrap();
-
-        let expected = temp.path().join(".codirigent").join("config.json");
-        assert_eq!(storage.config_path(), expected);
     }
 
     #[test]
