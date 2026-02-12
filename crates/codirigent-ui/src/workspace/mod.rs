@@ -42,6 +42,9 @@ mod types;
 mod impl_file_tree;
 
 #[cfg(feature = "gpui-full")]
+mod impl_modals;
+
+#[cfg(feature = "gpui-full")]
 mod render;
 
 #[cfg(feature = "gpui-full")]
