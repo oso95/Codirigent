@@ -426,7 +426,6 @@ impl ClipboardService for DefaultClipboardService {
 mod tests {
     use super::*;
     use codirigent_core::ImageFormat;
-    use std::thread;
     use std::time::Duration as StdDuration;
     use tempfile::TempDir;
 
@@ -653,30 +652,41 @@ mod tests {
         // Create some test files
         let old_file = temp_path.join("old_file.txt");
         let new_file = temp_path.join("new_file.txt");
+        let newer_file = temp_path.join("newer_file.txt");
 
         fs::write(&old_file, "old content").unwrap();
         fs::write(&new_file, "new content").unwrap();
-
-        // Set old file's modification time to the past by sleeping and checking
-        // We need to use a different approach since we can't easily set mtime.
-        // Instead, we'll create a file, wait briefly, then check cleanup with a very short duration.
-
-        // Small sleep to ensure time passes
-        thread::sleep(StdDuration::from_millis(100));
-
-        // Create another file after the sleep
-        let newer_file = temp_path.join("newer_file.txt");
         fs::write(&newer_file, "newer content").unwrap();
 
-        // Cleanup files older than 50ms (old_file and new_file should be removed)
+        // Use filetime to explicitly set old modification times
+        // This is more reliable than thread::sleep across platforms
+        let now = filetime::FileTime::now();
+        let two_hours_ago = filetime::FileTime::from_unix_time(
+            now.unix_seconds() - 7200, // 2 hours ago
+            now.nanoseconds(),
+        );
+        let one_minute_ago = filetime::FileTime::from_unix_time(
+            now.unix_seconds() - 60, // 1 minute ago
+            now.nanoseconds(),
+        );
+
+        // Set old files to 2 hours ago
+        filetime::set_file_mtime(&old_file, two_hours_ago).unwrap();
+        filetime::set_file_mtime(&new_file, two_hours_ago).unwrap();
+
+        // Set newer_file to 1 minute ago (should not be removed with 1 hour threshold)
+        filetime::set_file_mtime(&newer_file, one_minute_ago).unwrap();
+
+        // Cleanup files older than 1 hour
         let removed = service
-            .cleanup_temp_files(StdDuration::from_millis(50))
+            .cleanup_temp_files(StdDuration::from_secs(3600))
             .unwrap();
 
-        // At least the first two files should be removed
-        assert!(removed >= 2);
+        // The two old files should be removed, newer_file should remain
+        assert_eq!(removed, 2);
         assert!(!old_file.exists());
         assert!(!new_file.exists());
+        assert!(newer_file.exists());
     }
 
     #[test]
@@ -845,12 +855,17 @@ mod tests {
         let file = temp_path.join("test.txt");
         fs::write(&file, "test").unwrap();
 
-        // Small sleep
-        thread::sleep(StdDuration::from_millis(100));
+        // Set file to old modification time (2 hours ago)
+        let now = filetime::FileTime::now();
+        let two_hours_ago = filetime::FileTime::from_unix_time(
+            now.unix_seconds() - 7200,
+            now.nanoseconds(),
+        );
+        filetime::set_file_mtime(&file, two_hours_ago).unwrap();
 
         // Cleanup should not remove directories
         let removed = service
-            .cleanup_temp_files(StdDuration::from_millis(50))
+            .cleanup_temp_files(StdDuration::from_secs(3600)) // 1 hour
             .unwrap();
 
         assert_eq!(removed, 1); // Only the file
