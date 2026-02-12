@@ -23,6 +23,7 @@ use super::core::Workspace;
 use super::editor_detection::{
     detect_installed_editors, detect_monospace_fonts, extra_editor_dirs, is_terminal_editor,
 };
+use super::cli_helpers::{clear_command, detect_cli_from_output, format_task_input};
 // Imports from main branch (terminal integration)
 use crate::input::{key_to_bytes, TerminalKeystroke, TerminalModifiers};
 use crate::terminal::Terminal;
@@ -600,7 +601,7 @@ impl WorkspaceView {
                 }
 
                 // Detect CLI type from output banners
-                if let Some(cli_type) = Self::detect_cli_from_output(&data) {
+                if let Some(cli_type) = detect_cli_from_output(&data) {
                     let current = self.clipboard_service.get_session_cli_type(session_id);
                     if current == codirigent_core::CliType::GenericShell {
                         self.clipboard_service
@@ -812,7 +813,7 @@ impl WorkspaceView {
                             }
                             // Start context clear — reuse compaction infrastructure
                             let cli_type = self.clipboard_service.get_session_cli_type(session_id);
-                            let clear_cmd = Self::clear_command(cli_type);
+                            let clear_cmd = clear_command(cli_type);
                             if let Ok(mut svc) = self.compaction.lock() {
                                 if svc.begin_compaction(session_id) {
                                     if let Ok(mgr) = self.session_manager.lock() {
@@ -1102,7 +1103,7 @@ impl WorkspaceView {
 
                 // Send prompt to PTY (format based on CLI type)
                 let cli_type = self.clipboard_service.get_session_cli_type(target_id);
-                let input = Self::format_task_input(&prompt, cli_type);
+                let input = format_task_input(&prompt, cli_type);
                 if let Ok(mgr) = self.session_manager.lock() {
                     if let Err(e) = mgr.send_input(target_id, input.as_bytes()) {
                         warn!("Failed to send task prompt to session {}: {}", target_id, e);
@@ -2031,7 +2032,7 @@ impl WorkspaceView {
                                         drop(manager);
 
                                         // Build the command to send to the PTY
-                                        let input = Self::format_task_input(&prompt, cli_type);
+                                        let input = format_task_input(&prompt, cli_type);
 
                                         if let Ok(mgr) = self.session_manager.lock() {
                                             mgr.with_session_state_mut(session.id, |state| {
@@ -2127,7 +2128,7 @@ impl WorkspaceView {
 
                 // Send prompt to PTY
                 let cli_type = self.clipboard_service.get_session_cli_type(session_id);
-                let input = Self::format_task_input(&prompt, cli_type);
+                let input = format_task_input(&prompt, cli_type);
                 if let Ok(mgr) = self.session_manager.lock() {
                     if let Err(e) = mgr.send_input(session_id, input.as_bytes()) {
                         warn!(
@@ -3112,71 +3113,6 @@ impl WorkspaceView {
     ///
     /// Uses simple byte string matching for speed. Returns `None` if no
     /// known CLI banner is found.
-    fn detect_cli_from_output(data: &[u8]) -> Option<codirigent_core::CliType> {
-        // Only scan a reasonable prefix (first 2KB) to avoid scanning large outputs
-        let scan_len = data.len().min(2048);
-        let scan = &data[..scan_len];
-
-        // Convert to lowercase for case-insensitive matching
-        let lower: Vec<u8> = scan.iter().map(|b| b.to_ascii_lowercase()).collect();
-
-        if lower.windows(10).any(|w| w == b"claude cod")
-            || lower.windows(7).any(|w| w == b"claude>")
-            || lower
-                .windows(15)
-                .any(|w| w == "\u{256d}\u{2500} claude code".as_bytes())
-        {
-            return Some(codirigent_core::CliType::ClaudeCode);
-        }
-        if lower.windows(10).any(|w| w == b"gemini cli")
-            || lower.windows(7).any(|w| w == b"gemini>")
-        {
-            return Some(codirigent_core::CliType::GeminiCli);
-        }
-        if lower.windows(5).any(|w| w == b"codex") || lower.windows(6).any(|w| w == b"codex>") {
-            return Some(codirigent_core::CliType::CodexCli);
-        }
-
-        None
-    }
-
-    /// Format a task prompt for sending to a session's PTY.
-    ///
-    /// If the session has a known CLI running, sends the prompt directly
-    /// (the CLI will receive it as stdin). If it's a bare shell, wraps
-    /// the prompt in a `claude -p "..."` command to launch the CLI.
-    fn format_task_input(prompt: &str, cli_type: codirigent_core::CliType) -> String {
-        // Collapse the multi-line prompt into a single line so newlines
-        // aren't interpreted as individual Enter presses by the CLI.
-        let flat: String = prompt
-            .lines()
-            .filter(|l| !l.is_empty())
-            .collect::<Vec<_>>()
-            .join(" ");
-
-        match cli_type {
-            codirigent_core::CliType::ClaudeCode
-            | codirigent_core::CliType::GeminiCli
-            | codirigent_core::CliType::CodexCli => {
-                // No trailing newline — caller schedules a deferred Enter
-                flat
-            }
-            codirigent_core::CliType::GenericShell => {
-                warn!("format_task_input called with GenericShell — this should not happen");
-                flat
-            }
-        }
-    }
-
-    /// Return the CLI-specific command to clear/reset context between tasks.
-    fn clear_command(cli_type: codirigent_core::CliType) -> String {
-        match cli_type {
-            codirigent_core::CliType::ClaudeCode => "/clear".to_string(),
-            codirigent_core::CliType::CodexCli => "/new".to_string(),
-            codirigent_core::CliType::GeminiCli => "/clear".to_string(),
-            codirigent_core::CliType::GenericShell => String::new(),
-        }
-    }
 
     /// Get a reference to the underlying workspace.
     ///

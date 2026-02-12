@@ -33,6 +33,9 @@ pub mod gpui;
 mod editor_detection;
 
 #[cfg(feature = "gpui-full")]
+mod cli_helpers;
+
+#[cfg(feature = "gpui-full")]
 mod render;
 
 #[cfg(feature = "gpui-full")]
