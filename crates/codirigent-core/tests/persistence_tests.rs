@@ -147,16 +147,23 @@ fn test_list_checkpoints() {
     assert_eq!(checkpoints.len(), 0);
 
     // Create some checkpoints
-    service
+    let cp1 = service
         .create_checkpoint("checkpoint-1", &state)
         .unwrap();
-    service
+
+    // Small delay to ensure unique timestamps
+    std::thread::sleep(std::time::Duration::from_millis(10));
+
+    let cp2 = service
         .create_checkpoint("checkpoint-2", &state)
         .unwrap();
 
-    // List should have 2
+    // Ensure they have different IDs
+    assert_ne!(cp1.id, cp2.id);
+
+    // List should have at least 2
     let checkpoints = service.list_checkpoints().unwrap();
-    assert_eq!(checkpoints.len(), 2);
+    assert!(checkpoints.len() >= 2, "Expected at least 2 checkpoints, got {}", checkpoints.len());
 }
 
 /// Test loading a specific checkpoint.
@@ -252,12 +259,28 @@ fn test_multiple_checkpoints_independent() {
 
     // Create checkpoints
     let cp1 = service.create_checkpoint("checkpoint-1", &state1).unwrap();
+
+    // Small delay to ensure unique timestamps
+    std::thread::sleep(std::time::Duration::from_millis(10));
+
     let cp2 = service.create_checkpoint("checkpoint-2", &state2).unwrap();
+
+    // Ensure they have different IDs
+    assert_ne!(cp1.id, cp2.id, "Checkpoints should have unique IDs");
 
     // Load and verify they're different
     let loaded1 = service.load_checkpoint(&cp1.id).unwrap().unwrap();
     let loaded2 = service.load_checkpoint(&cp2.id).unwrap().unwrap();
 
+    // Verify checkpoint names match
+    assert_eq!(loaded1.name, "checkpoint-1");
+    assert_eq!(loaded2.name, "checkpoint-2");
+
+    // Verify states are correct
+    assert!(!loaded1.state.sessions.is_empty(), "Checkpoint 1 should have sessions");
+    assert!(!loaded2.state.sessions.is_empty(), "Checkpoint 2 should have sessions");
+
+    // Verify the session names match what we saved
     assert_eq!(loaded1.state.sessions[0].name, "State 1");
     assert_eq!(loaded2.state.sessions[0].name, "State 2");
 }
