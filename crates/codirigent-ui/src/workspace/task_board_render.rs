@@ -8,10 +8,13 @@ use crate::icons;
 use crate::task_board::{TaskAction, TaskItem, TaskItemAction, TaskPriority as UIPriority, TaskStatus as UIStatus, AutoAssignMode};
 use crate::theme::CodirigentTheme;
 use crate::workspace::gpui::WorkspaceView;
-use codirigent_core::{TaskPriority as CorePriority, TaskStatus as CoreStatus};
+use crate::workspace::render::SessionMenuAction;
+use codirigent_core::{SessionId, TaskPriority as CorePriority, TaskStatus as CoreStatus};
 use gpui::{
-    div, px, ClickEvent, Context, FontWeight, IntoElement, ParentElement, SharedString, Styled,
+    div, px, ClickEvent, Context, FontWeight, InteractiveElement, IntoElement, MouseButton,
+    MouseDownEvent, ParentElement, SharedString, StatefulInteractiveElement, Styled,
 };
+use tracing::info;
 
 impl WorkspaceView {
     /// Convert core Task to UI TaskItem with status mapping.
@@ -496,7 +499,7 @@ impl WorkspaceView {
     }
 
     /// Render a dropdown menu item with icon.
-    fn render_menu_item(
+    pub(super) fn render_menu_item(
         &self,
         label: &str,
         session_id: SessionId,

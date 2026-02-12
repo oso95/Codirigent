@@ -38,7 +38,7 @@ use std::sync::Arc;
 use tracing::info;
 
 impl WorkspaceView {
-    fn render_terminal_content(
+    pub(super) fn render_terminal_content(
         &mut self,
         session_id: SessionId,
         theme: &CodirigentTheme,

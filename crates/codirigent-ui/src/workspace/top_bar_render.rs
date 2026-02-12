@@ -6,7 +6,10 @@
 use crate::title_bar::TitleBar;
 use crate::toolbar::CustomLayoutMode;
 use crate::workspace::gpui::WorkspaceView;
-use gpui::{div, px, Context, IntoElement, ParentElement, Styled, Window, WindowControlArea};
+use gpui::{
+    div, px, Context, InteractiveElement, IntoElement, ParentElement, SharedString,
+    StatefulInteractiveElement, Styled, Window, WindowControlArea,
+};
 
 impl WorkspaceView {
     /// token counter, right-panel toggle, and window controls.

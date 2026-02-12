@@ -14,10 +14,10 @@ use crate::theme::CodirigentTheme;
 use crate::workspace::gpui::WorkspaceView;
 use codirigent_core::{LayoutNode, Session, SessionId, SplitDirection};
 use gpui::{
-    div, px, relative, ClickEvent, Context, FontWeight, Image, ImageFormat, InteractiveElement,
-    IntoElement, MouseButton, MouseDownEvent, MouseMoveEvent, MouseUpEvent, ObjectFit,
-    ParentElement, ScrollWheelEvent, SharedString, StatefulInteractiveElement, Styled,
-    StyledImage,
+    div, prelude::FluentBuilder, px, relative, ClickEvent, Context, FontWeight, Image,
+    ImageFormat, InteractiveElement, IntoElement, MouseButton, MouseDownEvent, MouseMoveEvent,
+    MouseUpEvent, ObjectFit, ParentElement, ScrollWheelEvent, SharedString,
+    StatefulInteractiveElement, Styled, StyledImage,
 };
 use std::sync::Arc;
 
