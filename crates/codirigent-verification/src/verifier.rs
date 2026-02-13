@@ -143,36 +143,24 @@ impl VerificationGate {
         }
     }
 
-    /// Acquire read lock on statuses, recovering from poison.
+    /// Acquire read lock on statuses.
     fn lock_statuses_read(&self) -> RwLockReadGuard<'_, HashMap<TaskId, VerificationStatus>> {
-        self.statuses.read().unwrap_or_else(|poisoned| {
-            warn!("Verification statuses RwLock was poisoned, recovering");
-            poisoned.into_inner()
-        })
+        self.statuses.read().expect("verification statuses lock poisoned")
     }
 
-    /// Acquire write lock on statuses, recovering from poison.
+    /// Acquire write lock on statuses.
     fn lock_statuses_write(&self) -> RwLockWriteGuard<'_, HashMap<TaskId, VerificationStatus>> {
-        self.statuses.write().unwrap_or_else(|poisoned| {
-            warn!("Verification statuses RwLock was poisoned, recovering");
-            poisoned.into_inner()
-        })
+        self.statuses.write().expect("verification statuses lock poisoned")
     }
 
-    /// Acquire read lock on working_dirs, recovering from poison.
+    /// Acquire read lock on working_dirs.
     fn lock_working_dirs_read(&self) -> RwLockReadGuard<'_, HashMap<TaskId, PathBuf>> {
-        self.working_dirs.read().unwrap_or_else(|poisoned| {
-            warn!("Verification working_dirs RwLock was poisoned, recovering");
-            poisoned.into_inner()
-        })
+        self.working_dirs.read().expect("verification working_dirs lock poisoned")
     }
 
-    /// Acquire write lock on working_dirs, recovering from poison.
+    /// Acquire write lock on working_dirs.
     fn lock_working_dirs_write(&self) -> RwLockWriteGuard<'_, HashMap<TaskId, PathBuf>> {
-        self.working_dirs.write().unwrap_or_else(|poisoned| {
-            warn!("Verification working_dirs RwLock was poisoned, recovering");
-            poisoned.into_inner()
-        })
+        self.working_dirs.write().expect("verification working_dirs lock poisoned")
     }
 
     /// Store a verification status.

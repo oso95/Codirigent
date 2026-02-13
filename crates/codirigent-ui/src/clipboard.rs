@@ -124,19 +124,13 @@ impl TestClipboard {
 
 impl ClipboardProvider for TestClipboard {
     fn write(&self, text: String) -> anyhow::Result<()> {
-        let mut content = self.content.lock().unwrap_or_else(|poisoned| {
-            tracing::warn!("TestClipboard mutex was poisoned, recovering");
-            poisoned.into_inner()
-        });
+        let mut content = self.content.lock().expect("TestClipboard mutex poisoned");
         *content = Some(text);
         Ok(())
     }
 
     fn read(&self) -> anyhow::Result<Option<String>> {
-        let content = self.content.lock().unwrap_or_else(|poisoned| {
-            tracing::warn!("TestClipboard mutex was poisoned, recovering");
-            poisoned.into_inner()
-        });
+        let content = self.content.lock().expect("TestClipboard mutex poisoned");
         Ok(content.clone())
     }
 }

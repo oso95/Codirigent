@@ -719,19 +719,13 @@ impl WorkspaceView {
     /// })
     /// ```
     pub(super) fn with_session_manager<R>(&self, f: impl FnOnce(&mut DefaultSessionManager) -> R) -> R {
-        let mut manager = self.session_manager.lock().unwrap_or_else(|poisoned| {
-            warn!("Session manager mutex was poisoned, recovering");
-            poisoned.into_inner()
-        });
+        let mut manager = self.session_manager.lock().expect("session manager mutex poisoned");
         f(&mut manager)
     }
 
-    /// Helper to acquire detector lock with poison recovery.
+    /// Helper to acquire detector lock.
     pub(super) fn with_detector<R>(&self, f: impl FnOnce(&mut InputDetector) -> R) -> R {
-        let mut detector = self.detector.lock().unwrap_or_else(|poisoned| {
-            warn!("Detector mutex was poisoned, recovering");
-            poisoned.into_inner()
-        });
+        let mut detector = self.detector.lock().expect("detector mutex poisoned");
         f(&mut detector)
     }
 

@@ -15,7 +15,7 @@ use std::path::PathBuf;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Arc, Mutex, MutexGuard};
 use std::time::Duration;
-use tracing::{debug, info, warn};
+use tracing::{debug, info};
 
 /// Default terminal height in rows.
 const DEFAULT_PTY_ROWS: u16 = 24;
@@ -75,16 +75,12 @@ impl DefaultSessionManager {
         }
     }
 
-    /// Acquire the sessions lock, recovering from mutex poisoning if needed.
+    /// Acquire the sessions lock.
     ///
-    /// If another thread panicked while holding the lock, this method will
-    /// recover the lock and log a warning. The data may be in an inconsistent
-    /// state, but we prioritize availability over strict consistency.
+    /// # Panics
+    /// Panics if the mutex is poisoned (another thread panicked while holding the lock).
     fn lock_sessions(&self) -> MutexGuard<'_, HashMap<SessionId, SessionState>> {
-        self.sessions.lock().unwrap_or_else(|poisoned| {
-            warn!("Sessions mutex was poisoned, recovering lock");
-            poisoned.into_inner()
-        })
+        self.sessions.lock().expect("sessions mutex poisoned")
     }
 
     /// Generate a unique session ID.
