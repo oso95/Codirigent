@@ -32,12 +32,6 @@ jobs:
             archive: tar.gz
             ext: ""
 
-          - name: Linux x64
-            runner: ubuntu-22.04
-            target: x86_64-unknown-linux-gnu
-            archive: tar.gz
-            ext: ""
-
     steps:
       - uses: actions/checkout@v4
 
@@ -49,21 +43,6 @@ jobs:
       - uses: Swatinem/rust-cache@v2
         with:
           key: ${{ matrix.target }}
-
-      # Linux: install system dependencies for GPUI (Vulkan, X11, Wayland, fonts)
-      - name: Install Linux dependencies
-        if: runner.os == 'Linux'
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y \
-            cmake pkg-config clang \
-            libssl-dev libfontconfig-dev libfreetype6-dev \
-            libvulkan-dev \
-            libx11-dev libx11-xcb-dev libxcb-render0-dev libxcb-xfixes0-dev \
-            libxkbcommon-dev libxkbcommon-x11-dev \
-            libwayland-dev wayland-protocols \
-            libasound2-dev libzstd-dev libgit2-dev libsqlite3-dev \
-            libstdc++-12-dev
 
       - name: Build
         run: cargo build --profile dist --features gpui-full --target ${{ matrix.target }}

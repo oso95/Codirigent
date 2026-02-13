@@ -1,0 +1,38 @@
+name: Update Website
+
+on:
+  release:
+    types: [published]
+
+permissions:
+  contents: write
+
+jobs:
+  update-website:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+
+      - name: Update download links and version
+        run: |
+          VERSION="${GITHUB_REF_NAME#v}"
+
+          # Update version in _config.yml
+          sed -i "s/^version:.*/version: $VERSION/" website/_config.yml
+
+          # Update version in index.md
+          sed -i "s/v[0-9]\+\.[0-9]\+\.[0-9]\+/v$VERSION/g" website/index.md
+
+          # Update download URLs
+          sed -i "s|download/v[0-9.]\+/codirigent-v[0-9.]\+-x86_64-pc-windows-msvc\.msi|download/${GITHUB_REF_NAME}/codirigent-v${VERSION}-x86_64-pc-windows-msvc.msi|g" website/_includes/download-buttons.html
+          sed -i "s|download/v[0-9.]\+/codirigent-v[0-9.]\+-aarch64-apple-darwin\.dmg|download/${GITHUB_REF_NAME}/codirigent-v${VERSION}-aarch64-apple-darwin.dmg|g" website/_includes/download-buttons.html
+
+      - name: Commit and push
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add website/
+          git commit -m "chore: update website for release ${{ github.ref_name }}" || exit 0
+          git push
