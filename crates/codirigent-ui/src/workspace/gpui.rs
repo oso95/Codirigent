@@ -718,6 +718,17 @@ impl WorkspaceView {
             event_bus as Arc<dyn codirigent_core::EventBus>,
         )));
 
+        // Load persisted tasks from disk so the task board survives restarts.
+        // load() is async but performs only synchronous file I/O, so a
+        // single-threaded tokio runtime is sufficient here.
+        if let Ok(rt) = tokio::runtime::Runtime::new() {
+            if let Ok(mut mgr) = task_manager.lock() {
+                if let Err(e) = rt.block_on(mgr.load()) {
+                    warn!("Failed to load persisted tasks: {}", e);
+                }
+            }
+        }
+
         (storage, task_manager)
     }
 
