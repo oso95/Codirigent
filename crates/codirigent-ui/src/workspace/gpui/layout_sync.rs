@@ -255,16 +255,16 @@ impl WorkspaceView {
         let font_family = &self.workspace.theme().terminal_font_family;
         let font_size = self.workspace.theme().terminal_font_size;
         let line_height = self.workspace.theme().terminal_line_height;
-        let (real_w, real_h) = match &self.cache.cached_cell_dims {
+        let (real_w, real_h, real_adjust) = match &self.cache.cached_cell_dims {
             Some(cached)
                 if cached.font_family == *font_family
                     && (cached.font_size - font_size).abs() < 0.01
                     && (cached.line_height - line_height).abs() < 0.001 =>
             {
-                (cached.cell_width, cached.cell_height)
+                (cached.cell_width, cached.cell_height, cached.centering_adjust)
             }
             _ => {
-                let (w, h) = crate::terminal_view::compute_cell_dimensions(
+                let (w, h, adjust) = crate::terminal_view::compute_cell_dimensions(
                     window.text_system(),
                     font_family,
                     font_size,
@@ -276,13 +276,14 @@ impl WorkspaceView {
                     line_height,
                     cell_width: w,
                     cell_height: h,
+                    centering_adjust: adjust,
                 });
-                (w, h)
+                (w, h, adjust)
             }
         };
         for tv in self.terminals.values_mut() {
             if !tv.dimensions_initialized() {
-                tv.set_cell_dimensions(real_w, real_h);
+                tv.set_cell_dimensions(real_w, real_h, real_adjust);
             }
         }
 

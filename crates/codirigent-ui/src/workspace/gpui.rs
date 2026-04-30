@@ -881,7 +881,7 @@ impl WorkspaceView {
         self.workspace.theme_mut().terminal_font_size = size;
         let family = self.workspace.theme().terminal_font_family.clone();
         let line_height = self.workspace.theme().terminal_line_height;
-        let (w, h) = crate::terminal_view::compute_cell_dimensions(
+        let (w, h, adjust) = crate::terminal_view::compute_cell_dimensions(
             window.text_system(),
             &family,
             size,
@@ -889,7 +889,7 @@ impl WorkspaceView {
         );
         for tv in self.terminals_mut().values_mut() {
             tv.set_font_size(size);
-            tv.set_cell_dimensions(w, h);
+            tv.set_cell_dimensions(w, h, adjust);
         }
     }
 
@@ -898,14 +898,14 @@ impl WorkspaceView {
         self.workspace.theme_mut().terminal_line_height = line_height;
         let family = self.workspace.theme().terminal_font_family.clone();
         let size = self.workspace.theme().terminal_font_size;
-        let (w, h) = crate::terminal_view::compute_cell_dimensions(
+        let (w, h, adjust) = crate::terminal_view::compute_cell_dimensions(
             window.text_system(),
             &family,
             size,
             line_height,
         );
         for tv in self.terminals_mut().values_mut() {
-            tv.set_cell_dimensions(w, h);
+            tv.set_cell_dimensions(w, h, adjust);
         }
     }
 
@@ -917,7 +917,7 @@ impl WorkspaceView {
         self.workspace.theme_mut().terminal_font_family = family.clone();
         let size = self.workspace.theme().terminal_font_size;
         let line_height = self.workspace.theme().terminal_line_height;
-        let (w, h) = crate::terminal_view::compute_cell_dimensions(
+        let (w, h, adjust) = crate::terminal_view::compute_cell_dimensions(
             window.text_system(),
             &family,
             size,
@@ -925,7 +925,7 @@ impl WorkspaceView {
         );
         for tv in self.terminals_mut().values_mut() {
             tv.set_font_family(family.clone());
-            tv.set_cell_dimensions(w, h);
+            tv.set_cell_dimensions(w, h, adjust);
         }
     }
 

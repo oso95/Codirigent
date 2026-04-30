@@ -70,6 +70,7 @@ impl WorkspaceView {
         let terminal_fg = terminal_view.terminal_fg_hsla();
         let cell_width = terminal_view.cell_width();
         let cell_height = terminal_view.cell_height();
+        let centering_adjust = terminal_view.centering_adjust();
         let font_size = terminal_view.font_size();
         let font_family_str = terminal_view.font_family().to_owned();
 
@@ -168,6 +169,7 @@ impl WorkspaceView {
                     cursor_data,
                     cell_width,
                     cell_height,
+                    centering_adjust,
                 )
             },
             // Paint: draw backgrounds, text, and cursor
@@ -186,6 +188,7 @@ impl WorkspaceView {
                     cursor_data,
                     cell_w,
                     cell_h,
+                    centering_adjust,
                 ) = prepaint_data;
 
                 // Register input handler for IME if context is provided and it's the focused pane
@@ -266,7 +269,7 @@ impl WorkspaceView {
                 for row in &shaped_rows {
                     for (line_row, start_col, shaped_line) in row.iter() {
                         let text_x = ox + *start_col as f32 * cell_w;
-                        let text_y = oy + *line_row as f32 * cell_h;
+                        let text_y = oy + *line_row as f32 * cell_h - centering_adjust;
                         let text_origin = gpui::Point {
                             x: px(text_x),
                             y: px(text_y),
@@ -279,7 +282,7 @@ impl WorkspaceView {
                 if let Some((preedit_x, preedit_y, preedit_line)) = &ime_preedit {
                     let preedit_origin = gpui::Point {
                         x: px(ox + *preedit_x),
-                        y: px(oy + *preedit_y),
+                        y: px(oy + *preedit_y - centering_adjust),
                     };
                     let _ = preedit_line.paint(preedit_origin, px(cell_h), window, cx);
                 }

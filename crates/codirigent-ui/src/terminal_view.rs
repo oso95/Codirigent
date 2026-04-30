@@ -280,6 +280,10 @@ pub struct TerminalView {
     cell_width: f32,
     /// Height of a single character cell in pixels.
     cell_height: f32,
+    /// Vertical shift to center visible glyphs within cells.
+    /// Compensates for DirectWrite internal leading (invisible space in ascent).
+    /// Zero when `ascent + |descent| <= font_size`.
+    centering_adjust: f32,
     /// Font size in pixels.
     font_size: f32,
     /// Font family name.
@@ -357,6 +361,7 @@ impl TerminalView {
             theme,
             cell_width,
             cell_height,
+            centering_adjust: 0.0,
             font_size,
             font_family,
             selection: Selection::default(),
@@ -460,13 +465,19 @@ impl TerminalView {
         self.cell_height
     }
 
+    /// Get the vertical centering adjustment in pixels.
+    pub fn centering_adjust(&self) -> f32 {
+        self.centering_adjust
+    }
+
     /// Set the cell dimensions.
     ///
     /// Marks the view as having initialized dimensions and triggers a
     /// terminal resize with the new cell metrics.
-    pub fn set_cell_dimensions(&mut self, width: f32, height: f32) {
+    pub fn set_cell_dimensions(&mut self, width: f32, height: f32, centering_adjust: f32) {
         self.cell_width = width;
         self.cell_height = height;
+        self.centering_adjust = centering_adjust;
         self.dimensions_initialized = true;
         if let Some(snapshot) = self
             .runtime
@@ -1478,13 +1489,15 @@ fn terminal_char_width(character: char) -> usize {
 /// `ascent + |descent|` to get the line height. GPUI's ascent already includes
 /// room for accented characters, so no leading factor is needed.
 ///
-/// Returns `(cell_width, cell_height)` in pixels.
+/// Returns `(cell_width, cell_height, centering_adjust)` in pixels.
+/// `centering_adjust` compensates for font internal leading (invisible space
+/// in the ascent metric) so visible glyphs are centered within cells.
 pub fn compute_cell_dimensions(
     text_system: &gpui::TextSystem,
     font_family: &str,
     font_size: f32,
     line_height: f32,
-) -> (f32, f32) {
+) -> (f32, f32, f32) {
     use gpui::{px, Font, FontFeatures, FontStyle, FontWeight};
 
     let font = Font {
@@ -1504,14 +1517,13 @@ pub fn compute_cell_dimensions(
         .unwrap_or(font_size * FALLBACK_CELL_WIDTH_RATIO)
         .max(MIN_CELL_WIDTH_PX);
 
-    // GPUI's ascent already includes room for accented characters, so natural
-    // ascent + |descent| gives correct terminal row height without extra leading.
-    // (The old 1.3x factor on font_size caused visible double-spacing.)
     let ascent: f32 = text_system.ascent(font_id, font_size_px).into();
     let descent: f32 = text_system.descent(font_id, font_size_px).into();
-    let cell_height = (ascent + descent.abs()).max(font_size) * line_height.max(1.0);
+    let raw_cell_height = ascent + descent.abs();
+    let cell_height = raw_cell_height.max(font_size) * line_height.max(1.0);
+    let centering_adjust = (raw_cell_height - font_size).max(0.0) / 2.0;
 
-    (cell_width, cell_height)
+    (cell_width, cell_height, centering_adjust)
 }
 
 /// Cursor rendering information.
@@ -1696,7 +1708,7 @@ mod tests {
     #[test]
     fn test_terminal_view_cell_dimensions() {
         let mut view = create_test_view();
-        view.set_cell_dimensions(10.0, 20.0);
+        view.set_cell_dimensions(10.0, 20.0, 0.0);
         assert_eq!(view.cell_width(), 10.0);
         assert_eq!(view.cell_height(), 20.0);
     }

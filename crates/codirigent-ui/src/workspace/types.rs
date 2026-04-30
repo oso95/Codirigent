@@ -701,6 +701,7 @@ pub(super) struct CachedCellDims {
     pub line_height: f32,
     pub cell_width: f32,
     pub cell_height: f32,
+    pub centering_adjust: f32,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq)]
