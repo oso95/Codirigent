@@ -156,11 +156,15 @@ impl CodirigentIntegration {
             config.compaction.clone(),
         )));
 
-        let task_manager = Arc::new(Mutex::new(TaskManager::new(
+        let mut restored_task_manager = TaskManager::new(
             TaskManagerConfig::default(),
             storage.clone(),
             event_bus.clone(),
-        )));
+        );
+        restored_task_manager
+            .load_from_storage()
+            .context("Failed to load persisted tasks")?;
+        let task_manager = Arc::new(Mutex::new(restored_task_manager));
 
         let integration = Self {
             session_manager,

@@ -177,6 +177,18 @@ impl TaskManager {
     ///
     /// Returns an error if loading from storage fails.
     pub async fn load(&mut self) -> Result<()> {
+        self.load_from_storage()
+    }
+
+    /// Load state from storage without requiring an async runtime.
+    ///
+    /// The storage service is synchronous, so UI startup paths can restore
+    /// persisted tasks before rendering the task board.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if loading from storage fails.
+    pub fn load_from_storage(&mut self) -> Result<()> {
         let task_ids = self.storage.list_task_ids()?;
 
         for id in task_ids {

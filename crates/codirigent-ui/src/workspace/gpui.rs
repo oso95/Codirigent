@@ -712,11 +712,15 @@ impl WorkspaceView {
             FileStorageService::new(&temp_dir).expect("Failed to create fallback storage")
         })) as Arc<dyn codirigent_core::StorageService>;
 
-        let task_manager = Arc::new(Mutex::new(TaskManager::new(
+        let mut task_manager = TaskManager::new(
             TaskManagerConfig::default(),
             storage.clone(),
             event_bus as Arc<dyn codirigent_core::EventBus>,
-        )));
+        );
+        if let Err(e) = task_manager.load_from_storage() {
+            warn!(error = %e, "Failed to load persisted tasks");
+        }
+        let task_manager = Arc::new(Mutex::new(task_manager));
 
         (storage, task_manager)
     }
