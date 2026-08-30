@@ -1545,6 +1545,16 @@ impl EntityInputHandler for WorkspaceView {
         _window: &mut Window,
         cx: &mut Context<Self>,
     ) {
+        let had_ime_overlay = self.ime_marked_range.is_some() || self.ime_preedit_text.is_some();
+        if self.modals.task_creation.is_some() {
+            self.ime_marked_range = None;
+            self.ime_preedit_text = None;
+            let changed = self.insert_task_creation_text(text);
+            if changed || had_ime_overlay {
+                cx.notify();
+            }
+            return;
+        }
         if self.has_blocking_modal() {
             // Modal text fields are handled via key events; do not leak input to PTY.
             return;
@@ -1564,7 +1574,6 @@ impl EntityInputHandler for WorkspaceView {
             return;
         }
 
-        let had_ime_overlay = self.ime_marked_range.is_some() || self.ime_preedit_text.is_some();
         self.ime_marked_range = None;
         self.ime_preedit_text = None;
         let mut scrolled_to_bottom = false;
@@ -1595,6 +1604,23 @@ impl EntityInputHandler for WorkspaceView {
         _window: &mut Window,
         cx: &mut Context<Self>,
     ) {
+        if self.modals.task_creation.is_some() {
+            let previous_text = self.ime_preedit_text.clone();
+            let previous_range = self.ime_marked_range.clone();
+            let len = text.encode_utf16().count();
+            if len == 0 {
+                self.ime_marked_range = None;
+                self.ime_preedit_text = None;
+            } else {
+                self.ime_marked_range = Some(0..len);
+                self.ime_preedit_text = Some(text.to_string());
+            }
+
+            if self.ime_preedit_text != previous_text || self.ime_marked_range != previous_range {
+                cx.notify();
+            }
+            return;
+        }
         if self.focused_search_session_id().is_some() {
             self.ime_marked_range = None;
             self.ime_preedit_text = None;

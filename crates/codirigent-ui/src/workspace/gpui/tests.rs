@@ -91,3 +91,22 @@ fn test_keystroke_is_not_text_input_for_named_terminal_key() {
 
     assert!(!super::WorkspaceView::keystroke_is_text_input(&event));
 }
+
+#[test]
+fn test_keystroke_is_text_input_for_task_modal_ascii_and_digits() {
+    for key in ["a", "7", "space"] {
+        let event = gpui::KeyDownEvent {
+            keystroke: gpui::Keystroke {
+                modifiers: gpui::Modifiers::default(),
+                key: key.to_string(),
+                key_char: None,
+            },
+            is_held: false,
+        };
+
+        assert!(
+            super::WorkspaceView::keystroke_is_text_input(&event),
+            "{key} should continue to the platform text-input handler"
+        );
+    }
+}
