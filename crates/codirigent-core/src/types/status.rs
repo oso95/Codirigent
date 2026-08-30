@@ -15,7 +15,8 @@ pub enum SessionStatus {
     Working,
     /// Session needs user attention (input required or permission prompt).
     NeedsAttention,
-    /// Claude just finished responding (Stop hook) and the session is not focused.
+    /// An agent has finished responding and is waiting for the next user prompt.
+    /// Produced by hooks, structured logs, or terminal-screen semantic rules.
     /// Cleared to Idle when the user switches to this session.
     ResponseReady,
     /// Error detected in output.

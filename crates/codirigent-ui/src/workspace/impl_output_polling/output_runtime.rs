@@ -260,6 +260,9 @@ impl WorkspaceView {
                     let data = drained.data;
                     let bytes_drained = data.len();
                     let render_snapshot = runtime.apply_output(&data);
+                    let visible_screen = render_snapshot
+                        .as_ref()
+                        .map(TerminalRenderSnapshot::visible_text);
                     let detected_cli_type = detect_cli_from_output(&data);
 
                     let shell_events = codirigent_session::extract_osc133_events(&data);
@@ -268,6 +271,9 @@ impl WorkspaceView {
                     {
                         let mut detector = detector.lock().ok()?;
                         detector.process_output(session_id, &data);
+                        if let Some(screen) = visible_screen.as_deref() {
+                            detector.process_visible_screen(session_id, screen);
+                        }
                         for event in shell_events {
                             // DUAL-PATH: Emitted to channel for phase-2 event routing.
                             // Also applied directly below via set_shell_state() for correctness now.

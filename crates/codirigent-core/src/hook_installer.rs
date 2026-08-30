@@ -10,8 +10,8 @@
 //! | Event | Matcher | Purpose |
 //! |---|---|---|
 //! | `UserPromptSubmit` | (all) | Mark session as "working" |
-//! | `Notification` | `idle_prompt\|permission_prompt` | Mark as "idle" or "needs_attention" |
-//! | `Stop` | (all) | Mark session as "idle" |
+//! | `Notification` | `idle_prompt\|permission_prompt` | Mark as "response_ready" or "needs_attention" |
+//! | `Stop` | (all) | Mark session as "response_ready" |
 //!
 //! # Signal files
 //!
@@ -408,9 +408,9 @@ fn hook_definitions() -> &'static [(&'static str, &'static str, &'static str)] {
         (
             "Notification",
             "idle_prompt|permission_prompt",
-            "mark session as idle or needs_attention",
+            "mark session as response_ready or needs_attention",
         ),
-        ("Stop", "", "mark session as idle on exit"),
+        ("Stop", "", "mark session as response_ready"),
     ]
 }
 

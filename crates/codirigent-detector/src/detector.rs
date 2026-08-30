@@ -34,7 +34,11 @@
 //! let status = detector.get_status(SessionId(1));
 //! ```
 
-use crate::patterns::{compile_patterns, find_matching_pattern_with_limit, get_default_patterns};
+use crate::patterns::{
+    compile_patterns, compile_status_rules, find_matching_pattern_with_limit,
+    find_matching_status_rule, get_default_patterns, get_default_status_rules, CompiledStatusRule,
+    StatusRule,
+};
 use crate::platform::{NativeMonitor, PlatformMonitor, ProcessState};
 use anyhow::Result;
 use codirigent_core::{
@@ -71,6 +75,12 @@ pub struct DetectorConfig {
     /// the default pattern set.
     pub custom_patterns: Vec<String>,
 
+    /// Additional semantic screen rules for unsupported agents.
+    ///
+    /// Unlike legacy `custom_patterns`, each rule declares the status it
+    /// produces and may require multiple visible-screen features.
+    pub status_rules: Vec<StatusRule>,
+
     /// Whether to send desktop notifications when input is required.
     ///
     /// Default: true
@@ -95,6 +105,7 @@ impl Default for DetectorConfig {
             poll_interval: Duration::from_millis(250),
             idle_threshold: Duration::from_secs(2),
             custom_patterns: Vec::new(),
+            status_rules: Vec::new(),
             notifications_enabled: true,
             max_buffer_size: 4096,
             recent_lines_to_check: 5,
@@ -152,6 +163,8 @@ struct MonitoredSession {
     current_status: SessionStatus,
     /// Pattern that matched, if any.
     pattern_matched: Option<String>,
+    /// Status inferred from the latest raw prompt or visible terminal screen.
+    detected_status: Option<SessionStatus>,
     /// Last known shell state from OSC 133 markers.
     shell_state: Option<ShellState>,
 }
@@ -166,6 +179,7 @@ impl MonitoredSession {
             output_buffer: String::new(),
             current_status: SessionStatus::Idle,
             pattern_matched: None,
+            detected_status: None,
             shell_state: None,
         }
     }
@@ -174,6 +188,7 @@ impl MonitoredSession {
     fn clear_buffer(&mut self) {
         self.output_buffer.clear();
         self.pattern_matched = None;
+        self.detected_status = None;
     }
 }
 
@@ -190,6 +205,8 @@ pub struct InputDetector {
     sessions: HashMap<SessionId, MonitoredSession>,
     /// Compiled regex patterns.
     compiled_patterns: Vec<Regex>,
+    /// Compiled semantic rules for visible terminal screens.
+    compiled_status_rules: Vec<CompiledStatusRule>,
     /// Event bus for publishing status changes.
     event_bus: Arc<dyn EventBus>,
 }
@@ -218,6 +235,9 @@ impl InputDetector {
         all_patterns.extend(config.custom_patterns.clone());
 
         let compiled_patterns = compile_patterns(&all_patterns);
+        let mut status_rules = get_default_status_rules();
+        status_rules.extend(config.status_rules.clone());
+        let compiled_status_rules = compile_status_rules(&status_rules);
 
         debug!(
             pattern_count = compiled_patterns.len(),
@@ -229,6 +249,7 @@ impl InputDetector {
             platform_monitor: NativeMonitor::new(),
             sessions: HashMap::new(),
             compiled_patterns,
+            compiled_status_rules,
             event_bus,
         }
     }
@@ -245,6 +266,10 @@ impl InputDetector {
     pub fn process_output(&mut self, session_id: SessionId, data: &[u8]) {
         let new_status = if let Some(session) = self.sessions.get_mut(&session_id) {
             session.last_output_time = Instant::now();
+            // Any new output invalidates a resting state inferred from the
+            // previous screen. The fresh terminal snapshot will immediately
+            // establish a new semantic state when one is still visible.
+            session.detected_status = None;
 
             // Append to buffer (keep limited size)
             let text = String::from_utf8_lossy(data);
@@ -269,9 +294,68 @@ impl InputDetector {
                 &session.output_buffer,
                 self.config.recent_lines_to_check,
             );
+            session.detected_status = session
+                .pattern_matched
+                .as_ref()
+                .map(|_| SessionStatus::NeedsAttention);
 
             // Active output is enough to treat the session as working unless a
             // prompt pattern or OSC 133 shell state says otherwise.
+            Some(Self::status_while_processing_output(session))
+        } else {
+            None
+        };
+
+        if let Some(new_status) = new_status {
+            self.apply_session_status(session_id, new_status);
+        }
+    }
+
+    /// Reclassify a session from its current visible terminal screen.
+    ///
+    /// The visible screen is authoritative for interactive TUI state: it
+    /// replaces the rolling raw-output buffer so a dismissed permission menu
+    /// cannot remain matched after the agent redraws the terminal.
+    pub fn process_visible_screen(&mut self, session_id: SessionId, screen: &str) {
+        let semantic_match = find_matching_status_rule(&self.compiled_status_rules, screen);
+        let legacy_match = if semantic_match.is_none() {
+            find_matching_pattern_with_limit(
+                &self.compiled_patterns,
+                screen,
+                self.config.recent_lines_to_check,
+            )
+        } else {
+            None
+        };
+
+        let new_status = if let Some(session) = self.sessions.get_mut(&session_id) {
+            session.output_buffer.clear();
+            if screen.len() <= self.config.max_buffer_size {
+                session.output_buffer.push_str(screen);
+            } else {
+                let target_start = screen.len() - self.config.max_buffer_size;
+                let start = screen
+                    .char_indices()
+                    .find(|(index, _)| *index >= target_start)
+                    .map(|(index, _)| index)
+                    .unwrap_or(screen.len());
+                session.output_buffer.push_str(&screen[start..]);
+            }
+
+            let (detected_status, detail) = match semantic_match {
+                Some((status, rule_name)) => (Some(status), Some(rule_name)),
+                None => match legacy_match {
+                    Some(pattern) => (Some(SessionStatus::NeedsAttention), Some(pattern)),
+                    None => (None, None),
+                },
+            };
+            session.detected_status = detected_status;
+            session.pattern_matched = if detected_status == Some(SessionStatus::NeedsAttention) {
+                detail
+            } else {
+                None
+            };
+
             Some(Self::status_while_processing_output(session))
         } else {
             None
@@ -306,8 +390,8 @@ impl InputDetector {
     /// 3. Process state heuristic — fallback for shells without OSC 133
     fn determine_status(&self, session: &MonitoredSession) -> SessionStatus {
         // 1. Pattern match takes highest priority
-        if session.pattern_matched.is_some() {
-            return SessionStatus::NeedsAttention;
+        if let Some(status) = session.detected_status {
+            return status;
         }
 
         // 2. OSC 133 shell state — reliable, if available
@@ -388,8 +472,8 @@ impl InputDetector {
     }
 
     fn status_while_processing_output(session: &MonitoredSession) -> SessionStatus {
-        if session.pattern_matched.is_some() {
-            SessionStatus::NeedsAttention
+        if let Some(status) = session.detected_status {
+            status
         } else if let Some(ref shell_state) = session.shell_state {
             Self::status_from_shell_state(shell_state)
         } else {
@@ -434,7 +518,7 @@ impl InputDetector {
             let needs_tick = self
                 .sessions
                 .get(session_id)
-                .map(|s| s.shell_state.is_none() || s.pattern_matched.is_some())
+                .map(|s| s.shell_state.is_none() || s.detected_status.is_some())
                 .unwrap_or(false);
             if needs_tick {
                 let old_status = self.sessions.get(session_id).map(|s| s.current_status);
@@ -542,6 +626,7 @@ impl ProcessMonitor for InputDetector {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::patterns::StatusRule;
     use codirigent_core::DefaultEventBus;
 
     fn create_test_detector() -> InputDetector {
@@ -561,6 +646,7 @@ mod tests {
         assert_eq!(config.poll_interval, Duration::from_millis(250));
         assert_eq!(config.idle_threshold, Duration::from_secs(2));
         assert!(config.custom_patterns.is_empty());
+        assert!(config.status_rules.is_empty());
         assert!(config.notifications_enabled);
         assert_eq!(config.max_buffer_size, 4096);
         assert_eq!(config.recent_lines_to_check, 5);
@@ -1073,6 +1159,7 @@ mod tests {
         assert!(session.output_buffer.is_empty());
         assert_eq!(session.current_status, SessionStatus::Idle);
         assert!(session.pattern_matched.is_none());
+        assert!(session.detected_status.is_none());
     }
 
     #[test]
@@ -1080,11 +1167,13 @@ mod tests {
         let mut session = MonitoredSession::new(SessionId(1), 1234);
         session.output_buffer = "some output".to_string();
         session.pattern_matched = Some("pattern".to_string());
+        session.detected_status = Some(SessionStatus::NeedsAttention);
 
         session.clear_buffer();
 
         assert!(session.output_buffer.is_empty());
         assert!(session.pattern_matched.is_none());
+        assert!(session.detected_status.is_none());
     }
 
     // Pattern detection edge cases
@@ -1253,6 +1342,179 @@ mod tests {
         assert_eq!(
             detector.get_status(SessionId(1)),
             Some(SessionStatus::NeedsAttention)
+        );
+    }
+
+    #[test]
+    fn test_kimi_command_approval_menu_sets_needs_attention() {
+        let mut detector = create_test_detector();
+        detector
+            .start_monitoring(SessionId(1), std::process::id())
+            .unwrap();
+
+        detector.process_output(
+            SessionId(1),
+            concat!(
+                "Run this command?\n",
+                "cwd: D:\\study\\codirigent\\test\\gomoku\n",
+                "$ ls -R src && cat src/App.tsx\n",
+                "1. Approve once\n",
+                "2. Approve for this session\n",
+                "3. Reject\n",
+                "4. Reject with feedback\n",
+                "1/2/3/4 choose · confirm",
+            )
+            .as_bytes(),
+        );
+
+        assert_eq!(
+            detector.get_status(SessionId(1)),
+            Some(SessionStatus::NeedsAttention)
+        );
+    }
+
+    #[test]
+    fn test_unknown_agent_approval_menu_sets_needs_attention_from_visible_screen() {
+        let mut detector = create_test_detector();
+        detector
+            .start_monitoring(SessionId(1), std::process::id())
+            .unwrap();
+        detector.set_shell_state(SessionId(1), ShellState::CommandExecuted);
+
+        detector.process_visible_screen(
+            SessionId(1),
+            concat!(
+                "Tool wants to execute a command\n",
+                "1. Allow once\n",
+                "2. Allow for this workspace\n",
+                "3. Deny\n",
+                "Use arrows to select, then confirm",
+            ),
+        );
+
+        assert_eq!(
+            detector.get_status(SessionId(1)),
+            Some(SessionStatus::NeedsAttention)
+        );
+    }
+
+    #[test]
+    fn test_agent_prompt_and_chrome_sets_response_ready() {
+        let mut detector = create_test_detector();
+        detector
+            .start_monitoring(SessionId(1), std::process::id())
+            .unwrap();
+        detector.set_shell_state(SessionId(1), ShellState::CommandExecuted);
+
+        detector.process_visible_screen(
+            SessionId(1),
+            concat!(
+                "Implemented the requested change.\n",
+                ">\n",
+                "manual mode on · ? for shortcuts · + for agents",
+            ),
+        );
+
+        assert_eq!(
+            detector.get_status(SessionId(1)),
+            Some(SessionStatus::ResponseReady)
+        );
+    }
+
+    #[test]
+    fn test_explicit_ready_message_sets_response_ready_for_unknown_agent() {
+        let mut detector = create_test_detector();
+        detector
+            .start_monitoring(SessionId(1), std::process::id())
+            .unwrap();
+        detector.set_shell_state(SessionId(1), ShellState::CommandExecuted);
+
+        detector.process_visible_screen(SessionId(1), "Idle - Ready for next task");
+
+        assert_eq!(
+            detector.get_status(SessionId(1)),
+            Some(SessionStatus::ResponseReady)
+        );
+    }
+
+    #[test]
+    fn test_powershell_prompt_is_idle_not_response_ready() {
+        let mut detector = create_test_detector();
+        detector
+            .start_monitoring(SessionId(1), std::process::id())
+            .unwrap();
+        detector.set_shell_state(SessionId(1), ShellState::PromptStart);
+
+        detector.process_visible_screen(SessionId(1), r"PS D:\repo> ");
+
+        assert_eq!(detector.get_status(SessionId(1)), Some(SessionStatus::Idle));
+    }
+
+    #[test]
+    fn test_new_output_clears_stale_response_ready_screen_hint() {
+        let mut detector = create_test_detector();
+        detector
+            .start_monitoring(SessionId(1), std::process::id())
+            .unwrap();
+        detector.set_shell_state(SessionId(1), ShellState::CommandExecuted);
+        detector.process_visible_screen(SessionId(1), "Idle - Ready for next task");
+        assert_eq!(
+            detector.get_status(SessionId(1)),
+            Some(SessionStatus::ResponseReady)
+        );
+
+        detector.process_output(SessionId(1), b"Starting the next task...");
+
+        assert_eq!(
+            detector.get_status(SessionId(1)),
+            Some(SessionStatus::Working)
+        );
+    }
+
+    #[test]
+    fn test_visible_screen_replacement_clears_stale_approval_menu() {
+        let mut detector = create_test_detector();
+        detector
+            .start_monitoring(SessionId(1), std::process::id())
+            .unwrap();
+        detector.set_shell_state(SessionId(1), ShellState::CommandExecuted);
+        detector.process_visible_screen(
+            SessionId(1),
+            "Allow this action?\n1. Allow\n2. Deny\nSelect an option to confirm",
+        );
+        assert_eq!(
+            detector.get_status(SessionId(1)),
+            Some(SessionStatus::NeedsAttention)
+        );
+
+        detector.process_visible_screen(SessionId(1), "Running tests...\nworking");
+
+        assert_eq!(
+            detector.get_status(SessionId(1)),
+            Some(SessionStatus::Working)
+        );
+    }
+
+    #[test]
+    fn test_custom_status_rule_supports_unrecognized_agent() {
+        let mut config = DetectorConfig::default();
+        config.status_rules.push(StatusRule {
+            name: "acme-agent-ready".to_string(),
+            status: SessionStatus::ResponseReady,
+            required_patterns: vec![r"ACME_AGENT_AWAITING_INPUT".to_string()],
+            excluded_patterns: Vec::new(),
+        });
+        let mut detector = create_detector_with_config(config);
+        detector
+            .start_monitoring(SessionId(1), std::process::id())
+            .unwrap();
+        detector.set_shell_state(SessionId(1), ShellState::CommandExecuted);
+
+        detector.process_visible_screen(SessionId(1), "ACME_AGENT_AWAITING_INPUT");
+
+        assert_eq!(
+            detector.get_status(SessionId(1)),
+            Some(SessionStatus::ResponseReady)
         );
     }
 

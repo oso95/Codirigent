@@ -24,6 +24,31 @@ pub(crate) struct TerminalRenderSnapshot {
     pub(crate) cursor_viewport_cell: Option<(usize, usize)>,
 }
 
+impl TerminalRenderSnapshot {
+    /// Reconstruct the current visible terminal viewport as plain text.
+    pub(crate) fn visible_text(&self) -> String {
+        let mut lines = Vec::with_capacity(self.cached_rows.len());
+        for row in &self.cached_rows {
+            let mut runs = row.text_runs_hsla.iter().collect::<Vec<_>>();
+            runs.sort_by_key(|(run, _)| run.start_col);
+            let mut line = String::new();
+            let mut cell_cursor = 0usize;
+            for (run, _) in runs {
+                if run.start_col > cell_cursor {
+                    line.push_str(&" ".repeat(run.start_col - cell_cursor));
+                }
+                line.push_str(&run.text);
+                cell_cursor = run.start_col + run.cell_count;
+            }
+            lines.push(line.trim_end().to_string());
+        }
+        while lines.last().is_some_and(String::is_empty) {
+            lines.pop();
+        }
+        lines.join("\n")
+    }
+}
+
 struct TerminalRuntime {
     terminal: Terminal,
     theme: CodirigentTheme,
@@ -475,6 +500,18 @@ mod tests {
         assert!(!exited.mode.contains(TermMode::ALT_SCREEN));
         assert_eq!(exited.dirty_rows, None);
         assert!(!visible_text.contains("KIMI"));
+    }
+
+    #[test]
+    fn snapshot_visible_text_preserves_row_and_column_spacing() {
+        let runtime = create_runtime();
+        let snapshot = runtime
+            .apply_output(b"left  ok\r\nnext")
+            .expect("runtime output snapshot");
+
+        let visible_text = snapshot.visible_text();
+
+        assert!(visible_text.contains("left  ok\nnext"));
     }
 
     #[test]

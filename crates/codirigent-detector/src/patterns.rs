@@ -19,8 +19,48 @@
 //! ```
 
 use codirigent_core::context::strip_ansi_codes;
+use codirigent_core::SessionStatus;
 use regex::Regex;
 use tracing::warn;
+
+/// A semantic terminal-screen rule that maps visible features to a session status.
+///
+/// Every `required_patterns` regex must match and every `excluded_patterns`
+/// regex must not match. This lets integrations describe an unsupported agent
+/// without adding another hard-coded CLI enum variant.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct StatusRule {
+    /// Stable diagnostic name for the rule.
+    pub name: String,
+    /// Status produced when the rule matches.
+    pub status: SessionStatus,
+    /// Regex features that must all occur in the visible terminal screen.
+    pub required_patterns: Vec<String>,
+    /// Regex features that prevent the rule from matching.
+    pub excluded_patterns: Vec<String>,
+}
+
+#[derive(Debug)]
+pub(crate) struct CompiledStatusRule {
+    name: String,
+    status: SessionStatus,
+    required_patterns: Vec<Regex>,
+    excluded_patterns: Vec<Regex>,
+}
+
+impl CompiledStatusRule {
+    fn matches(&self, screen: &str) -> bool {
+        !self.required_patterns.is_empty()
+            && self
+                .required_patterns
+                .iter()
+                .all(|pattern| pattern.is_match(screen))
+            && self
+                .excluded_patterns
+                .iter()
+                .all(|pattern| !pattern.is_match(screen))
+    }
+}
 
 /// Default patterns for detecting input prompts.
 ///
@@ -42,7 +82,90 @@ pub const DEFAULT_PATTERNS: &[&str] = &[
     r"\(y/N\)",
     r"password:",
     r"Password:",
+    r"(?is)(approve|allow|permit|authorize|批准|允许).{0,512}(reject|deny|decline|cancel|拒绝|取消).{0,256}(choose|select|confirm|选择|确认)",
 ];
+
+/// Return the built-in brand-independent terminal semantic rules.
+pub(crate) fn get_default_status_rules() -> Vec<StatusRule> {
+    vec![
+        StatusRule {
+            name: "interactive-approval-menu".to_string(),
+            status: SessionStatus::NeedsAttention,
+            required_patterns: vec![
+                r"(?i)(\bapprove\b|\ballow\b|\bpermit\b|\bauthorize\b|批准|允许)".to_string(),
+                r"(?i)(\breject\b|\bdeny\b|\bdecline\b|\bcancel\b|拒绝|取消)".to_string(),
+                r"(?i)(\bchoose\b|\bselect\b|\bconfirm\b|选择|确认)".to_string(),
+            ],
+            excluded_patterns: Vec::new(),
+        },
+        StatusRule {
+            name: "explicit-ready-for-next-input".to_string(),
+            status: SessionStatus::ResponseReady,
+            required_patterns: vec![
+                r"(?im)^\s*(?:idle\s*[-—:]\s*)?(?:ready|waiting)\s+for\s+(?:your\s+|the\s+)?(?:next\s+)?(?:task|prompt|request|instruction|input)\s*[.!]?\s*$"
+                    .to_string(),
+            ],
+            excluded_patterns: Vec::new(),
+        },
+        StatusRule {
+            name: "agent-input-prompt".to_string(),
+            status: SessionStatus::ResponseReady,
+            required_patterns: vec![
+                r"(?i)(manual mode|for shortcuts|for agents|context\s*:?\s*\d+%|\bcontext\s+(?:left|remaining)\b|\btokens?\s*:|\bmodel\s*:|ctrl\+c to (?:stop|interrupt))"
+                    .to_string(),
+                r"(?m)^\s*(?:>|›|❯|➜)\s*$".to_string(),
+            ],
+            excluded_patterns: vec![
+                r"(?i)(\bapprove\b|\ballow\b|\bpermit\b|\bauthorize\b|批准|允许).{0,512}(\breject\b|\bdeny\b|\bdecline\b|\bcancel\b|拒绝|取消)"
+                    .to_string(),
+            ],
+        },
+    ]
+}
+
+pub(crate) fn compile_status_rules(rules: &[StatusRule]) -> Vec<CompiledStatusRule> {
+    rules
+        .iter()
+        .filter_map(|rule| {
+            let required_patterns = compile_rule_patterns(&rule.name, &rule.required_patterns)?;
+            let excluded_patterns = compile_rule_patterns(&rule.name, &rule.excluded_patterns)?;
+            if required_patterns.is_empty() {
+                warn!(rule = %rule.name, "Ignoring status rule without required patterns");
+                return None;
+            }
+            Some(CompiledStatusRule {
+                name: rule.name.clone(),
+                status: rule.status,
+                required_patterns,
+                excluded_patterns,
+            })
+        })
+        .collect()
+}
+
+fn compile_rule_patterns(rule_name: &str, patterns: &[String]) -> Option<Vec<Regex>> {
+    patterns
+        .iter()
+        .map(|pattern| match Regex::new(pattern) {
+            Ok(regex) => Some(regex),
+            Err(error) => {
+                warn!(rule = %rule_name, %pattern, %error, "Failed to compile status rule");
+                None
+            }
+        })
+        .collect()
+}
+
+pub(crate) fn find_matching_status_rule(
+    rules: &[CompiledStatusRule],
+    screen: &str,
+) -> Option<(SessionStatus, String)> {
+    let plain_screen = strip_ansi_codes(screen);
+    rules
+        .iter()
+        .find(|rule| rule.matches(&plain_screen))
+        .map(|rule| (rule.status, rule.name.clone()))
+}
 
 /// Compile a list of pattern strings into regex objects.
 ///
@@ -244,7 +367,7 @@ mod tests {
 
     #[test]
     fn test_default_patterns_count() {
-        assert_eq!(DEFAULT_PATTERNS.len(), 10);
+        assert_eq!(DEFAULT_PATTERNS.len(), 11);
     }
 
     #[test]
@@ -326,6 +449,31 @@ mod tests {
         let patterns = compile_patterns(&[r"> $".to_string()]);
 
         assert!(find_matching_pattern(&patterns, "\x1b]133;A\x07PS D:\\repo> ").is_none());
+    }
+
+    #[test]
+    fn test_kimi_command_approval_menu_is_an_attention_prompt() {
+        let patterns = compile_patterns(&get_default_patterns());
+        let output = concat!(
+            "Run this command?\n",
+            "cwd: D:\\study\\codirigent\\test\\gomoku\n",
+            "$ ls -R src && cat src/App.tsx\n",
+            "\x1b[36m1. Approve once\x1b[0m\n",
+            "2. Approve for this session\n",
+            "3. Reject\n",
+            "4. Reject with feedback\n",
+            "1/2/3/4 choose · confirm",
+        );
+
+        assert!(find_matching_pattern(&patterns, output).is_some());
+    }
+
+    #[test]
+    fn test_approval_wording_in_prose_is_not_an_attention_prompt() {
+        let patterns = compile_patterns(&get_default_patterns());
+        let output = "The documentation explains when to choose Approve for this session.";
+
+        assert!(find_matching_pattern(&patterns, output).is_none());
     }
 
     #[test]
@@ -443,6 +591,43 @@ mod tests {
             let result = Regex::new(pattern);
             assert!(result.is_ok(), "Pattern '{}' is not valid regex", pattern);
         }
+    }
+
+    #[test]
+    fn test_default_status_rules_compile() {
+        let rules = get_default_status_rules();
+        let compiled = compile_status_rules(&rules);
+
+        assert_eq!(compiled.len(), rules.len());
+    }
+
+    #[test]
+    fn test_status_rule_requires_all_features_in_any_order() {
+        let rules = compile_status_rules(&[StatusRule {
+            name: "approval".to_string(),
+            status: SessionStatus::NeedsAttention,
+            required_patterns: vec!["Allow".to_string(), "Deny".to_string()],
+            excluded_patterns: Vec::new(),
+        }]);
+
+        let matched = find_matching_status_rule(&rules, "2. Deny\n1. Allow");
+
+        assert_eq!(
+            matched,
+            Some((SessionStatus::NeedsAttention, "approval".to_string()))
+        );
+    }
+
+    #[test]
+    fn test_status_rule_exclusion_prevents_match() {
+        let rules = compile_status_rules(&[StatusRule {
+            name: "ready".to_string(),
+            status: SessionStatus::ResponseReady,
+            required_patterns: vec!["Ready".to_string()],
+            excluded_patterns: vec!["approval pending".to_string()],
+        }]);
+
+        assert!(find_matching_status_rule(&rules, "Ready - approval pending").is_none());
     }
 
     #[test]

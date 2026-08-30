@@ -160,9 +160,18 @@ response or when post-command follow-up input timing is wrong.
 Status is not driven by one source. The system combines multiple hints:
 
 - detector state from `InputDetector`
+- semantic classification of the current visible terminal viewport
 - hook-derived status for Claude Code
 - JSONL-derived status for Codex/Gemini
 - stale-cache handling rules
+
+The terminal viewport is reconstructed from `TerminalRenderSnapshot` after
+each PTY output batch and passed to `InputDetector::process_visible_screen`.
+This is important for full-screen Agent TUIs: screen redraws replace old
+permission menus, while raw PTY history would keep stale menu text. Semantic
+rules are status-bearing (`NeedsAttention`, `ResponseReady`, and so on) and
+match interaction concepts instead of requiring a known `CliType`. Legacy
+custom input regexes remain compatible and still mean `NeedsAttention`.
 
 The actual arbitration happens in:
 
