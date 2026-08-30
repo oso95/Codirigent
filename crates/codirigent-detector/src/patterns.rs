@@ -18,6 +18,7 @@
 //! }
 //! ```
 
+use codirigent_core::context::strip_ansi_codes;
 use regex::Regex;
 use tracing::warn;
 
@@ -161,11 +162,28 @@ pub fn find_matching_pattern_with_limit(
         .join("\n");
 
     for pattern in patterns {
+        // The generic `> ` pattern is useful for REPLs and interactive tools,
+        // but it also matches PowerShell's normal `PS <path>> ` shell prompt.
+        // A shell prompt means the session is idle, not waiting for an agent
+        // response. Ignore only this well-known prompt shape so other angle
+        // prompts continue to work.
+        if pattern.as_str() == r"> $" && ends_with_powershell_prompt(&recent_output) {
+            continue;
+        }
         if pattern.is_match(&recent_output) {
             return Some(pattern.as_str().to_string());
         }
     }
     None
+}
+
+fn ends_with_powershell_prompt(output: &str) -> bool {
+    let plain_output = strip_ansi_codes(output);
+    plain_output
+        .lines()
+        .next_back()
+        .map(str::trim_end)
+        .is_some_and(|line| line.starts_with("PS ") && line.ends_with('>'))
 }
 
 /// Check if any pattern matches the output (boolean version).
@@ -294,6 +312,20 @@ mod tests {
         let patterns = compile_patterns(&[r"> $".to_string()]);
         let result = find_matching_pattern(&patterns, "Enter command> ");
         assert!(result.is_some());
+    }
+
+    #[test]
+    fn test_powershell_prompt_is_not_an_attention_prompt() {
+        let patterns = compile_patterns(&[r"> $".to_string()]);
+
+        assert!(find_matching_pattern(&patterns, r"PS D:\repo> ").is_none());
+    }
+
+    #[test]
+    fn test_powershell_prompt_with_osc133_is_not_an_attention_prompt() {
+        let patterns = compile_patterns(&[r"> $".to_string()]);
+
+        assert!(find_matching_pattern(&patterns, "\x1b]133;A\x07PS D:\\repo> ").is_none());
     }
 
     #[test]

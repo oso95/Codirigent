@@ -28,6 +28,7 @@ struct TerminalRuntime {
     terminal: Terminal,
     theme: CodirigentTheme,
     generation: u64,
+    last_snapshot_mode: TermMode,
     cached_rows: Option<Vec<CachedTerminalRow>>,
     cached_search_snapshot: Option<Arc<terminal_search::SearchSnapshot>>,
 }
@@ -44,10 +45,12 @@ impl TerminalRuntimeHandle {
         initial_size: TerminalSize,
     ) -> (Self, TerminalRenderSnapshot) {
         terminal.resize_with_cells(initial_size);
+        let last_snapshot_mode = terminal.mode();
         let mut runtime = TerminalRuntime {
             terminal,
             theme,
             generation: 0,
+            last_snapshot_mode,
             cached_rows: None,
             cached_search_snapshot: None,
         };
@@ -200,7 +203,10 @@ impl TerminalRuntime {
         let rows = self.terminal.rows() as usize;
         let cols = self.terminal.cols() as usize;
         let scrolled_back = self.terminal.term().grid().display_offset() > 0;
-        let damage = if !scrolled_back
+        let alternate_screen_changed = self.last_snapshot_mode.contains(TermMode::ALT_SCREEN)
+            != self.terminal.mode().contains(TermMode::ALT_SCREEN);
+        let damage = if !alternate_screen_changed
+            && !scrolled_back
             && self
                 .cached_rows
                 .as_ref()
@@ -277,6 +283,7 @@ impl TerminalRuntime {
             None
         };
         self.terminal.mark_clean();
+        self.last_snapshot_mode = mode;
 
         TerminalRenderSnapshot {
             generation: self.generation,
@@ -444,6 +451,30 @@ mod tests {
         assert!(next.generation > initial.generation);
         assert_eq!(next.rows, 4);
         assert_eq!(next.cols, 8);
+        assert!(next.dirty_rows.is_some());
+    }
+
+    #[test]
+    fn runtime_alt_screen_exit_rebuilds_all_cached_rows() {
+        let runtime = create_runtime();
+        let entered = runtime
+            .apply_output(b"\x1b[?1049h\x1b[2J\x1b[4;1HKIMI")
+            .expect("alternate-screen snapshot");
+        assert!(entered.mode.contains(TermMode::ALT_SCREEN));
+
+        let exited = runtime
+            .apply_output(b"\x1b[?1049lPS> ")
+            .expect("primary-screen snapshot");
+        let visible_text = exited
+            .cached_rows
+            .iter()
+            .flat_map(|row| row.text_runs_hsla.iter())
+            .map(|(run, _)| run.text.as_str())
+            .collect::<String>();
+
+        assert!(!exited.mode.contains(TermMode::ALT_SCREEN));
+        assert_eq!(exited.dirty_rows, None);
+        assert!(!visible_text.contains("KIMI"));
     }
 
     #[test]

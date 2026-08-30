@@ -426,8 +426,18 @@ impl TerminalView {
             self.cached_shaped_font_size = None;
             self.cached_shaped_rows = None;
             self.dirty_rows = None;
-        } else {
-            self.dirty_rows = snapshot.dirty_rows;
+        } else if self.cached_shaped_rows.is_none() {
+            // A full shaped rebuild is already pending, so partial row damage
+            // cannot narrow the work that still needs to be done.
+            self.dirty_rows = None;
+        } else if let Some(mut dirty_rows) = snapshot.dirty_rows {
+            if let Some(pending_rows) = self.dirty_rows.as_mut() {
+                pending_rows.append(&mut dirty_rows);
+                pending_rows.sort_unstable();
+                pending_rows.dedup();
+            } else {
+                self.dirty_rows = Some(dirty_rows);
+            }
         }
 
         true
@@ -2111,6 +2121,69 @@ mod tests {
 
         assert!(!view.apply_snapshot(stale));
         assert_eq!(view.rows(), current);
+    }
+
+    #[test]
+    fn test_apply_snapshot_accumulates_dirty_rows_until_rendered() {
+        let mut view = create_test_view();
+        view.cached_shaped_rows = Some(
+            (0..view.cached_rows.len())
+                .map(|_| Arc::new(Vec::new()))
+                .collect(),
+        );
+        let first = TerminalRenderSnapshot {
+            generation: view.snapshot_generation + 1,
+            rows: view.rows,
+            cols: view.cols,
+            mode: view.mode,
+            history_size: view.history_size,
+            display_offset: view.display_offset,
+            cached_rows: view.cached_rows.clone(),
+            dirty_rows: Some(vec![3]),
+            cursor_viewport_cell: None,
+        };
+        assert!(view.apply_snapshot(first));
+
+        let second = TerminalRenderSnapshot {
+            generation: view.snapshot_generation + 1,
+            rows: view.rows,
+            cols: view.cols,
+            mode: view.mode,
+            history_size: view.history_size,
+            display_offset: view.display_offset,
+            cached_rows: view.cached_rows.clone(),
+            dirty_rows: Some(vec![7, 3]),
+            cursor_viewport_cell: None,
+        };
+        assert!(view.apply_snapshot(second));
+
+        assert_eq!(view.dirty_rows, Some(vec![3, 7]));
+    }
+
+    #[test]
+    fn test_apply_snapshot_full_rebuild_supersedes_pending_dirty_rows() {
+        let mut view = create_test_view();
+        view.cached_shaped_rows = Some(
+            (0..view.cached_rows.len())
+                .map(|_| Arc::new(Vec::new()))
+                .collect(),
+        );
+        view.dirty_rows = Some(vec![3, 7]);
+        let full = TerminalRenderSnapshot {
+            generation: view.snapshot_generation + 1,
+            rows: view.rows,
+            cols: view.cols,
+            mode: view.mode,
+            history_size: view.history_size,
+            display_offset: view.display_offset,
+            cached_rows: view.cached_rows.clone(),
+            dirty_rows: None,
+            cursor_viewport_cell: None,
+        };
+
+        assert!(view.apply_snapshot(full));
+        assert!(view.cached_shaped_rows.is_none());
+        assert_eq!(view.dirty_rows, None);
     }
 
     #[test]
