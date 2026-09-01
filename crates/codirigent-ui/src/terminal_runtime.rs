@@ -362,7 +362,14 @@ fn build_row_cache(
             continue;
         }
 
-        if c == ' ' && cell.bg == TermColor::Named(NamedColor::Background) {
+        // Skip blank cells with the default background for efficiency. But a
+        // reverse-video blank (`\e[7m `) is how TUIs like claude's Ink draw their
+        // own caret; INVERSE swaps its background to the foreground color, so it
+        // must be kept and rendered as a background rect, not discarded.
+        if c == ' '
+            && cell.bg == TermColor::Named(NamedColor::Background)
+            && !cell.flags.contains(CellFlags::INVERSE)
+        {
             continue;
         }
 
@@ -578,5 +585,27 @@ mod tests {
             .expect("runtime scroll snapshot");
 
         assert_eq!(snapshot.display_offset, snapshot.history_size);
+    }
+
+    #[test]
+    fn runtime_renders_reverse_video_blank_as_background_rect() {
+        let runtime = create_runtime();
+
+        // claude's Ink draws its caret as a reverse-video blank: \e[7m \e[27m.
+        // The blank cell keeps the default background but gains the INVERSE
+        // flag, so skipping it (the old behaviour) made claude's caret vanish.
+        let snapshot = runtime
+            .apply_output(b"\x1b[7m \x1b[27m")
+            .expect("runtime output snapshot");
+
+        let row = &snapshot.cached_rows[0];
+        let has_caret_rect = row
+            .bg_rects_hsla
+            .iter()
+            .any(|(r, start, end, _)| *r == 0 && *start == 0 && *end == 1);
+        assert!(
+            has_caret_rect,
+            "reverse-video blank must produce a background rect (the caret block)"
+        );
     }
 }
