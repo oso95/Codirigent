@@ -22,6 +22,7 @@ pub(crate) struct TerminalRenderSnapshot {
     pub(crate) cached_rows: Vec<CachedTerminalRow>,
     pub(crate) dirty_rows: Option<Vec<usize>>,
     pub(crate) cursor_viewport_cell: Option<(usize, usize)>,
+    pub(crate) software_cursor_viewport_cell: Option<(usize, usize)>,
 }
 
 impl TerminalRenderSnapshot {
@@ -307,6 +308,14 @@ impl TerminalRuntime {
         } else {
             None
         };
+        let software_cursor_viewport_cell = if mode.contains(TermMode::SHOW_CURSOR) {
+            None
+        } else {
+            closest_software_cursor_cell(
+                self.cached_rows.as_deref().unwrap_or_default(),
+                cursor_viewport_cell,
+            )
+        };
         self.terminal.mark_clean();
         self.last_snapshot_mode = mode;
 
@@ -320,8 +329,35 @@ impl TerminalRuntime {
             cached_rows: self.cached_rows.clone().unwrap_or_default(),
             dirty_rows,
             cursor_viewport_cell,
+            software_cursor_viewport_cell,
         }
     }
+}
+
+fn closest_software_cursor_cell(
+    cached_rows: &[CachedTerminalRow],
+    hardware_cursor: Option<(usize, usize)>,
+) -> Option<(usize, usize)> {
+    let distance = |candidate: (usize, usize)| {
+        hardware_cursor.map_or((0, 0), |hardware| {
+            (
+                candidate.0.abs_diff(hardware.0),
+                candidate.1.abs_diff(hardware.1),
+            )
+        })
+    };
+
+    cached_rows
+        .iter()
+        .enumerate()
+        .flat_map(|(row, cached)| {
+            cached
+                .software_cursor_cols
+                .iter()
+                .copied()
+                .map(move |col| (row, col))
+        })
+        .min_by_key(|candidate| distance(*candidate))
 }
 
 fn build_row_cache(
@@ -336,11 +372,29 @@ fn build_row_cache(
 
     let mut text_runs: Vec<TextRunSegment> = Vec::new();
     let mut background_rects: Vec<(usize, usize, usize, Rgba)> = Vec::new();
+    let mut software_cursor_cols = Vec::new();
     let mut current_run: Option<TextRunSegment> = None;
 
     for col in 0..cols {
         let cell = &grid[grid_line][Column(col)];
         let c = cell.c;
+
+        if c == ' '
+            && cell.flags.contains(CellFlags::INVERSE)
+            && !cell.flags.contains(CellFlags::WIDE_CHAR_SPACER)
+        {
+            let inverse_to_left = col > 0
+                && grid[grid_line][Column(col - 1)]
+                    .flags
+                    .contains(CellFlags::INVERSE);
+            let inverse_to_right = col + 1 < cols
+                && grid[grid_line][Column(col + 1)]
+                    .flags
+                    .contains(CellFlags::INVERSE);
+            if !inverse_to_left && !inverse_to_right {
+                software_cursor_cols.push(col);
+            }
+        }
 
         if cell.flags.contains(CellFlags::WIDE_CHAR_SPACER) {
             let bg = convert_color(cell.bg, theme);
@@ -453,6 +507,7 @@ fn build_row_cache(
                 })
                 .collect(),
         ),
+        software_cursor_cols: Arc::new(software_cursor_cols),
     }
 }
 
@@ -607,5 +662,30 @@ mod tests {
             has_caret_rect,
             "reverse-video blank must produce a background rect (the caret block)"
         );
+        assert_eq!(snapshot.software_cursor_viewport_cell, None);
+    }
+
+    #[test]
+    fn runtime_finds_isolated_reverse_video_caret_when_hardware_cursor_is_hidden() {
+        let runtime = create_runtime();
+
+        let snapshot = runtime
+            .apply_output(b"\x1b[?25l> \x1b[7m \x1b[27m\x1b[4;8H")
+            .expect("runtime output snapshot");
+
+        assert!(!snapshot.mode.contains(TermMode::SHOW_CURSOR));
+        assert_eq!(snapshot.cursor_viewport_cell, Some((3, 7)));
+        assert_eq!(snapshot.software_cursor_viewport_cell, Some((0, 2)));
+    }
+
+    #[test]
+    fn runtime_does_not_treat_reverse_video_regions_as_software_carets() {
+        let runtime = create_runtime();
+
+        let snapshot = runtime
+            .apply_output(b"\x1b[?25l\x1b[7m  \x1b[27m\x1b[4;8H")
+            .expect("runtime output snapshot");
+
+        assert_eq!(snapshot.software_cursor_viewport_cell, None);
     }
 }

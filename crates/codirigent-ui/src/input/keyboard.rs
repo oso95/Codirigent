@@ -514,6 +514,27 @@ mod tests {
     }
 
     #[test]
+    fn test_terminal_editing_control_sequences() {
+        let mode = TermMode::empty();
+        assert_eq!(
+            key_to_bytes(&make_keystroke("backspace", true, false, false), mode),
+            Some(vec![0x08])
+        );
+        assert_eq!(
+            key_to_bytes(&make_keystroke("w", true, false, false), mode),
+            Some(vec![0x17])
+        );
+        assert_eq!(
+            key_to_bytes(&make_keystroke("left", true, false, false), mode),
+            Some(b"\x1b[1;5D".to_vec())
+        );
+        assert_eq!(
+            key_to_bytes(&make_keystroke("delete", true, false, false), mode),
+            Some(b"\x1b[3;5~".to_vec())
+        );
+    }
+
+    #[test]
     fn test_shift_tab() {
         let mode = TermMode::empty();
         assert_eq!(

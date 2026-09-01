@@ -81,6 +81,14 @@ struct CompletedRestoreBootstrap {
 /// sent anyway (the shell may not emit OSC 133 or may be very slow to start).
 const RESUME_COMMAND_FALLBACK_TIMEOUT: Duration = Duration::from_secs(3);
 
+fn resume_command_is_ready(shell_output_seen: bool, pty_size_synced: bool) -> bool {
+    shell_output_seen && pty_size_synced
+}
+
+fn timed_out_resume_can_dispatch(visible: bool, pty_size_synced: bool) -> bool {
+    pty_size_synced || !visible
+}
+
 fn legacy_pane_stacks_from_groups(
     saved_sessions: &[Session],
     pane_tab_groups: &[PaneTabGroup],
@@ -683,6 +691,21 @@ mod tests {
     }
 
     #[test]
+    fn restored_agent_waits_for_shell_output_and_real_pty_size() {
+        assert!(!resume_command_is_ready(false, false));
+        assert!(!resume_command_is_ready(true, false));
+        assert!(!resume_command_is_ready(false, true));
+        assert!(resume_command_is_ready(true, true));
+    }
+
+    #[test]
+    fn visible_timed_out_agent_still_waits_for_real_pty_size() {
+        assert!(!timed_out_resume_can_dispatch(true, false));
+        assert!(timed_out_resume_can_dispatch(true, true));
+        assert!(timed_out_resume_can_dispatch(false, false));
+    }
+
+    #[test]
     fn bootstrap_session_returns_session_metadata() {
         let session_manager = create_test_session_manager();
         let temp = TempDir::new().unwrap();
@@ -1256,6 +1279,9 @@ impl WorkspaceView {
     }
 
     fn create_terminal_view_for_session(&mut self, session_id: SessionId) {
+        // Session IDs can be reused after closing a pane. A new ConPTY always
+        // starts at its default 80x24 size and must be synchronized again.
+        self.cache.pty_sizes.remove(&session_id);
         let (pty_tx, pty_rx) = tokio::sync::mpsc::unbounded_channel();
         let terminal = Terminal::new(24, 80, session_id, pty_tx);
         let theme = self.workspace.theme();
@@ -1496,6 +1522,7 @@ impl WorkspaceView {
         pending_commands: Vec<(SessionId, Vec<String>)>,
     ) {
         let now = std::time::Instant::now();
+        let mut enqueued_sessions = Vec::new();
         for (session_id, commands) in pending_commands {
             if !commands.is_empty() {
                 info!(
@@ -1506,19 +1533,38 @@ impl WorkspaceView {
                 self.polling
                     .pending_resume_commands
                     .insert(session_id, (now, commands));
+                enqueued_sessions.push(session_id);
             }
+        }
+
+        // Output or the first layout pass may have completed while the restore
+        // batch was still being assembled. Dispatch immediately when both
+        // readiness signals are already present.
+        for session_id in enqueued_sessions {
+            self.dispatch_pending_resume_commands_for_session(session_id);
         }
     }
 
     /// Dispatch pending resume commands for a specific session.
     ///
-    /// Called when the output pipeline delivers real bytes for this session
-    /// (the shell is alive and producing output) or when the fallback timeout
-    /// fires.
+    /// Called when the output pipeline delivers real bytes for this session or
+    /// after PTY sizing completes. Both readiness signals must be present.
     pub(super) fn dispatch_pending_resume_commands_for_session(&mut self, session_id: SessionId) {
+        if !resume_command_is_ready(
+            self.polling.resume_shell_ready.contains(&session_id),
+            self.cache.pty_sizes.contains_key(&session_id),
+        ) {
+            return;
+        }
+
+        self.dispatch_pending_resume_commands_now(session_id);
+    }
+
+    fn dispatch_pending_resume_commands_now(&mut self, session_id: SessionId) {
         let Some((_, commands)) = self.polling.pending_resume_commands.remove(&session_id) else {
             return;
         };
+        self.polling.resume_shell_ready.remove(&session_id);
         info!(
             ?session_id,
             command_count = commands.len(),
@@ -1550,11 +1596,27 @@ impl WorkspaceView {
             .map(|(session_id, _)| *session_id)
             .collect();
         for session_id in expired {
+            let visible = self.workspace.visible_session_ids().contains(&session_id);
+            if !timed_out_resume_can_dispatch(
+                visible,
+                self.cache.pty_sizes.contains_key(&session_id),
+            ) {
+                info!(
+                    ?session_id,
+                    "Resume timeout reached, waiting for visible pane PTY size"
+                );
+                if let Some((enqueued_at, _)) =
+                    self.polling.pending_resume_commands.get_mut(&session_id)
+                {
+                    *enqueued_at = std::time::Instant::now();
+                }
+                continue;
+            }
             info!(
                 ?session_id,
                 "Resume command fallback timeout — dispatching without prompt"
             );
-            self.dispatch_pending_resume_commands_for_session(session_id);
+            self.dispatch_pending_resume_commands_now(session_id);
         }
     }
 
@@ -2022,8 +2084,11 @@ impl WorkspaceView {
             readers.cached_status.remove(&id);
         }
         self.polling.shell_input_buffers.remove(&id);
+        self.polling.pending_resume_commands.remove(&id);
+        self.polling.resume_shell_ready.remove(&id);
         self.cache.effective_shell_labels.remove(&id);
         self.cache.restore_shell_fallbacks.remove(&id);
+        self.cache.pty_sizes.remove(&id);
 
         // Remove from output dispatcher tracking (ready/in-flight sets)
         self.output_dispatcher.remove_session(id);

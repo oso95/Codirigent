@@ -537,6 +537,9 @@ pub(super) struct PollingState {
     /// Commands are sent as soon as the first PTY output is received (the shell
     /// is alive) or after `RESUME_COMMAND_FALLBACK_TIMEOUT` as a safety net.
     pub pending_resume_commands: HashMap<SessionId, (Instant, Vec<String>)>,
+    /// Restored sessions whose shell has produced output and is ready to
+    /// receive its resume command once the PTY has its rendered pane size.
+    pub resume_shell_ready: HashSet<SessionId>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -574,6 +577,7 @@ impl PollingState {
             last_legacy_fallback: Instant::now(),
             shell_input_buffers: HashMap::new(),
             pending_resume_commands: HashMap::new(),
+            resume_shell_ready: HashSet::new(),
         }
     }
 }

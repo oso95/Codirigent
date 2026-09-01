@@ -378,6 +378,7 @@ impl WorkspaceView {
         // so it is alive and can accept input. Flush any queued resume
         // commands for this session now.
         if bytes_drained > 0 {
+            self.polling.resume_shell_ready.insert(session_id);
             self.dispatch_pending_resume_commands_for_session(session_id);
         }
 

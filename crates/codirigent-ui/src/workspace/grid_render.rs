@@ -225,6 +225,9 @@ impl WorkspaceView {
         let fh = self.focus_handle(cx);
         let is_focused = self.workspace.focused_session_id() == Some(session_id);
         let input_enabled = !self.has_blocking_modal();
+        if let Some(terminal_view) = self.terminals.get_mut(&session_id) {
+            terminal_view.set_focused(is_focused && input_enabled);
+        }
         let (terminal_content, canvas_origin) = self.render_terminal_content(
             session_id,
             theme,
