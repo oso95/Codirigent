@@ -100,15 +100,20 @@ impl WorkspaceView {
     }
 
     /// Open the session context menu for a specific session.
+    ///
+    /// When `anchor_x` is `Some`, the menu is positioned at that X coordinate
+    /// (e.g. for tab right-click). When `None`, default drawer-relative positioning is used.
     pub fn open_session_menu(
         &mut self,
         session_id: SessionId,
         anchor_y: Option<f32>,
+        anchor_x: Option<f32>,
         cx: &mut Context<Self>,
     ) {
         info!(?session_id, "Opening session menu");
         self.selection.session_menu_open = Some(session_id);
         self.selection.session_menu_anchor_y = anchor_y;
+        self.selection.session_menu_anchor_x = anchor_x;
         cx.notify();
     }
 
@@ -117,6 +122,7 @@ impl WorkspaceView {
         info!("Closing session menu");
         self.selection.session_menu_open = None;
         self.selection.session_menu_anchor_y = None;
+        self.selection.session_menu_anchor_x = None;
         cx.notify();
     }
 

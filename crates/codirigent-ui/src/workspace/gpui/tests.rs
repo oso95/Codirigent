@@ -91,3 +91,62 @@ fn test_keystroke_is_not_text_input_for_named_terminal_key() {
 
     assert!(!super::WorkspaceView::keystroke_is_text_input(&event));
 }
+
+#[test]
+fn test_keystroke_is_text_input_for_task_modal_ascii_and_digits() {
+    for key in ["a", "7", "space"] {
+        let event = gpui::KeyDownEvent {
+            keystroke: gpui::Keystroke {
+                modifiers: gpui::Modifiers::default(),
+                key: key.to_string(),
+                key_char: None,
+            },
+            is_held: false,
+        };
+
+        assert!(
+            super::WorkspaceView::keystroke_is_text_input(&event),
+            "{key} should continue to the platform text-input handler"
+        );
+    }
+}
+
+fn control_event(key: &str, shift: bool) -> gpui::KeyDownEvent {
+    gpui::KeyDownEvent {
+        keystroke: gpui::Keystroke {
+            modifiers: gpui::Modifiers {
+                control: true,
+                shift,
+                ..gpui::Modifiers::default()
+            },
+            key: key.to_string(),
+            key_char: None,
+        },
+        is_held: false,
+    }
+}
+
+#[test]
+fn test_terminal_editing_control_keys_are_forwarded() {
+    for key in ["backspace", "delete", "left", "right", "a", "e", "w"] {
+        assert!(
+            super::WorkspaceView::control_keystroke_is_terminal_editing(&control_event(key, false)),
+            "Ctrl+{key} should reach the PTY"
+        );
+    }
+}
+
+#[test]
+fn test_workspace_control_shortcuts_remain_reserved() {
+    for key in ["c", "v", "q", ",", "1", "9"] {
+        assert!(
+            !super::WorkspaceView::control_keystroke_is_terminal_editing(&control_event(
+                key, false
+            )),
+            "Ctrl+{key} should remain a workspace shortcut"
+        );
+    }
+    assert!(
+        !super::WorkspaceView::control_keystroke_is_terminal_editing(&control_event("n", true))
+    );
+}

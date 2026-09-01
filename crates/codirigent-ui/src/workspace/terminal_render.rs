@@ -201,6 +201,11 @@ impl WorkspaceView {
                     }
                 }
 
+                // 0. Fill canvas with terminal background so empty rows (default-color cells
+                //    that produce no bg_rects_hsla entries) don't show panel_bg below them.
+                //    This fixes the visual "cut-off" after dragging to a larger pane.
+                window.paint_quad(gpui::fill(bounds, terminal_bg));
+
                 // 1. Paint background rectangles
                 for row in &cached_rows {
                     for (rect_row, start_col, end_col, bg_color) in row.bg_rects_hsla.iter() {

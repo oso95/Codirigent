@@ -22,12 +22,39 @@ pub(crate) struct TerminalRenderSnapshot {
     pub(crate) cached_rows: Vec<CachedTerminalRow>,
     pub(crate) dirty_rows: Option<Vec<usize>>,
     pub(crate) cursor_viewport_cell: Option<(usize, usize)>,
+    pub(crate) software_cursor_viewport_cell: Option<(usize, usize)>,
+}
+
+impl TerminalRenderSnapshot {
+    /// Reconstruct the current visible terminal viewport as plain text.
+    pub(crate) fn visible_text(&self) -> String {
+        let mut lines = Vec::with_capacity(self.cached_rows.len());
+        for row in &self.cached_rows {
+            let mut runs = row.text_runs_hsla.iter().collect::<Vec<_>>();
+            runs.sort_by_key(|(run, _)| run.start_col);
+            let mut line = String::new();
+            let mut cell_cursor = 0usize;
+            for (run, _) in runs {
+                if run.start_col > cell_cursor {
+                    line.push_str(&" ".repeat(run.start_col - cell_cursor));
+                }
+                line.push_str(&run.text);
+                cell_cursor = run.start_col + run.cell_count;
+            }
+            lines.push(line.trim_end().to_string());
+        }
+        while lines.last().is_some_and(String::is_empty) {
+            lines.pop();
+        }
+        lines.join("\n")
+    }
 }
 
 struct TerminalRuntime {
     terminal: Terminal,
     theme: CodirigentTheme,
     generation: u64,
+    last_snapshot_mode: TermMode,
     cached_rows: Option<Vec<CachedTerminalRow>>,
     cached_search_snapshot: Option<Arc<terminal_search::SearchSnapshot>>,
 }
@@ -44,10 +71,12 @@ impl TerminalRuntimeHandle {
         initial_size: TerminalSize,
     ) -> (Self, TerminalRenderSnapshot) {
         terminal.resize_with_cells(initial_size);
+        let last_snapshot_mode = terminal.mode();
         let mut runtime = TerminalRuntime {
             terminal,
             theme,
             generation: 0,
+            last_snapshot_mode,
             cached_rows: None,
             cached_search_snapshot: None,
         };
@@ -199,10 +228,15 @@ impl TerminalRuntime {
     fn snapshot_from_damage(&mut self) -> TerminalRenderSnapshot {
         let rows = self.terminal.rows() as usize;
         let cols = self.terminal.cols() as usize;
-        let damage = if self
-            .cached_rows
-            .as_ref()
-            .is_some_and(|cached_rows| cached_rows.len() == rows)
+        let scrolled_back = self.terminal.term().grid().display_offset() > 0;
+        let alternate_screen_changed = self.last_snapshot_mode.contains(TermMode::ALT_SCREEN)
+            != self.terminal.mode().contains(TermMode::ALT_SCREEN);
+        let damage = if !alternate_screen_changed
+            && !scrolled_back
+            && self
+                .cached_rows
+                .as_ref()
+                .is_some_and(|cached_rows| cached_rows.len() == rows)
         {
             let term = self.terminal.term_mut();
             let damage = match term.damage() {
@@ -274,7 +308,16 @@ impl TerminalRuntime {
         } else {
             None
         };
+        let software_cursor_viewport_cell = if mode.contains(TermMode::SHOW_CURSOR) {
+            None
+        } else {
+            closest_software_cursor_cell(
+                self.cached_rows.as_deref().unwrap_or_default(),
+                cursor_viewport_cell,
+            )
+        };
         self.terminal.mark_clean();
+        self.last_snapshot_mode = mode;
 
         TerminalRenderSnapshot {
             generation: self.generation,
@@ -286,8 +329,35 @@ impl TerminalRuntime {
             cached_rows: self.cached_rows.clone().unwrap_or_default(),
             dirty_rows,
             cursor_viewport_cell,
+            software_cursor_viewport_cell,
         }
     }
+}
+
+fn closest_software_cursor_cell(
+    cached_rows: &[CachedTerminalRow],
+    hardware_cursor: Option<(usize, usize)>,
+) -> Option<(usize, usize)> {
+    let distance = |candidate: (usize, usize)| {
+        hardware_cursor.map_or((0, 0), |hardware| {
+            (
+                candidate.0.abs_diff(hardware.0),
+                candidate.1.abs_diff(hardware.1),
+            )
+        })
+    };
+
+    cached_rows
+        .iter()
+        .enumerate()
+        .flat_map(|(row, cached)| {
+            cached
+                .software_cursor_cols
+                .iter()
+                .copied()
+                .map(move |col| (row, col))
+        })
+        .min_by_key(|candidate| distance(*candidate))
 }
 
 fn build_row_cache(
@@ -302,11 +372,29 @@ fn build_row_cache(
 
     let mut text_runs: Vec<TextRunSegment> = Vec::new();
     let mut background_rects: Vec<(usize, usize, usize, Rgba)> = Vec::new();
+    let mut software_cursor_cols = Vec::new();
     let mut current_run: Option<TextRunSegment> = None;
 
     for col in 0..cols {
         let cell = &grid[grid_line][Column(col)];
         let c = cell.c;
+
+        if c == ' '
+            && cell.flags.contains(CellFlags::INVERSE)
+            && !cell.flags.contains(CellFlags::WIDE_CHAR_SPACER)
+        {
+            let inverse_to_left = col > 0
+                && grid[grid_line][Column(col - 1)]
+                    .flags
+                    .contains(CellFlags::INVERSE);
+            let inverse_to_right = col + 1 < cols
+                && grid[grid_line][Column(col + 1)]
+                    .flags
+                    .contains(CellFlags::INVERSE);
+            if !inverse_to_left && !inverse_to_right {
+                software_cursor_cols.push(col);
+            }
+        }
 
         if cell.flags.contains(CellFlags::WIDE_CHAR_SPACER) {
             let bg = convert_color(cell.bg, theme);
@@ -328,7 +416,14 @@ fn build_row_cache(
             continue;
         }
 
-        if c == ' ' && cell.bg == TermColor::Named(NamedColor::Background) {
+        // Skip blank cells with the default background for efficiency. But a
+        // reverse-video blank (`\e[7m `) is how TUIs like claude's Ink draw their
+        // own caret; INVERSE swaps its background to the foreground color, so it
+        // must be kept and rendered as a background rect, not discarded.
+        if c == ' '
+            && cell.bg == TermColor::Named(NamedColor::Background)
+            && !cell.flags.contains(CellFlags::INVERSE)
+        {
             continue;
         }
 
@@ -412,6 +507,7 @@ fn build_row_cache(
                 })
                 .collect(),
         ),
+        software_cursor_cols: Arc::new(software_cursor_cols),
     }
 }
 
@@ -442,6 +538,42 @@ mod tests {
         assert!(next.generation > initial.generation);
         assert_eq!(next.rows, 4);
         assert_eq!(next.cols, 8);
+        assert!(next.dirty_rows.is_some());
+    }
+
+    #[test]
+    fn runtime_alt_screen_exit_rebuilds_all_cached_rows() {
+        let runtime = create_runtime();
+        let entered = runtime
+            .apply_output(b"\x1b[?1049h\x1b[2J\x1b[4;1HKIMI")
+            .expect("alternate-screen snapshot");
+        assert!(entered.mode.contains(TermMode::ALT_SCREEN));
+
+        let exited = runtime
+            .apply_output(b"\x1b[?1049lPS> ")
+            .expect("primary-screen snapshot");
+        let visible_text = exited
+            .cached_rows
+            .iter()
+            .flat_map(|row| row.text_runs_hsla.iter())
+            .map(|(run, _)| run.text.as_str())
+            .collect::<String>();
+
+        assert!(!exited.mode.contains(TermMode::ALT_SCREEN));
+        assert_eq!(exited.dirty_rows, None);
+        assert!(!visible_text.contains("KIMI"));
+    }
+
+    #[test]
+    fn snapshot_visible_text_preserves_row_and_column_spacing() {
+        let runtime = create_runtime();
+        let snapshot = runtime
+            .apply_output(b"left  ok\r\nnext")
+            .expect("runtime output snapshot");
+
+        let visible_text = snapshot.visible_text();
+
+        assert!(visible_text.contains("left  ok\nnext"));
     }
 
     #[test]
@@ -508,5 +640,52 @@ mod tests {
             .expect("runtime scroll snapshot");
 
         assert_eq!(snapshot.display_offset, snapshot.history_size);
+    }
+
+    #[test]
+    fn runtime_renders_reverse_video_blank_as_background_rect() {
+        let runtime = create_runtime();
+
+        // claude's Ink draws its caret as a reverse-video blank: \e[7m \e[27m.
+        // The blank cell keeps the default background but gains the INVERSE
+        // flag, so skipping it (the old behaviour) made claude's caret vanish.
+        let snapshot = runtime
+            .apply_output(b"\x1b[7m \x1b[27m")
+            .expect("runtime output snapshot");
+
+        let row = &snapshot.cached_rows[0];
+        let has_caret_rect = row
+            .bg_rects_hsla
+            .iter()
+            .any(|(r, start, end, _)| *r == 0 && *start == 0 && *end == 1);
+        assert!(
+            has_caret_rect,
+            "reverse-video blank must produce a background rect (the caret block)"
+        );
+        assert_eq!(snapshot.software_cursor_viewport_cell, None);
+    }
+
+    #[test]
+    fn runtime_finds_isolated_reverse_video_caret_when_hardware_cursor_is_hidden() {
+        let runtime = create_runtime();
+
+        let snapshot = runtime
+            .apply_output(b"\x1b[?25l> \x1b[7m \x1b[27m\x1b[4;8H")
+            .expect("runtime output snapshot");
+
+        assert!(!snapshot.mode.contains(TermMode::SHOW_CURSOR));
+        assert_eq!(snapshot.cursor_viewport_cell, Some((3, 7)));
+        assert_eq!(snapshot.software_cursor_viewport_cell, Some((0, 2)));
+    }
+
+    #[test]
+    fn runtime_does_not_treat_reverse_video_regions_as_software_carets() {
+        let runtime = create_runtime();
+
+        let snapshot = runtime
+            .apply_output(b"\x1b[?25l\x1b[7m  \x1b[27m\x1b[4;8H")
+            .expect("runtime output snapshot");
+
+        assert_eq!(snapshot.software_cursor_viewport_cell, None);
     }
 }

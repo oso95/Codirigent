@@ -52,6 +52,25 @@ jobs:
           cache-targets: "false"
           save-if: ${{ github.ref == 'refs/heads/main' }}
 
+      - name: Set workspace version from tag
+        shell: bash
+        run: |
+          export VERSION="${GITHUB_REF_NAME#v}"
+          python3 -c "
+          import os, re, pathlib
+          v = os.environ['VERSION']
+          p = pathlib.Path('Cargo.toml')
+          txt = p.read_text()
+          txt = re.sub(
+              r'(\[workspace\.package\]\s*\nversion\s*=\s*)\"[^\"]*\"',
+              rf'\1\"{v}\"',
+              txt,
+              count=1,
+          )
+          p.write_text(txt)
+          "
+          cargo generate-lockfile
+
       - name: Build binaries
         run: |
           cargo build --profile dist --features gpui-full --target ${{ matrix.target }} -p codirigent
@@ -248,7 +267,8 @@ jobs:
       - name: Generate checksums
         run: |
           cd artifacts
-          sha256sum * > checksums-sha256.txt
+          # Exclude MSI — it will be replaced by a locally signed version
+          sha256sum $(ls | grep -v '\.msi$') > checksums-sha256.txt
           cat checksums-sha256.txt
 
       - name: Create GitHub Release
@@ -256,7 +276,7 @@ jobs:
         with:
           artifacts: "artifacts/*"
           token: ${{ secrets.GITHUB_TOKEN }}
-          draft: false
+          draft: true
           generateReleaseNotes: true
           prerelease: ${{ contains(github.ref, 'alpha') || contains(github.ref, 'beta') || contains(github.ref, 'rc') }}
 

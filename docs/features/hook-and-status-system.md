@@ -95,9 +95,31 @@ hook_event_name       notification_type    → signal status
 UserPromptSubmit      (any)               → "working"
 Stop                  (any)               → "response_ready"
 Notification          "permission_prompt" → "needs_attention"
+Notification          "idle_prompt"       → "response_ready"
 Notification          anything else       → "idle"
 (unknown event)       (any)               → "idle"
 ```
+
+Claude Code can emit `idle_prompt` immediately after `Stop`. Both events mean
+that Claude has finished and is waiting for the next user prompt, so they map
+to the same `response_ready` signal. This also prevents a later notification
+from overwriting an unread completion with `idle` before the next UI poll.
+
+### Generic Agent fallback
+
+Agents without a dedicated hook or JSONL reader use the terminal detector's
+visible-screen semantic rules. The detector reconstructs the current viewport
+after each PTY output batch and classifies interaction semantics such as:
+
+- a menu containing allow/approve, deny/reject, and select/confirm actions →
+  `needs_attention`
+- an Agent-style empty input prompt plus interaction chrome, or an explicit
+  “ready for next task” state → `response_ready`
+
+These rules do not require the Agent to have a `CliType` enum variant. A new
+integration with unique terminal wording can add a `StatusRule` declaring its
+target status and required/excluded regex features; old custom prompt regexes
+continue to map to `needs_attention`.
 
 ### Signal File
 

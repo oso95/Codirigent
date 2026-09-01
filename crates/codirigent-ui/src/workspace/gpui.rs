@@ -283,6 +283,44 @@ impl WorkspaceView {
         key.chars().count() == 1
     }
 
+    /// Whether a Control-modified key is a terminal line-editing operation.
+    ///
+    /// Codirigent reserves a small set of unshifted Control shortcuts on
+    /// Windows/Linux. Other readline/TUI editing keys must reach the PTY.
+    pub(super) fn control_keystroke_is_terminal_editing(event: &KeyDownEvent) -> bool {
+        let modifiers = &event.keystroke.modifiers;
+        if !modifiers.control || modifiers.platform || modifiers.alt {
+            return false;
+        }
+
+        let key = event.keystroke.key.to_ascii_lowercase();
+        if matches!(
+            key.as_str(),
+            "backspace"
+                | "delete"
+                | "left"
+                | "right"
+                | "up"
+                | "down"
+                | "home"
+                | "end"
+                | "pageup"
+                | "pagedown"
+        ) {
+            return true;
+        }
+
+        // Shifted Control letters are application shortcuts (for example
+        // Ctrl+Shift+N/E/T/K/F/L). Unshifted terminal editing controls remain
+        // available except for Codirigent's explicit Ctrl+C/V/Q and pane keys.
+        !modifiers.shift
+            && key.chars().count() == 1
+            && !matches!(
+                key.as_str(),
+                "c" | "v" | "q" | "," | "1" | "2" | "3" | "4" | "5" | "6" | "7" | "8" | "9"
+            )
+    }
+
     pub(super) fn set_session_codex_execution_mode(
         &mut self,
         session_id: SessionId,
@@ -1116,10 +1154,11 @@ impl WorkspaceView {
         }
 
         // On Windows/Linux, Ctrl sets modifiers.control (not modifiers.platform).
-        // Guard here so Ctrl+<key> never reaches the PTY even if the GPUI action
-        // system fails to match a secondary-* binding.
+        // Keep Codirigent shortcuts out of the PTY, but allow terminal-native
+        // editing controls such as Ctrl+Backspace, Ctrl+W and Ctrl+A/Ctrl+E.
         #[cfg(not(target_os = "macos"))]
-        if event.keystroke.modifiers.control {
+        if event.keystroke.modifiers.control && !Self::control_keystroke_is_terminal_editing(event)
+        {
             return;
         }
 
@@ -1545,6 +1584,16 @@ impl EntityInputHandler for WorkspaceView {
         _window: &mut Window,
         cx: &mut Context<Self>,
     ) {
+        let had_ime_overlay = self.ime_marked_range.is_some() || self.ime_preedit_text.is_some();
+        if self.modals.task_creation.is_some() {
+            self.ime_marked_range = None;
+            self.ime_preedit_text = None;
+            let changed = self.insert_task_creation_text(text);
+            if changed || had_ime_overlay {
+                cx.notify();
+            }
+            return;
+        }
         if self.has_blocking_modal() {
             // Modal text fields are handled via key events; do not leak input to PTY.
             return;
@@ -1564,7 +1613,6 @@ impl EntityInputHandler for WorkspaceView {
             return;
         }
 
-        let had_ime_overlay = self.ime_marked_range.is_some() || self.ime_preedit_text.is_some();
         self.ime_marked_range = None;
         self.ime_preedit_text = None;
         let mut scrolled_to_bottom = false;
@@ -1595,6 +1643,23 @@ impl EntityInputHandler for WorkspaceView {
         _window: &mut Window,
         cx: &mut Context<Self>,
     ) {
+        if self.modals.task_creation.is_some() {
+            let previous_text = self.ime_preedit_text.clone();
+            let previous_range = self.ime_marked_range.clone();
+            let len = text.encode_utf16().count();
+            if len == 0 {
+                self.ime_marked_range = None;
+                self.ime_preedit_text = None;
+            } else {
+                self.ime_marked_range = Some(0..len);
+                self.ime_preedit_text = Some(text.to_string());
+            }
+
+            if self.ime_preedit_text != previous_text || self.ime_marked_range != previous_range {
+                cx.notify();
+            }
+            return;
+        }
         if self.focused_search_session_id().is_some() {
             self.ime_marked_range = None;
             self.ime_preedit_text = None;

@@ -14,9 +14,9 @@
 //! let manager = KeybindingManager::with_defaults();
 //! // Platform modifier: Cmd on macOS, Ctrl elsewhere.
 //! #[cfg(target_os = "macos")]
-//! let binding = KeybindingManager::parse_binding("Cmd+N").unwrap();
+//! let binding = KeybindingManager::parse_binding("Cmd+Shift+N").unwrap();
 //! #[cfg(not(target_os = "macos"))]
-//! let binding = KeybindingManager::parse_binding("Ctrl+N").unwrap();
+//! let binding = KeybindingManager::parse_binding("Ctrl+Shift+N").unwrap();
 //! assert_eq!(manager.get_action(&binding), Some(&Action::NewSession));
 //! ```
 

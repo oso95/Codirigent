@@ -1300,7 +1300,12 @@ impl WorkspaceView {
                     .on_mouse_down(
                         MouseButton::Left,
                         cx.listener(move |this, event: &MouseDownEvent, _window, cx| {
-                            this.open_session_menu(session_id, Some(event.position.y.into()), cx);
+                            this.open_session_menu(
+                                session_id,
+                                Some(event.position.y.into()),
+                                None,
+                                cx,
+                            );
                             cx.stop_propagation();
                         }),
                     )

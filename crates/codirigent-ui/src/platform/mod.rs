@@ -28,6 +28,15 @@
 //! let clipboard = platform::StubSmartClipboard::new();
 //! ```
 
+// Shutdown guard — prevents system shutdown/logout while sessions are active
+pub mod shutdown_guard;
+
+#[cfg(target_os = "macos")]
+mod shutdown_guard_macos;
+
+#[cfg(target_os = "windows")]
+mod shutdown_guard_windows;
+
 #[cfg(target_os = "macos")]
 mod clipboard_macos;
 

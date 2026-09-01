@@ -184,6 +184,23 @@ pub(super) fn detect_monospace_fonts(text_system: &gpui::TextSystem) -> Vec<Stri
     // Avoid probing missing fonts with resolve_font() on Windows because GPUI
     // logs each miss at error level.
     let preferred = [
+        // Nerd Font variants (checked first since users install them intentionally)
+        "JetBrainsMono Nerd Font",
+        "FiraCode Nerd Font",
+        "CaskaydiaCove Nerd Font",
+        "CaskaydiaMono Nerd Font",
+        "Hack Nerd Font",
+        "MesloLGS Nerd Font",
+        "MesloLGM Nerd Font",
+        "SourceCodePro Nerd Font",
+        "Inconsolata Nerd Font",
+        "DejaVuSansM Nerd Font",
+        "DroidSansM Nerd Font",
+        "RobotoMono Nerd Font",
+        "UbuntuMono Nerd Font",
+        "Mononoki Nerd Font",
+        "ProFontWindows Nerd Font",
+        // Standard monospace fonts
         "Cascadia Code",
         "Consolas",
         "JetBrains Mono",
@@ -200,7 +217,18 @@ pub(super) fn detect_monospace_fonts(text_system: &gpui::TextSystem) -> Vec<Stri
         .map(|name| (*name).to_string())
         .collect();
 
-    // Fallback heuristic when none of the preferred faces are available.
+    // Catch any remaining Nerd Font that wasn't in the preferred list.
+    let nerd_fonts: Vec<String> = all_names
+        .iter()
+        .filter(|name| {
+            let lower = name.to_lowercase();
+            lower.contains("nerd font") && !is_symbol_font(name)
+        })
+        .cloned()
+        .collect();
+    monospace.extend(nerd_fonts);
+
+    // Fallback heuristic when none of the above are available.
     if monospace.is_empty() {
         monospace = all_names
             .iter()

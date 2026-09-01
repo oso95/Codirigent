@@ -239,7 +239,19 @@ impl WorkspaceView {
                             cx.notify();
                         }
                     }
-                }));
+                }))
+                .on_mouse_down(
+                    MouseButton::Right,
+                    cx.listener(move |this, event: &MouseDownEvent, _window, cx| {
+                        this.open_session_menu(
+                            tab_session_id,
+                            Some(event.position.y.into()),
+                            Some(event.position.x.into()),
+                            cx,
+                        );
+                        cx.stop_propagation();
+                    }),
+                );
 
             // Apply glow border if present
             if let Some(glow_border) = decoration.tab_border {

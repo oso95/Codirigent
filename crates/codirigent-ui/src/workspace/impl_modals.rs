@@ -34,10 +34,12 @@ impl WorkspaceView {
                 .unwrap_or_default(),
         };
 
+        let cursor_position = input.chars().count();
         self.modals.session_action = Some(SessionActionModal {
             session_id,
             kind,
             input,
+            cursor_position,
             error: None,
         });
     }
@@ -326,6 +328,7 @@ impl WorkspaceView {
         let Some(modal) = self.modals.session_action.as_mut() else {
             return false;
         };
+        modal.cursor_position = modal.cursor_position.min(Self::char_count(&modal.input));
 
         let key = event.keystroke.key.to_lowercase();
         match key.as_str() {
@@ -339,13 +342,41 @@ impl WorkspaceView {
                 return true;
             }
             "backspace" => {
-                modal.input.pop();
+                Self::backspace_at_cursor(&mut modal.input, &mut modal.cursor_position);
+                modal.error = None;
+                cx.notify();
+                return true;
+            }
+            "delete" => {
+                Self::delete_at_cursor(&mut modal.input, &mut modal.cursor_position);
+                modal.error = None;
+                cx.notify();
+                return true;
+            }
+            "left" | "arrowleft" => {
+                Self::move_cursor_left(&modal.input, &mut modal.cursor_position);
+                cx.notify();
+                return true;
+            }
+            "right" | "arrowright" => {
+                Self::move_cursor_right(&modal.input, &mut modal.cursor_position);
+                cx.notify();
+                return true;
+            }
+            "home" => {
+                Self::move_cursor_home(&mut modal.cursor_position);
+                cx.notify();
+                return true;
+            }
+            "end" => {
+                Self::move_cursor_end(&modal.input, &mut modal.cursor_position);
                 cx.notify();
                 return true;
             }
             "space" => {
                 // GPUI on Windows reports space as key="space" with key_char=None
-                modal.input.push(' ');
+                Self::insert_at_cursor(&mut modal.input, &mut modal.cursor_position, " ");
+                modal.error = None;
                 cx.notify();
                 return true;
             }
@@ -355,7 +386,22 @@ impl WorkspaceView {
         // Ctrl+A selects all (clears input for easy replacement)
         if (event.keystroke.modifiers.control || event.keystroke.modifiers.platform) && key == "a" {
             modal.input.clear();
+            modal.cursor_position = 0;
             cx.notify();
+            return true;
+        }
+
+        // Ctrl+V / Cmd+V — paste from system clipboard
+        if (event.keystroke.modifiers.control || event.keystroke.modifiers.platform) && key == "v" {
+            if let Ok(codirigent_core::ClipboardContent::Text(text)) =
+                self.clipboard.smart_clipboard.read_content()
+            {
+                if let Some(modal) = self.modals.session_action.as_mut() {
+                    Self::insert_at_cursor(&mut modal.input, &mut modal.cursor_position, &text);
+                    modal.error = None;
+                    cx.notify();
+                }
+            }
             return true;
         }
 
@@ -368,11 +414,10 @@ impl WorkspaceView {
         }
 
         if let Some(ref key_char) = event.keystroke.key_char {
-            if let Some(ch) = key_char.chars().next() {
-                if ch.is_ascii_graphic() || ch == ' ' {
-                    modal.input.push(ch);
-                    cx.notify();
-                }
+            if !key_char.is_empty() {
+                Self::insert_at_cursor(&mut modal.input, &mut modal.cursor_position, key_char);
+                modal.error = None;
+                cx.notify();
             }
         }
 
@@ -511,6 +556,28 @@ impl WorkspaceView {
         *cursor += text.chars().count();
     }
 
+    fn insert_text_into_task_modal(modal: &mut TaskCreationModal, text: &str) -> bool {
+        if text.is_empty() {
+            return false;
+        }
+
+        Self::clamp_task_modal_cursor(modal);
+        if let Some((field, cursor)) = Self::focused_field_and_cursor_mut(modal) {
+            Self::insert_at_cursor(field, cursor, text);
+            modal.error = None;
+            true
+        } else {
+            false
+        }
+    }
+
+    pub(super) fn insert_task_creation_text(&mut self, text: &str) -> bool {
+        let Some(modal) = self.modals.task_creation.as_mut() else {
+            return false;
+        };
+        Self::insert_text_into_task_modal(modal, text)
+    }
+
     fn backspace_at_cursor(field: &mut String, cursor: &mut usize) {
         if *cursor == 0 {
             return;
@@ -559,12 +626,20 @@ impl WorkspaceView {
         event: &KeyDownEvent,
         cx: &mut Context<Self>,
     ) -> bool {
+        let ime_composing = self.ime_marked_range.is_some() || self.ime_preedit_text.is_some();
         let Some(modal) = self.modals.task_creation.as_mut() else {
             return false;
         };
         Self::clamp_task_modal_cursor(modal);
 
         let key = event.keystroke.key.to_lowercase();
+        // While an IME composition is active, keys such as Space, Enter, arrows,
+        // and digits belong to the IME candidate UI. The committed text arrives
+        // through EntityInputHandler::replace_text_in_range().
+        if ime_composing {
+            return true;
+        }
+
         match key.as_str() {
             "escape" => {
                 self.close_task_creation_modal();
@@ -633,14 +708,6 @@ impl WorkspaceView {
                 cx.notify();
                 return true;
             }
-            "space" => {
-                if let Some((field, cursor)) = Self::focused_field_and_cursor_mut(modal) {
-                    Self::insert_at_cursor(field, cursor, " ");
-                }
-                modal.error = None;
-                cx.notify();
-                return true;
-            }
             _ => {}
         }
 
@@ -677,16 +744,74 @@ impl WorkspaceView {
             return true;
         }
 
-        if let Some(ref key_char) = event.keystroke.key_char {
-            if !key_char.is_empty() {
-                if let Some((field, cursor)) = Self::focused_field_and_cursor_mut(modal) {
-                    Self::insert_at_cursor(field, cursor, key_char);
-                    modal.error = None;
-                    cx.notify();
-                }
-            }
-        }
+        // Printable characters (including plain Space) must keep propagating so
+        // the platform can deliver them through EntityInputHandler. The root
+        // keyboard handler already prevents these keys from reaching the PTY.
+        // During IME composition we returned early above, so candidate-selection
+        // digits and Space remain owned by the IME instead.
+        !Self::keystroke_is_text_input(event)
+    }
+}
 
-        true
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn task_modal(focused_field: usize) -> TaskCreationModal {
+        TaskCreationModal {
+            title: String::new(),
+            description: String::new(),
+            priority: codirigent_core::TaskPriority::Medium,
+            focused_field,
+            cursor_positions: [0, 0, 0],
+            error: Some("stale error".to_string()),
+            project_dir: None,
+            plan_file: String::new(),
+            editing_task_id: None,
+        }
+    }
+
+    #[test]
+    fn committed_chinese_text_is_inserted_into_every_task_field() {
+        for focused_field in 0..3 {
+            let mut modal = task_modal(focused_field);
+
+            assert!(WorkspaceView::insert_text_into_task_modal(
+                &mut modal,
+                "中文输入"
+            ));
+
+            let values = [&modal.title, &modal.description, &modal.plan_file];
+            assert_eq!(values[focused_field], "中文输入");
+            assert_eq!(modal.cursor_positions[focused_field], 4);
+            assert!(modal.error.is_none());
+        }
+    }
+
+    #[test]
+    fn committed_text_uses_character_cursor_without_splitting_unicode() {
+        let mut modal = task_modal(0);
+        modal.title = "甲乙".to_string();
+        modal.cursor_positions[0] = 1;
+
+        assert!(WorkspaceView::insert_text_into_task_modal(
+            &mut modal, "任务"
+        ));
+
+        assert_eq!(modal.title, "甲任务乙");
+        assert_eq!(modal.cursor_positions[0], 3);
+    }
+
+    #[test]
+    fn empty_ime_commit_does_not_change_task_field() {
+        let mut modal = task_modal(1);
+        modal.description = "已有内容".to_string();
+        modal.cursor_positions[1] = 4;
+
+        assert!(!WorkspaceView::insert_text_into_task_modal(&mut modal, ""));
+
+        assert_eq!(modal.description, "已有内容");
+        assert_eq!(modal.cursor_positions[1], 4);
+        assert!(modal.error.is_some());
     }
 }

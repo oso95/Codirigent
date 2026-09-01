@@ -60,6 +60,12 @@ impl WorkspaceView {
 
         let had_output_activity = self.schedule_output_preparation(cx);
 
+        // Safety-net: dispatch resume commands that have been waiting longer
+        // than the fallback timeout (shell never produced output).
+        if !self.polling.pending_resume_commands.is_empty() {
+            self.dispatch_timed_out_resume_commands();
+        }
+
         // Track output activity for adaptive polling
         //
         // Sessions that actually produced output are synchronized in
@@ -254,6 +260,9 @@ impl WorkspaceView {
                     let data = drained.data;
                     let bytes_drained = data.len();
                     let render_snapshot = runtime.apply_output(&data);
+                    let visible_screen = render_snapshot
+                        .as_ref()
+                        .map(TerminalRenderSnapshot::visible_text);
                     let detected_cli_type = detect_cli_from_output(&data);
 
                     let shell_events = codirigent_session::extract_osc133_events(&data);
@@ -262,6 +271,9 @@ impl WorkspaceView {
                     {
                         let mut detector = detector.lock().ok()?;
                         detector.process_output(session_id, &data);
+                        if let Some(screen) = visible_screen.as_deref() {
+                            detector.process_visible_screen(session_id, screen);
+                        }
                         for event in shell_events {
                             // DUAL-PATH: Emitted to channel for phase-2 event routing.
                             // Also applied directly below via set_shell_state() for correctness now.
@@ -361,6 +373,15 @@ impl WorkspaceView {
             has_more,
             "apply_prepared_session_output"
         );
+
+        // Prompt-aware resume dispatch: the shell has produced real output,
+        // so it is alive and can accept input. Flush any queued resume
+        // commands for this session now.
+        if bytes_drained > 0 {
+            self.polling.resume_shell_ready.insert(session_id);
+            self.dispatch_pending_resume_commands_for_session(session_id);
+        }
+
         let mut any_dirty = false;
 
         if let Some(snapshot) = render_snapshot {

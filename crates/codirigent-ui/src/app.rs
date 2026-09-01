@@ -445,6 +445,10 @@ impl CodirigentApp {
         let splash_duration = self.splash_duration;
 
         Application::new().run(move |cx: &mut App| {
+            // Install platform-specific shutdown guard (macOS: adds
+            // applicationShouldTerminate: to GPUI's delegate class).
+            crate::platform::shutdown_guard::install();
+
             // Register global actions
             Self::register_actions(cx);
 
@@ -516,7 +520,8 @@ impl CodirigentApp {
                         }),
                         ..Default::default()
                     },
-                    move |_window, cx| {
+                    move |window, cx| {
+                        Self::install_window_shutdown_guard(window);
                         cx.new(|cx| {
                             AppView::new_with_splash(
                                 session_manager,
@@ -543,7 +548,8 @@ impl CodirigentApp {
                         }),
                         ..Default::default()
                     },
-                    move |_window, cx| {
+                    move |window, cx| {
+                        Self::install_window_shutdown_guard(window);
                         cx.new(|cx| {
                             AppView::new_workspace(session_manager, detector, event_bus, theme, cx)
                         })
@@ -554,10 +560,35 @@ impl CodirigentApp {
         });
     }
 
+    /// Install the window-level shutdown guard (Windows only).
+    ///
+    /// On Windows, subclasses the HWND to intercept `WM_QUERYENDSESSION`.
+    /// On other platforms, this is a no-op.
+    #[allow(unused_variables)]
+    fn install_window_shutdown_guard(window: &Window) {
+        #[cfg(target_os = "windows")]
+        {
+            use raw_window_handle::HasWindowHandle;
+            if let Ok(handle) = HasWindowHandle::window_handle(window) {
+                if let raw_window_handle::RawWindowHandle::Win32(win32) = handle.as_raw() {
+                    crate::platform::shutdown_guard::install_for_window(win32.hwnd.get());
+                }
+            }
+        }
+    }
+
     /// Register global application actions.
     fn register_actions(cx: &mut App) {
         cx.on_action(|_: &Quit, cx| {
             info!("Quit action triggered");
+            // On macOS, mark this as a user-initiated quit so the shutdown
+            // guard allows it through (vs. system shutdown/logout which
+            // should be blocked when sessions are active).
+            #[cfg(target_os = "macos")]
+            {
+                crate::platform::shutdown_guard::USER_QUIT_REQUESTED
+                    .store(true, std::sync::atomic::Ordering::SeqCst);
+            }
             cx.quit();
         });
 

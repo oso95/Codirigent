@@ -223,6 +223,7 @@ fn map_claude_status(hook_event: Option<&str>, notification_type: Option<&str>) 
         Some("Stop") => "response_ready",
         Some("Notification") => match notification_type {
             Some("permission_prompt") => "needs_attention",
+            Some("idle_prompt") => "response_ready",
             _ => "idle",
         },
         _ => "idle",
@@ -380,7 +381,7 @@ mod tests {
     }
 
     #[test]
-    fn map_status_notification_other_is_idle() {
+    fn map_status_notification_idle_prompt_is_response_ready() {
         assert_eq!(
             map_status(
                 Some("Notification"),
@@ -388,8 +389,12 @@ mod tests {
                 None,
                 CLI_TYPE_CLAUDE
             ),
-            "idle"
+            "response_ready"
         );
+    }
+
+    #[test]
+    fn map_status_notification_without_type_is_idle() {
         assert_eq!(
             map_status(Some("Notification"), None, None, CLI_TYPE_CLAUDE),
             "idle"

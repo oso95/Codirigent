@@ -225,6 +225,9 @@ impl WorkspaceView {
         let fh = self.focus_handle(cx);
         let is_focused = self.workspace.focused_session_id() == Some(session_id);
         let input_enabled = !self.has_blocking_modal();
+        if let Some(terminal_view) = self.terminals.get_mut(&session_id) {
+            terminal_view.set_focused(is_focused && input_enabled);
+        }
         let (terminal_content, canvas_origin) = self.render_terminal_content(
             session_id,
             theme,
@@ -316,18 +319,24 @@ impl WorkspaceView {
                         if let Some(tv) = this.terminals_mut().get_mut(&session_id) {
                             let cell_h: f32 = tv.cell_height();
                             let delta_y: f32 = event.delta.pixel_delta(px(cell_h)).y.into();
+                            // Cap lines per event to avoid page-sized jumps from
+                            // high-resolution touchpad momentum scrolling.
+                            let max_lines: usize = tv.rows().max(1) as usize / 2;
+                            let lines = (delta_y.abs() / cell_h)
+                                .ceil()
+                                .max(1.0)
+                                .min(max_lines as f32)
+                                as usize;
                             // Positive delta_y = scroll up = show older content (scrollback)
                             if delta_y > 0.0 {
-                                let lines = (delta_y / cell_h).ceil().max(1.0) as usize;
                                 tv.scroll_up(lines);
                             } else if delta_y < 0.0 {
-                                let lines = (-delta_y / cell_h).ceil().max(1.0) as usize;
-                                // Snap to bottom when scrolling down within one viewport
-                                // of the live view. Without this, accidentally scrolling
-                                // up by even 1 line causes every new output line to push
-                                // the viewport further from the bottom, making it feel
-                                // like there is no bottom wall.
-                                if tv.display_offset() <= tv.rows() as usize + lines {
+                                // Snap to bottom when scrolling down within a small
+                                // margin of the live view. Without this, accidentally
+                                // scrolling up by even 1 line causes every new output
+                                // line to push the viewport further from the bottom.
+                                let snap_margin = 3;
+                                if tv.display_offset() <= snap_margin + lines {
                                     tv.scroll_to_bottom();
                                 } else {
                                     tv.scroll_down(lines);

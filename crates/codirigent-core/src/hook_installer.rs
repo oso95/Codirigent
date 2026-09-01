@@ -10,8 +10,8 @@
 //! | Event | Matcher | Purpose |
 //! |---|---|---|
 //! | `UserPromptSubmit` | (all) | Mark session as "working" |
-//! | `Notification` | `idle_prompt\|permission_prompt` | Mark as "idle" or "needs_attention" |
-//! | `Stop` | (all) | Mark session as "idle" |
+//! | `Notification` | `idle_prompt\|permission_prompt` | Mark as "response_ready" or "needs_attention" |
+//! | `Stop` | (all) | Mark session as "response_ready" |
 //!
 //! # Signal files
 //!
@@ -39,6 +39,7 @@ const HOOK_MARKER: &str = "codirigent-hook";
 /// Safe to call on every launch - the function is idempotent.
 /// Returns `Ok(true)` if the file was modified, `Ok(false)` if already up to date.
 pub fn ensure_hooks_installed(hook_binary: &Path) -> Result<bool> {
+    validate_hook_binary(hook_binary)?;
     let settings_path =
         claude_settings_path().context("Could not determine ~/.claude/settings.json path")?;
 
@@ -61,6 +62,7 @@ pub fn ensure_hooks_installed(hook_binary: &Path) -> Result<bool> {
 /// Gemini CLI uses the same JSON hook structure as Claude Code, so the merge is
 /// additive and idempotent. Existing hooks from other tools are preserved.
 pub fn ensure_gemini_hooks_installed(hook_binary: &Path) -> Result<bool> {
+    validate_hook_binary(hook_binary)?;
     let settings_path =
         gemini_settings_path().context("Could not determine ~/.gemini/settings.json path")?;
 
@@ -90,6 +92,7 @@ pub fn ensure_gemini_hooks_installed(hook_binary: &Path) -> Result<bool> {
 /// Safe to call on every launch -- the function is idempotent.
 /// Returns `Ok(true)` if the file was modified, `Ok(false)` if already up to date.
 pub fn ensure_codex_hooks_installed(hook_binary: &Path) -> Result<bool> {
+    validate_hook_binary(hook_binary)?;
     let config_path =
         codex_config_path().context("Could not determine ~/.codex/config.toml path")?;
 
@@ -140,12 +143,35 @@ fn codex_config_path() -> Option<PathBuf> {
     home_dir().map(|home| home.join(".codex").join("config.toml"))
 }
 
+fn validate_hook_binary(hook_binary: &Path) -> Result<()> {
+    if hook_binary.is_absolute() && !hook_binary.is_file() {
+        anyhow::bail!(
+            "Codirigent hook binary does not exist: {}",
+            hook_binary.display()
+        );
+    }
+    Ok(())
+}
+
 fn shell_escaped_hook_command(hook_binary: &Path) -> String {
     let raw = hook_binary.to_string_lossy().into_owned();
-    if raw.contains(' ') {
-        format!("\"{raw}\"")
-    } else {
-        raw
+
+    #[cfg(windows)]
+    {
+        // Claude and Gemini execute hooks through a POSIX-compatible shell on
+        // Windows. Unquoted backslashes are treated as escape characters, so
+        // normalize to the forward-slash form accepted by Windows executables.
+        let normalized = raw.replace('\\', "/");
+        format!("\"{normalized}\"")
+    }
+
+    #[cfg(not(windows))]
+    {
+        if raw.contains(' ') {
+            format!("\"{raw}\"")
+        } else {
+            raw
+        }
     }
 }
 
@@ -382,9 +408,9 @@ fn hook_definitions() -> &'static [(&'static str, &'static str, &'static str)] {
         (
             "Notification",
             "idle_prompt|permission_prompt",
-            "mark session as idle or needs_attention",
+            "mark session as response_ready or needs_attention",
         ),
-        ("Stop", "", "mark session as idle on exit"),
+        ("Stop", "", "mark session as response_ready"),
     ]
 }
 
@@ -446,7 +472,56 @@ mod tests {
 
     const CMD: &str = "/usr/local/bin/codirigent-hook";
     const CMD2: &str = "/opt/codirigent/codirigent-hook";
-    const CMD_SPACES: &str = r#""C:\Program Files\Codirigent\codirigent-hook.exe""#;
+    const CMD_SPACES: &str = r#""C:/Program Files/Codirigent/codirigent-hook.exe""#;
+
+    #[test]
+    fn missing_absolute_hook_binary_is_rejected() {
+        let temp = tempfile::tempdir().expect("hook installer test should create temp dir");
+        let missing = temp.path().join("codirigent-hook-missing");
+        let error = validate_hook_binary(&missing)
+            .expect_err("an absolute path to a missing hook must be rejected");
+        assert!(error.to_string().contains("does not exist"));
+    }
+
+    #[test]
+    fn bare_hook_binary_name_is_allowed() {
+        validate_hook_binary(Path::new("codirigent-hook"))
+            .expect("a bare hook command may rely on PATH");
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn windows_hook_path_without_spaces_is_bash_safe() {
+        let command = shell_escaped_hook_command(Path::new(
+            r"D:\study\codirigent\target\debug\codirigent-hook.exe",
+        ));
+        assert_eq!(
+            command,
+            r#""D:/study/codirigent/target/debug/codirigent-hook.exe""#
+        );
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn windows_hook_path_with_spaces_is_bash_safe() {
+        let command = shell_escaped_hook_command(Path::new(
+            r"C:\Program Files\Codirigent\codirigent-hook.exe",
+        ));
+        assert_eq!(command, CMD_SPACES);
+    }
+
+    #[cfg(not(windows))]
+    #[test]
+    fn unix_hook_path_escaping_is_unchanged() {
+        assert_eq!(
+            shell_escaped_hook_command(Path::new(CMD)),
+            "/usr/local/bin/codirigent-hook"
+        );
+        assert_eq!(
+            shell_escaped_hook_command(Path::new("/opt/Codirigent App/codirigent-hook")),
+            r#""/opt/Codirigent App/codirigent-hook""#
+        );
+    }
 
     #[test]
     fn fresh_install_adds_three_hooks() {

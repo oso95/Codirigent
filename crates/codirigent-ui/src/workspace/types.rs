@@ -196,6 +196,8 @@ pub(super) struct SessionActionModal {
     pub(super) kind: SessionActionKind,
     /// User input value.
     pub(super) input: String,
+    /// Cursor position (char index) within `input`.
+    pub(super) cursor_position: usize,
     /// Optional error message if validation fails.
     pub(super) error: Option<String>,
 }
@@ -317,6 +319,10 @@ pub(super) struct SelectionState {
     pub session_menu_open: Option<SessionId>,
     /// Vertical anchor position for the session menu overlay, in window pixels.
     pub session_menu_anchor_y: Option<f32>,
+    /// Horizontal anchor position for the session menu overlay, in window pixels.
+    /// When `Some`, the menu is positioned at this X coordinate (e.g. tab right-click).
+    /// When `None`, the menu uses the default drawer-relative positioning.
+    pub session_menu_anchor_x: Option<f32>,
     /// Whether the user is actively dragging a text selection in a terminal.
     pub is_selecting: bool,
     /// Session ID that is currently being selected in (for mouse move events).
@@ -456,6 +462,7 @@ impl SelectionState {
             selected_session_id: None,
             session_menu_open: None,
             session_menu_anchor_y: None,
+            session_menu_anchor_x: None,
             is_selecting: false,
             selecting_session_id: None,
             file_tree_context_menu: None,
@@ -525,6 +532,14 @@ pub(super) struct PollingState {
     pub last_legacy_fallback: Instant,
     /// Best-effort shell command line capture per session while the shell is idle.
     pub shell_input_buffers: HashMap<SessionId, String>,
+    /// CLI resume commands waiting for the shell to produce output before
+    /// being dispatched. Keyed by session ID; value is (enqueued_at, commands).
+    /// Commands are sent as soon as the first PTY output is received (the shell
+    /// is alive) or after `RESUME_COMMAND_FALLBACK_TIMEOUT` as a safety net.
+    pub pending_resume_commands: HashMap<SessionId, (Instant, Vec<String>)>,
+    /// Restored sessions whose shell has produced output and is ready to
+    /// receive its resume command once the PTY has its rendered pane size.
+    pub resume_shell_ready: HashSet<SessionId>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -561,6 +576,8 @@ impl PollingState {
             pending_session_bootstrap_slots: HashSet::new(),
             last_legacy_fallback: Instant::now(),
             shell_input_buffers: HashMap::new(),
+            pending_resume_commands: HashMap::new(),
+            resume_shell_ready: HashSet::new(),
         }
     }
 }

@@ -3,8 +3,8 @@
 //! Process monitoring, input detection, and status tracking for sessions.
 //!
 //! This crate provides the core detection functionality for Codirigent,
-//! determining when AI CLI sessions (Claude Code, Codex CLI, Gemini CLI)
-//! are waiting for user input.
+//! determining when known and previously unseen AI CLI sessions are working,
+//! waiting for approval, or ready for the next prompt.
 //!
 //! # Overview
 //!
@@ -13,6 +13,7 @@
 //! - **Platform-specific process monitoring** via `libproc` on macOS
 //!   and Win32 APIs on Windows
 //! - **Output pattern matching** to detect common input prompts
+//! - **Visible-screen semantic rules** to classify interactive agent TUIs
 //! - **Timing heuristics** to identify idle processes
 //!
 //! # Modules
@@ -66,6 +67,8 @@
 //!
 //! Custom patterns can be added via [`InputDetector::add_pattern`] or
 //! through [`DetectorConfig::custom_patterns`].
+//! Unsupported agents can map terminal features to any status with
+//! [`StatusRule`] entries in [`DetectorConfig::status_rules`].
 //!
 //! # Notifications
 //!
@@ -92,7 +95,7 @@ pub use notification::{
     notify_error, notify_input_required, notify_task_completed, send_notification,
     NotificationHandle, NotificationManager, NotificationType,
 };
-pub use patterns::{DEFAULT_PATTERNS, DEFAULT_RECENT_LINES_TO_CHECK};
+pub use patterns::{StatusRule, DEFAULT_PATTERNS, DEFAULT_RECENT_LINES_TO_CHECK};
 pub use platform::{NativeMonitor, PlatformMonitor, ProcessInfo, ProcessState};
 
 // Re-export the factory function

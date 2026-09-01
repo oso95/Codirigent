@@ -100,6 +100,10 @@ pub struct CachedTerminalContent {
 pub(crate) struct CachedTerminalRow {
     pub(crate) bg_rects_hsla: Arc<Vec<(usize, usize, usize, gpui::Hsla)>>,
     pub(crate) text_runs_hsla: Arc<Vec<(TextRunSegment, gpui::Hsla)>>,
+    /// Columns containing an isolated reverse-video blank. Terminal UIs built
+    /// on Ink and similar renderers use this cell pattern as a software caret
+    /// while the hardware cursor is hidden.
+    pub(crate) software_cursor_cols: Arc<Vec<usize>>,
 }
 
 type ShapedTerminalRow = Arc<Vec<(usize, usize, gpui::ShapedLine)>>;
@@ -326,6 +330,8 @@ pub struct TerminalView {
     /// Updated alongside row caches in `ensure_row_caches()` so the render
     /// pass never calls `renderable_content()` for cursor/IME positioning.
     cached_cursor_viewport_pos: Option<(f32, f32)>,
+    /// Cached viewport-relative software cursor position in pixels.
+    cached_software_cursor_viewport_pos: Option<(f32, f32)>,
     /// Scrollbar interaction state.
     scrollbar: ScrollbarState,
     /// Search overlay state.
@@ -379,6 +385,7 @@ impl TerminalView {
             cached_terminal_bg,
             cached_terminal_fg,
             cached_cursor_viewport_pos: None,
+            cached_software_cursor_viewport_pos: None,
             scrollbar: ScrollbarState::default(),
             search: SearchState::default(),
         };
@@ -415,7 +422,10 @@ impl TerminalView {
         self.snapshot_generation = snapshot.generation;
         self.cached_rows = snapshot.cached_rows;
         self.cached_content = None;
-        self.refresh_cursor_cache(snapshot.cursor_viewport_cell);
+        self.refresh_cursor_cache(
+            snapshot.cursor_viewport_cell,
+            snapshot.software_cursor_viewport_cell,
+        );
 
         if display_offset_changed {
             self.note_scroll_activity();
@@ -426,8 +436,18 @@ impl TerminalView {
             self.cached_shaped_font_size = None;
             self.cached_shaped_rows = None;
             self.dirty_rows = None;
-        } else {
-            self.dirty_rows = snapshot.dirty_rows;
+        } else if self.cached_shaped_rows.is_none() {
+            // A full shaped rebuild is already pending, so partial row damage
+            // cannot narrow the work that still needs to be done.
+            self.dirty_rows = None;
+        } else if let Some(mut dirty_rows) = snapshot.dirty_rows {
+            if let Some(pending_rows) = self.dirty_rows.as_mut() {
+                pending_rows.append(&mut dirty_rows);
+                pending_rows.sort_unstable();
+                pending_rows.dedup();
+            } else {
+                self.dirty_rows = Some(dirty_rows);
+            }
         }
 
         true
@@ -475,7 +495,7 @@ impl TerminalView {
             let _ = self.apply_snapshot(snapshot);
         } else {
             self.mark_dirty();
-            self.refresh_cursor_cache(None);
+            self.refresh_cursor_cache(None, None);
         }
     }
 
@@ -686,11 +706,17 @@ impl TerminalView {
 
     /// Returns the cached cursor (x, y) for IME preedit anchoring.
     ///
-    /// Unlike `cursor_rect`, this ignores `\e[?25l` visibility so the
-    /// preedit overlay tracks the real cursor location even during
-    /// Claude Code / Ink redraw cycles.
+    /// When a TUI hides and parks the hardware cursor, prefer the isolated
+    /// reverse-video blank it uses as a software caret. Falling back to the
+    /// hardware position preserves compatibility with hidden-cursor programs
+    /// that do not expose a recognizable software caret.
     pub fn ime_anchor_pos(&self) -> Option<(f32, f32)> {
-        self.cached_cursor_viewport_pos
+        if self.mode.contains(TermMode::SHOW_CURSOR) {
+            self.cached_cursor_viewport_pos
+        } else {
+            self.cached_software_cursor_viewport_pos
+                .or(self.cached_cursor_viewport_pos)
+        }
     }
 
     /// Calculate pixel dimensions for the current terminal size.
@@ -1290,14 +1316,17 @@ impl TerminalView {
         (start < end).then_some((start, end))
     }
 
-    /// Snapshot the cursor viewport position into `cached_cursor_viewport_pos`.
-    fn refresh_cursor_cache(&mut self, cursor_viewport_cell: Option<(usize, usize)>) {
-        if let Some((row, col)) = cursor_viewport_cell {
-            self.cached_cursor_viewport_pos =
-                Some((col as f32 * self.cell_width, row as f32 * self.cell_height));
-        } else {
-            self.cached_cursor_viewport_pos = None;
-        }
+    /// Snapshot hardware and software cursor viewport positions into pixels.
+    fn refresh_cursor_cache(
+        &mut self,
+        cursor_viewport_cell: Option<(usize, usize)>,
+        software_cursor_viewport_cell: Option<(usize, usize)>,
+    ) {
+        let to_pixels = |(row, col): (usize, usize)| {
+            (col as f32 * self.cell_width, row as f32 * self.cell_height)
+        };
+        self.cached_cursor_viewport_pos = cursor_viewport_cell.map(to_pixels);
+        self.cached_software_cursor_viewport_pos = software_cursor_viewport_cell.map(to_pixels);
     }
 
     #[cfg(test)]
@@ -1846,6 +1875,26 @@ mod tests {
     }
 
     #[test]
+    fn test_ime_anchor_uses_software_caret_when_hardware_cursor_is_hidden() {
+        let mut view = create_test_view();
+        view.apply_output_for_test(b"\x1b[?25l> \x1b[7m \x1b[27m\x1b[4;8H");
+
+        assert!(view.cursor_rect().is_none());
+        assert_eq!(view.ime_anchor_pos(), Some((2.0 * view.cell_width(), 0.0)));
+    }
+
+    #[test]
+    fn test_ime_anchor_uses_hardware_cursor_when_it_is_visible() {
+        let mut view = create_test_view();
+        view.apply_output_for_test(b"\x1b[2;4H");
+
+        assert_eq!(
+            view.ime_anchor_pos(),
+            Some((3.0 * view.cell_width(), view.cell_height()))
+        );
+    }
+
+    #[test]
     fn test_cached_content_empty() {
         let mut view = create_test_view();
         let content = view.cached_content();
@@ -2107,10 +2156,77 @@ mod tests {
             cached_rows: Vec::new(),
             dirty_rows: None,
             cursor_viewport_cell: None,
+            software_cursor_viewport_cell: None,
         };
 
         assert!(!view.apply_snapshot(stale));
         assert_eq!(view.rows(), current);
+    }
+
+    #[test]
+    fn test_apply_snapshot_accumulates_dirty_rows_until_rendered() {
+        let mut view = create_test_view();
+        view.cached_shaped_rows = Some(
+            (0..view.cached_rows.len())
+                .map(|_| Arc::new(Vec::new()))
+                .collect(),
+        );
+        let first = TerminalRenderSnapshot {
+            generation: view.snapshot_generation + 1,
+            rows: view.rows,
+            cols: view.cols,
+            mode: view.mode,
+            history_size: view.history_size,
+            display_offset: view.display_offset,
+            cached_rows: view.cached_rows.clone(),
+            dirty_rows: Some(vec![3]),
+            cursor_viewport_cell: None,
+            software_cursor_viewport_cell: None,
+        };
+        assert!(view.apply_snapshot(first));
+
+        let second = TerminalRenderSnapshot {
+            generation: view.snapshot_generation + 1,
+            rows: view.rows,
+            cols: view.cols,
+            mode: view.mode,
+            history_size: view.history_size,
+            display_offset: view.display_offset,
+            cached_rows: view.cached_rows.clone(),
+            dirty_rows: Some(vec![7, 3]),
+            cursor_viewport_cell: None,
+            software_cursor_viewport_cell: None,
+        };
+        assert!(view.apply_snapshot(second));
+
+        assert_eq!(view.dirty_rows, Some(vec![3, 7]));
+    }
+
+    #[test]
+    fn test_apply_snapshot_full_rebuild_supersedes_pending_dirty_rows() {
+        let mut view = create_test_view();
+        view.cached_shaped_rows = Some(
+            (0..view.cached_rows.len())
+                .map(|_| Arc::new(Vec::new()))
+                .collect(),
+        );
+        view.dirty_rows = Some(vec![3, 7]);
+        let full = TerminalRenderSnapshot {
+            generation: view.snapshot_generation + 1,
+            rows: view.rows,
+            cols: view.cols,
+            mode: view.mode,
+            history_size: view.history_size,
+            display_offset: view.display_offset,
+            cached_rows: view.cached_rows.clone(),
+            dirty_rows: None,
+            cursor_viewport_cell: None,
+            software_cursor_viewport_cell: None,
+        };
+
+        assert!(view.apply_snapshot(full));
+        assert!(view.cached_shaped_rows.is_none());
+        assert_eq!(view.dirty_rows, None);
     }
 
     #[test]

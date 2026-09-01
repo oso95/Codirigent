@@ -10,9 +10,9 @@ use crate::workspace::gpui::WorkspaceView;
 use crate::workspace::render::SessionMenuAction;
 use codirigent_core::SessionId;
 use gpui::{
-    div, prelude::FluentBuilder, px, ClickEvent, Context, FontWeight, InteractiveElement,
-    IntoElement, MouseButton, MouseDownEvent, ParentElement, SharedString,
-    StatefulInteractiveElement, Styled,
+    canvas, div, prelude::FluentBuilder, px, ClickEvent, Context, ElementInputHandler, Focusable,
+    FontWeight, InteractiveElement, IntoElement, MouseButton, MouseDownEvent, ParentElement,
+    SharedString, StatefulInteractiveElement, Styled,
 };
 
 /// Priority indicator colors in Hsla (consistent with amber/green constants below).
@@ -81,6 +81,29 @@ const GREEN_BG_HOVER: gpui::Hsla = gpui::Hsla {
 };
 
 impl WorkspaceView {
+    fn task_modal_input_registration(
+        &self,
+        focused: bool,
+        cx: &mut Context<Self>,
+    ) -> impl IntoElement {
+        let entity = cx.entity();
+        let focus_handle = self.focus_handle(cx);
+        canvas(
+            |bounds, _window, _cx| bounds,
+            move |bounds, _prepaint, window, cx| {
+                if focused {
+                    window.handle_input(
+                        &focus_handle,
+                        ElementInputHandler::new(bounds, entity),
+                        cx,
+                    );
+                }
+            },
+        )
+        .absolute()
+        .inset_0()
+    }
+
     /// Convert core Task to UI TaskItem with status mapping.
     pub(super) fn core_task_to_ui_item(
         &self,
@@ -229,6 +252,7 @@ impl WorkspaceView {
         let desc_focused = modal.focused_field == 1;
         let plan_focused = modal.focused_field == 2;
         let cursor_visible = self.modals.cursor_blink_on;
+        let ime_preedit_text = self.ime_preedit_text.as_deref().unwrap_or("");
 
         let with_cursor =
             |value: &str, focused: bool, cursor: usize, placeholder: &str| -> String {
@@ -240,7 +264,7 @@ impl WorkspaceView {
                     };
                 }
 
-                if !cursor_visible {
+                if !cursor_visible && ime_preedit_text.is_empty() {
                     return value.to_string();
                 }
 
@@ -250,9 +274,12 @@ impl WorkspaceView {
                     .nth(cursor)
                     .map(|(i, _)| i)
                     .unwrap_or(value.len());
-                let mut out = String::with_capacity(value.len() + 1);
+                let mut out = String::with_capacity(value.len() + ime_preedit_text.len() + 1);
                 out.push_str(&value[..cursor_byte]);
-                out.push('|');
+                out.push_str(ime_preedit_text);
+                if cursor_visible {
+                    out.push('|');
+                }
                 out.push_str(&value[cursor_byte..]);
                 out
             };
@@ -281,6 +308,10 @@ impl WorkspaceView {
             .as_ref()
             .map(|p| format!("Project: {}", p.display()))
             .unwrap_or_else(|| "Project: (none)".to_string());
+
+        let title_input_registration = self.task_modal_input_registration(title_focused, cx);
+        let description_input_registration = self.task_modal_input_registration(desc_focused, cx);
+        let plan_input_registration = self.task_modal_input_registration(plan_focused, cx);
 
         Some(
             div()
@@ -372,6 +403,7 @@ impl WorkspaceView {
                                                 modal.error.is_some(),
                                                 &input_style,
                                             )
+                                            .relative()
                                             .on_mouse_down(
                                                 MouseButton::Left,
                                                 cx.listener(|this, _event, _window, cx| {
@@ -384,7 +416,8 @@ impl WorkspaceView {
                                                     }
                                                     cx.notify();
                                                 }),
-                                            ),
+                                            )
+                                            .child(title_input_registration),
                                         ),
                                 )
                                 .child(
@@ -402,6 +435,7 @@ impl WorkspaceView {
                                         )))
                                         .child(
                                             div()
+                                                .relative()
                                                 .h(px(120.0))
                                                 .w_full()
                                                 .p_3()
@@ -436,7 +470,8 @@ impl WorkspaceView {
                                                         cx.notify();
                                                     }),
                                                 )
-                                                .child(description_value),
+                                                .child(description_value)
+                                                .child(description_input_registration),
                                         ),
                                 )
                                 // Priority selector
@@ -512,6 +547,7 @@ impl WorkspaceView {
                                                 false,
                                                 &input_style,
                                             )
+                                            .relative()
                                             .on_mouse_down(
                                                 MouseButton::Left,
                                                 cx.listener(|this, _event, _window, cx| {
@@ -524,7 +560,8 @@ impl WorkspaceView {
                                                     }
                                                     cx.notify();
                                                 }),
-                                            ),
+                                            )
+                                            .child(plan_input_registration),
                                         ),
                                 )
                                 .when_some(modal.error.clone(), |this, error| {

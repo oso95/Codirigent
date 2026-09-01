@@ -10,6 +10,11 @@ use gpui::{
     SharedString, StatefulInteractiveElement, Styled,
 };
 
+/// Keep pointer input inside an update toast from reaching the workspace underneath it.
+fn prevent_update_toast_pointer_passthrough<E: InteractiveElement>(element: E) -> E {
+    element.occlude()
+}
+
 impl WorkspaceView {
     /// Render the auto-update toast notification.
     ///
@@ -41,22 +46,24 @@ impl WorkspaceView {
         let muted: gpui::Hsla = theme.muted.into();
         let primary: gpui::Hsla = theme.primary.into();
 
-        let mut toast = div()
-            .id("update-toast")
-            .absolute()
-            .bottom(px(16.0))
-            .right(px(16.0))
-            .bg(panel_bg)
-            .border_1()
-            .border_color(border_color)
-            .rounded_lg()
-            .shadow_lg()
-            .p_3()
-            .flex()
-            .flex_col()
-            .gap_2()
-            .max_w(px(320.0))
-            .min_w(px(240.0));
+        let mut toast = prevent_update_toast_pointer_passthrough(
+            div()
+                .id("update-toast")
+                .absolute()
+                .bottom(px(16.0))
+                .right(px(16.0))
+                .bg(panel_bg)
+                .border_1()
+                .border_color(border_color)
+                .rounded_lg()
+                .shadow_lg()
+                .p_3()
+                .flex()
+                .flex_col()
+                .gap_2()
+                .max_w(px(320.0))
+                .min_w(px(240.0)),
+        );
 
         match variant {
             ToastVariant::UpdateAvailable { version } => {
@@ -293,4 +300,75 @@ enum ToastVariant {
     UpdateAvailable { version: String },
     Downloading { percent: u8 },
     ReadyToApply { version: String },
+}
+
+#[cfg(test)]
+mod tests {
+    use super::prevent_update_toast_pointer_passthrough;
+    use gpui::{
+        div, point, px, size, InteractiveElement, Modifiers, MouseButton, ParentElement, Styled,
+        TestAppContext,
+    };
+    use std::{cell::Cell, rc::Rc};
+
+    #[gpui::test]
+    fn update_toast_click_does_not_reach_content_behind_it(cx: &mut TestAppContext) {
+        let behind_mouse_downs = Rc::new(Cell::new(0));
+        let toast_mouse_downs = Rc::new(Cell::new(0));
+        let visual_cx = cx.add_empty_window();
+
+        visual_cx.draw(point(px(0.0), px(0.0)), size(px(100.0), px(100.0)), {
+            let behind_mouse_downs = behind_mouse_downs.clone();
+            let toast_mouse_downs = toast_mouse_downs.clone();
+
+            move |_, _| {
+                let behind_mouse_downs = behind_mouse_downs.clone();
+                let toast_mouse_downs = toast_mouse_downs.clone();
+
+                div()
+                    .relative()
+                    .size_full()
+                    .child(div().absolute().inset_0().on_mouse_down(
+                        MouseButton::Left,
+                        move |_, _, _| {
+                            behind_mouse_downs.set(behind_mouse_downs.get() + 1);
+                        },
+                    ))
+                    .child(
+                        prevent_update_toast_pointer_passthrough(
+                            div()
+                                .id("test-update-toast")
+                                .debug_selector(|| "test-update-toast".to_string())
+                                .absolute()
+                                .left(px(20.0))
+                                .top(px(20.0))
+                                .w(px(60.0))
+                                .h(px(60.0)),
+                        )
+                        .on_mouse_down(
+                            MouseButton::Left,
+                            move |_, _, _| {
+                                toast_mouse_downs.set(toast_mouse_downs.get() + 1);
+                            },
+                        ),
+                    )
+            }
+        });
+
+        let toast_bounds = visual_cx
+            .debug_bounds("test-update-toast")
+            .expect("test update toast should be rendered");
+        visual_cx.simulate_mouse_down(toast_bounds.center(), MouseButton::Left, Modifiers::none());
+
+        assert_eq!(
+            toast_mouse_downs.get(),
+            1,
+            "toast should receive its own mouse input"
+        );
+        assert_eq!(
+            behind_mouse_downs.get(),
+            0,
+            "toast click must not reach the content behind it"
+        );
+    }
 }

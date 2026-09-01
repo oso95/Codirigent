@@ -28,8 +28,8 @@ use tracing::info;
 impl WorkspaceView {
     /// Render the title bar with window controls (minimize, maximize, close).
     ///
-    /// This is a 32px bar with the logo on the left and native window controls
-    /// on the right. The entire bar is a drag region for moving the window.
+    /// This is a 32px bar with a dedicated drag region on the left and native
+    /// window controls on the right.
     pub(super) fn render_title_bar(
         &mut self,
         window: &mut Window,
@@ -40,8 +40,7 @@ impl WorkspaceView {
         let border_color: gpui::Hsla = theme.border.into();
         let fg: gpui::Hsla = theme.foreground.into();
 
-        // The entire bar is a drag region. Caption buttons use .occlude() +
-        // their own WindowControlArea to carve out non-drag zones.
+        // The bar hosts a dedicated drag region plus caption buttons.
         let mut bar = div()
             .id("title-bar")
             .h(px(self.title_bar.height()))
@@ -52,8 +51,7 @@ impl WorkspaceView {
             .flex()
             .items_center()
             .px_3()
-            .gap_2()
-            .window_control_area(WindowControlArea::Drag);
+            .gap_2();
 
         // macOS: Native traffic lights are rendered by the OS.
         // Reserve left padding so content doesn't overlap them, and handle
@@ -67,34 +65,71 @@ impl WorkspaceView {
             } else {
                 bar.pl(px(TRAFFIC_LIGHT_PADDING))
             };
-
-            bar = bar.on_click(|event: &ClickEvent, window, _cx| {
-                if event.click_count() == 2 {
-                    window.titlebar_double_click();
-                }
-            });
         }
 
-        // Windows: GPUI 0.2.1 has a stale mouse_hit_test issue in WM_NCHITTEST,
-        // so WindowControlArea::Drag alone doesn't reliably initiate drags.
-        // Work around by sending WM_NCLBUTTONDOWN(HTCAPTION) on mouse-down.
+        // Drag region: how the user moves the window by clicking the title bar.
+        //
+        // macOS: Use GPUI's `WindowControlArea::Drag` — it returns HTCAPTION via
+        //   the native hit-test and the OS handles drag + double-click-to-zoom.
+        //
+        // Windows: Do NOT use `WindowControlArea::Drag`. GPUI 0.2.x has two
+        //   issues: (1) WM_NCHITTEST returns HTCAPTION while GPUI holds RefCell
+        //   borrows, causing a freeze when DefWindowProc enters a modal drag
+        //   loop; (2) GPUI re-dispatches WM_NCLBUTTONDOWN through its element
+        //   tree, so on_mouse_down handlers eat resize events for the top edge
+        //   (which overlaps the title bar).
+        //
+        //   Fix: a Win32 window subclass (see `platform_drag.rs`) intercepts
+        //   NC messages before GPUI. Drag uses a custom WM_APP message that the
+        //   subclass routes to DefWindowProc(WM_NCLBUTTONDOWN, HTCAPTION).
+        //   Resize edges go straight to DefWindowProc, bypassing GPUI.
+        let mut drag_region = div().flex().items_center().gap_2().flex_1().h_full();
+
+        #[cfg(target_os = "macos")]
+        {
+            drag_region = drag_region
+                .window_control_area(WindowControlArea::Drag)
+                .on_mouse_down(MouseButton::Left, |event: &MouseDownEvent, window, _cx| {
+                    if event.click_count == 2 {
+                        window.titlebar_double_click();
+                    }
+                });
+        }
+
         #[cfg(target_os = "windows")]
         {
             use raw_window_handle::HasWindowHandle;
-            let raw_handle = window.window_handle().ok().map(|h| match h.as_raw() {
-                raw_window_handle::RawWindowHandle::Win32(win32) => win32.hwnd.get(),
-                _ => 0,
-            });
+            let raw_handle =
+                HasWindowHandle::window_handle(window)
+                    .ok()
+                    .map(|h| match h.as_raw() {
+                        raw_window_handle::RawWindowHandle::Win32(win32) => win32.hwnd.get(),
+                        _ => 0,
+                    });
             if let Some(hwnd) = raw_handle {
-                bar = bar.on_mouse_down(gpui::MouseButton::Left, move |_event, _window, _cx| {
-                    crate::platform_drag::begin_title_bar_drag(hwnd);
-                });
+                // Install the window subclass that routes WM_NCLBUTTONDOWN
+                // for resize edges directly to DefWindowProc (bypassing
+                // GPUI's element dispatch) and handles our custom drag
+                // message. Safe to call every frame — only installs once.
+                crate::platform_drag::install_drag_subclass(hwnd);
+
+                drag_region = drag_region.on_mouse_down(
+                    MouseButton::Left,
+                    move |event: &MouseDownEvent, window, _cx| {
+                        if event.click_count == 2 {
+                            window.titlebar_double_click();
+                        } else {
+                            crate::platform_drag::begin_title_bar_drag(hwnd);
+                        }
+                    },
+                );
             }
         }
 
         // Logo (3x3 grid matching logo-primary-dark.svg)
-        bar = bar.child(div().flex_shrink_0().ml_2().child(self.render_logo_small()));
-        bar = bar.child(
+        drag_region =
+            drag_region.child(div().flex_shrink_0().ml_2().child(self.render_logo_small()));
+        drag_region = drag_region.child(
             div()
                 .text_sm()
                 .font_weight(FontWeight::BOLD)
@@ -103,8 +138,9 @@ impl WorkspaceView {
                 .child(TitleBar::LOGO_TEXT),
         );
 
-        // Spacer — fills remaining space so window controls stay on the right
-        bar = bar.child(div().flex_1());
+        // Spacer - fills remaining space so window controls stay on the right.
+        drag_region = drag_region.child(div().flex_1());
+        bar = bar.child(drag_region);
 
         // Window controls (Windows/Linux)
         // Uses native Segoe icon fonts and WindowControlArea for OS-level handling.
@@ -329,6 +365,13 @@ impl WorkspaceView {
                     this.close_session_menu(cx);
                     cx.stop_propagation();
                 }),
+            )
+            .on_mouse_down(
+                MouseButton::Right,
+                cx.listener(|this, _: &MouseDownEvent, _window, cx| {
+                    this.close_session_menu(cx);
+                    cx.stop_propagation();
+                }),
             );
 
         // Build dropdown menu
@@ -460,8 +503,11 @@ impl WorkspaceView {
             cx,
         ));
 
-        // Position dropdown to the right of the drawer, aligned with the row
-        let left_offset = crate::icon_rail::IconRail::WIDTH + self.drawer.width() - 8.0;
+        // Position dropdown: at click position (tab right-click) or next to the drawer (default).
+        let left_offset = self
+            .selection
+            .session_menu_anchor_x
+            .unwrap_or_else(|| crate::icon_rail::IconRail::WIDTH + self.drawer.width() - 8.0);
 
         Some(
             div()

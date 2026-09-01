@@ -20,7 +20,13 @@ impl WorkspaceView {
         cx: &mut Context<Self>,
     ) -> Option<gpui::AnyElement> {
         let terminal_view = self.terminals.get(&session_id)?;
-        let track_height = canvas_metrics.get().content_height;
+
+        // Approximate track height from terminal grid dimensions at render
+        // time. The Rc<Cell<>> canvas_metrics is only populated during
+        // prepaint (after the element tree is built), so reading it here
+        // would always yield 0. Mouse handlers read the Rc lazily (after
+        // prepaint) and prefer the exact content_height when available.
+        let track_height = terminal_view.rows() as f32 * terminal_view.cell_height();
         if track_height <= 0.0 {
             return None;
         }
@@ -74,13 +80,19 @@ impl WorkspaceView {
             .on_mouse_down(
                 MouseButton::Left,
                 cx.listener(move |this, event: &MouseDownEvent, window, cx| {
-                    let origin_y = metrics_for_track.get().origin_y;
+                    let metrics = metrics_for_track.get();
+                    let effective_track = if metrics.content_height > 0.0 {
+                        metrics.content_height
+                    } else {
+                        track_height
+                    };
+                    let origin_y = metrics.origin_y;
                     let pointer_y: f32 = event.position.y.into();
                     let relative_y = pointer_y - origin_y;
                     if let Some(terminal_view) = this.terminals.get_mut(&session_id) {
                         let target = terminal_view.scrollbar_offset_for_pointer(
                             relative_y,
-                            track_height,
+                            effective_track,
                             None,
                         );
                         if target != terminal_view.display_offset() {
@@ -126,20 +138,26 @@ impl WorkspaceView {
             .on_mouse_down(
                 MouseButton::Left,
                 cx.listener(move |this, event: &MouseDownEvent, window, cx| {
-                    let origin_y = metrics_for_thumb.get().origin_y;
+                    let metrics = metrics_for_thumb.get();
+                    let effective_track = if metrics.content_height > 0.0 {
+                        metrics.content_height
+                    } else {
+                        track_height
+                    };
+                    let origin_y = metrics.origin_y;
                     let pointer_y: f32 = event.position.y.into();
                     let relative_y = pointer_y - origin_y;
 
                     if let Some(terminal_view) = this.terminals.get_mut(&session_id) {
                         let (_, current_thumb_top) =
-                            terminal_view.scrollbar_thumb_metrics(track_height);
+                            terminal_view.scrollbar_thumb_metrics(effective_track);
                         let thumb_offset = (relative_y - current_thumb_top).max(0.0);
                         terminal_view.start_scrollbar_drag(thumb_offset);
                         this.selection.terminal_scrollbar_drag =
                             Some(super::types::TerminalScrollbarDragState {
                                 session_id,
                                 track_top: origin_y,
-                                track_height,
+                                track_height: effective_track,
                             });
                         this.select_session_with_cx(session_id, cx);
                         window.focus(&this.focus_handle(cx));

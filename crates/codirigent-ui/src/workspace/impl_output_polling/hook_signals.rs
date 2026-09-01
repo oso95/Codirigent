@@ -366,6 +366,14 @@ impl WorkspaceView {
 
             let _ = this.update(cx, |this, cx| {
                 this.polling.hook_signal_check_in_flight = false;
+                // Sort by timestamp so that the newest signal for each
+                // session is processed last and wins the cached status.
+                // Without this, non-deterministic read_dir order can let
+                // a stale "idle" signal overwrite a newer "working" signal
+                // when multiple signal files target the same session
+                // (e.g., parent + subagent Claude Code sessions).
+                let mut updates = updates;
+                updates.sort_by_key(|u| u.ts);
                 for update in updates {
                     this.apply_hook_signal_update(update, cx);
                 }

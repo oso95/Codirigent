@@ -228,6 +228,11 @@ impl WorkspaceView {
         let task_titles = self.sync_task_board_state();
         self.sync_all_session_headers(Some(&task_titles));
         self.sync_empty_cells_state();
+
+        // Update shutdown guard: block system shutdown/logout while sessions exist.
+        crate::platform::shutdown_guard::set_shutdown_blocked(
+            !self.workspace.sessions().is_empty(),
+        );
     }
 
     /// Sync a single session's terminal header from workspace state.

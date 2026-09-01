@@ -761,11 +761,18 @@ impl WorkspaceView {
         };
 
         let input_value = if self.modals.cursor_blink_on {
-            if modal.input.is_empty() {
-                "|".to_string()
-            } else {
-                format!("{}|", modal.input)
-            }
+            let cursor = modal.cursor_position.min(modal.input.chars().count());
+            let cursor_byte = modal
+                .input
+                .char_indices()
+                .nth(cursor)
+                .map(|(i, _)| i)
+                .unwrap_or(modal.input.len());
+            let mut out = String::with_capacity(modal.input.len() + 1);
+            out.push_str(&modal.input[..cursor_byte]);
+            out.push('|');
+            out.push_str(&modal.input[cursor_byte..]);
+            out
         } else {
             modal.input.clone()
         };

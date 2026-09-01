@@ -5,6 +5,7 @@
 
 use alacritty_terminal::grid::Dimensions;
 use alacritty_terminal::index::{Column, Line};
+use alacritty_terminal::term::cell::Flags;
 use alacritty_terminal::term::Term;
 
 /// Copy selected text from terminal grid.
@@ -65,12 +66,16 @@ pub fn copy_selection<T>(term: &Term<T>, start: (i32, usize), end: (i32, usize))
         let trimmed = line_text.trim_end();
         text.push_str(trimmed);
 
-        // Add newline between lines (but not after the last line)
-        if line_idx < end_line && !trimmed.is_empty() {
-            text.push('\n');
-        } else if line_idx < end_line && trimmed.is_empty() {
-            // Preserve empty lines in multi-line selections
-            text.push('\n');
+        // Only add newline between lines if the current line does NOT wrap
+        // to the next row. Wrapped lines are continuations of the same
+        // logical line and should be joined without a newline, matching
+        // the behavior of standard terminal emulators.
+        if line_idx < end_line {
+            let last_col = Column(total_cols.saturating_sub(1));
+            let is_wrapped = line[last_col].flags.contains(Flags::WRAPLINE);
+            if !is_wrapped {
+                text.push('\n');
+            }
         }
     }
 

@@ -19,7 +19,9 @@
   <a href="https://codirigent.dev">Website</a> ·
   <a href="https://github.com/oso95/Codirigent/releases/latest">Download</a> ·
   <a href="https://github.com/oso95/Codirigent/issues">Report a Bug</a> ·
-  <a href="./README.zh-TW.md">繁體中文</a>
+  <a href="./README.zh-TW.md">繁體中文</a> ·
+  <a href="./README.zh-CN.md">简体中文</a>
+
 </p>
 
 ---
@@ -71,7 +73,7 @@ Codirigent is a Tmux-style workspace built for this workflow. Open it once, and 
 
 Download the `.msi` installer from the [latest release](https://github.com/oso95/Codirigent/releases/latest).
 
-> **SmartScreen warning:** Windows may show "Windows protected your PC" since the app is not yet code-signed. Click **More info → Run anyway** to proceed.
+> **SmartScreen warning:** Windows may show "Windows protected your PC" on first install. The MSI is code-signed but SmartScreen requires reputation history. Click **More info → Run anyway** to proceed.
 
 ### macOS
 
@@ -127,5 +129,3 @@ Open an issue before major changes. PRs welcome.
 ## License
 
 GPL-3.0 — see [LICENSE](LICENSE).
-
-Authored by ChengYuanWang

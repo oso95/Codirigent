@@ -1033,13 +1033,17 @@ mod tests {
             .expect("timeout")
             .expect("channel closed");
         assert_eq!(&received, data);
-        assert!(chunk_called.load(Ordering::SeqCst), "on_chunk should fire");
 
         // Wait for channel to close (reader thread hit EOF and exited)
         while rx.recv().await.is_some() {}
 
         // Give the thread a moment to run on_exit after the loop
         tokio::time::sleep(std::time::Duration::from_millis(100)).await;
+
+        // Check both flags after the thread has fully exited, since on_chunk
+        // is called *after* the channel send and may not have run yet when
+        // rx.recv() returns.
+        assert!(chunk_called.load(Ordering::SeqCst), "on_chunk should fire");
         assert!(
             exit_called.load(Ordering::SeqCst),
             "on_exit should fire on EOF"

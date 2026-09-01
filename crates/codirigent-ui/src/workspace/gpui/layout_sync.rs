@@ -11,6 +11,10 @@ use std::hash::{Hash, Hasher};
 use std::time::{Duration, Instant};
 use tracing::warn;
 
+fn pty_resize_required(last: Option<(u16, u16)>, target: (u16, u16)) -> bool {
+    last != Some(target)
+}
+
 impl WorkspaceView {
     fn current_layout_mode_for_shortcuts(&self) -> LayoutMode {
         if let Some(split_state) = self.workspace.layout_state().as_split_tree() {
@@ -179,6 +183,7 @@ impl WorkspaceView {
     fn resize_terminals_to_grid(&mut self) -> bool {
         // Layout constants from types.rs: HEADER_HEIGHT, TERMINAL_CONTENT_PADDING, CELL_BORDER_WIDTH
         let mut resized_any = false;
+        let mut synchronized_pty_sessions = Vec::new();
 
         for info in &self.cache.render_cell_info {
             if let Some(terminal_view) = self.terminals.get_mut(&info.session_id) {
@@ -217,25 +222,36 @@ impl WorkspaceView {
 
                 if did_resize {
                     resized_any = true;
+                }
 
-                    // Propagate resize to actual PTY (ConPTY) so the shell
-                    // knows the correct terminal dimensions
-                    let rows = terminal_view.rows();
-                    let cols = terminal_view.cols();
-                    let last = self.cache.pty_sizes.get(&info.session_id);
-                    if last != Some(&(rows, cols)) {
-                        self.with_session_manager(|manager| {
-                            if let Err(e) = manager.resize(info.session_id, rows, cols) {
-                                warn!(
-                                    "Failed to resize PTY for session {}: {}",
-                                    info.session_id, e
-                                );
-                            }
-                        });
-                        self.cache.pty_sizes.insert(info.session_id, (rows, cols));
+                // Synchronize ConPTY independently of the emulator resize.
+                // A newly created PTY starts at 80x24, while a TerminalView may
+                // already have the target dimensions from a cached layout.
+                let rows = terminal_view.rows();
+                let cols = terminal_view.cols();
+                let last = self.cache.pty_sizes.get(&info.session_id).copied();
+                if pty_resize_required(last, (rows, cols)) {
+                    let resize_result = self.with_session_manager(|manager| {
+                        manager.resize(info.session_id, rows, cols)
+                    });
+                    match resize_result {
+                        Ok(()) => {
+                            self.cache.pty_sizes.insert(info.session_id, (rows, cols));
+                            synchronized_pty_sessions.push(info.session_id);
+                        }
+                        Err(e) => warn!(
+                            "Failed to resize PTY for session {}: {}",
+                            info.session_id, e
+                        ),
                     }
                 }
             }
+        }
+
+        // If the shell became ready before the first layout pass, the queued
+        // Agent CLI command can now start at the real pane width.
+        for session_id in synchronized_pty_sessions {
+            self.dispatch_pending_resume_commands_for_session(session_id);
         }
         resized_any
     }
@@ -359,6 +375,13 @@ mod tests {
         assert!(!super::WorkspaceView::should_skip_collapsed_resize(
             40, 120, 30, 100
         ));
+    }
+
+    #[test]
+    fn test_new_pty_is_synchronized_even_when_terminal_grid_already_matches() {
+        assert!(super::pty_resize_required(None, (40, 160)));
+        assert!(super::pty_resize_required(Some((24, 80)), (40, 160)));
+        assert!(!super::pty_resize_required(Some((40, 160)), (40, 160)));
     }
 
     #[test]

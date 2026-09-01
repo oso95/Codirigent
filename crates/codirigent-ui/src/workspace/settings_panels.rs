@@ -1241,7 +1241,7 @@ impl super::gpui::WorkspaceView {
                             .text_color(ansi_hsla(12))
                             .child("Compiling ")
                             .child(div().text_color(fg).child("codirigent-ui"))
-                            .child(" v0.1.0"),
+                            .child(format!(" v{}", env!("CARGO_PKG_VERSION"))),
                     )
                     .child(
                         div()
